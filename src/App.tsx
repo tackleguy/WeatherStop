@@ -102,7 +102,7 @@ export default function App() {
     <div className="relative mx-auto flex min-h-[100dvh] max-w-md flex-col">
       <DynamicBackground gradient={gradient} weatherCode={code} isDay={isDay} />
 
-      <header className="flex items-center justify-between px-4 pt-4">
+      <header className="flex items-center justify-between px-4 pt-4 pb-2 sm:px-6">
         <button
           type="button"
           aria-label="Open settings"

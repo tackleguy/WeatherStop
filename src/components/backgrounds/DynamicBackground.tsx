@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import type { GradientName } from '../../lib/weatherCodes';
 import { GRADIENTS } from '../../constants/gradients';
-import { describe } from '../../lib/weatherCodes';
 import { RainParticles } from './RainParticles';
 import { SnowParticles } from './SnowParticles';
 import { StarField } from './StarField';
@@ -50,9 +49,26 @@ function LightningOverlay() {
   );
 }
 
+function isRainCode(code: number): boolean {
+  return (
+    (code >= 51 && code <= 67) ||
+    (code >= 80 && code <= 82) ||
+    code === 95 ||
+    code === 96 ||
+    code === 99
+  );
+}
+
+function isSnowCode(code: number): boolean {
+  return (code >= 71 && code <= 77) || code === 85 || code === 86;
+}
+
+function isThunderCode(code: number): boolean {
+  return code === 95 || code === 96 || code === 99;
+}
+
 export function DynamicBackground({ gradient, weatherCode, isDay }: Props) {
   const reduced = useReducedMotion();
-  const info = describe(weatherCode);
 
   return (
     <>
@@ -73,21 +89,10 @@ export function DynamicBackground({ gradient, weatherCode, isDay }: Props) {
         aria-hidden
       />
 
-      {!reduced && info.group === 'thunderstorm' ? <LightningOverlay /> : null}
-
-      {!reduced &&
-      (info.group === 'rain' ||
-        info.group === 'showers' ||
-        info.group === 'drizzle' ||
-        info.group === 'thunderstorm') ? (
-        <RainParticles />
-      ) : null}
-
-      {!reduced && info.group === 'snow' ? <SnowParticles /> : null}
-
-      {!reduced && !isDay && (info.group === 'clear' || info.group === 'partly_cloudy') ? (
-        <StarField />
-      ) : null}
+      {!reduced && isThunderCode(weatherCode) ? <LightningOverlay /> : null}
+      {!reduced && isRainCode(weatherCode) ? <RainParticles /> : null}
+      {!reduced && isSnowCode(weatherCode) ? <SnowParticles /> : null}
+      {!reduced && !isDay && weatherCode <= 3 ? <StarField /> : null}
     </>
   );
 }

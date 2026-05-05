@@ -24,16 +24,24 @@ function SkeletonCard({ heightClass = 'h-32' }: { heightClass?: string }) {
   return <div className={`glass rounded-3xl ${heightClass} shimmer`} />;
 }
 
-function ErrorState({ onRetry }: { onRetry: () => void }) {
+function ErrorState({
+  cityName,
+  onRetry,
+}: {
+  cityName: string;
+  onRetry: () => void;
+}) {
   return (
-    <div className="glass mt-8 flex flex-col items-center gap-3 rounded-3xl p-6 text-center">
-      <p className="text-base font-medium text-white">Couldn’t load weather</p>
+    <div className="glass mx-4 mt-8 flex flex-col items-center gap-3 rounded-3xl p-6 text-center">
+      <p className="text-base font-medium text-white">
+        Couldn’t load weather for {cityName}.
+      </p>
       <button
         type="button"
         onClick={onRetry}
         className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-medium text-white hover:bg-white/30"
       >
-        Try again
+        Retry
       </button>
     </div>
   );
@@ -52,11 +60,11 @@ export function CityView({ city, settings, onWeather }: Props) {
     return () => window.clearInterval(id);
   }, []);
 
-  if (error && !data) return <ErrorState onRetry={refresh} />;
+  if (error && !data) return <ErrorState cityName={city.name} onRetry={refresh} />;
 
   if (!data) {
     return (
-      <div className="flex flex-col gap-3 px-4 pb-10">
+      <div className="flex flex-col gap-3 px-4 pb-10 sm:px-6">
         <div className="flex flex-col items-center pt-6 pb-2">
           <div className="mt-2 h-8 w-40 rounded-full bg-white/10 shimmer" />
           <div className="mt-3 h-24 w-32 rounded-2xl bg-white/10 shimmer" />
@@ -78,7 +86,7 @@ export function CityView({ city, settings, onWeather }: Props) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="flex flex-col gap-3 px-4 pb-10"
+      className="flex flex-col gap-3 px-4 pb-10 sm:px-6"
     >
       {data.alerts && data.alerts.length > 0 ? (
         <AlertsBanner alerts={data.alerts} />

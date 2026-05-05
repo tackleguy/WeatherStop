@@ -1,43 +1,60 @@
-// WMO weather_code → emoji, with a separate variant when is_day === 0.
+// WMO weather_code → emoji, with separate day/night tables.
 
-interface IconPair {
-  day: string;
-  night: string;
-}
+const day: Record<number, string> = {
+  0: '☀️',
+  1: '🌤',
+  2: '⛅',
+  3: '☁️',
+  45: '🌫',
+  48: '🌫',
+  51: '🌦',
+  53: '🌦',
+  55: '🌦',
+  61: '🌧',
+  63: '🌧',
+  65: '🌧',
+  71: '❄️',
+  73: '❄️',
+  75: '❄️',
+  77: '❄️',
+  80: '🌧',
+  81: '🌧',
+  82: '🌧',
+  85: '🌨',
+  86: '🌨',
+  95: '⛈',
+  96: '⛈',
+  99: '⛈',
+};
 
-const TABLE: Record<number, IconPair> = {
-  0: { day: '☀️', night: '🌙' },
-  1: { day: '🌤', night: '🌙' },
-  2: { day: '🌤', night: '🌙' },
-  3: { day: '☁️', night: '☁️' },
-  45: { day: '🌫', night: '🌫' },
-  48: { day: '🌫', night: '🌫' },
-  51: { day: '🌦', night: '🌧' },
-  53: { day: '🌦', night: '🌧' },
-  55: { day: '🌦', night: '🌧' },
-  56: { day: '🌧', night: '🌧' },
-  57: { day: '🌧', night: '🌧' },
-  61: { day: '🌧', night: '🌧' },
-  63: { day: '🌧', night: '🌧' },
-  65: { day: '🌧', night: '🌧' },
-  66: { day: '🌧', night: '🌧' },
-  67: { day: '🌧', night: '🌧' },
-  71: { day: '❄️', night: '❄️' },
-  73: { day: '❄️', night: '❄️' },
-  75: { day: '❄️', night: '❄️' },
-  77: { day: '❄️', night: '❄️' },
-  80: { day: '🌧', night: '🌧' },
-  81: { day: '🌧', night: '🌧' },
-  82: { day: '🌧', night: '🌧' },
-  85: { day: '🌨', night: '🌨' },
-  86: { day: '🌨', night: '🌨' },
-  95: { day: '⛈', night: '⛈' },
-  96: { day: '⛈', night: '⛈' },
-  99: { day: '⛈', night: '⛈' },
+const night: Record<number, string> = {
+  0: '🌙',
+  1: '🌙',
+  2: '☁️',
+  3: '☁️',
+  45: '🌫',
+  48: '🌫',
+  51: '🌧',
+  53: '🌧',
+  55: '🌧',
+  61: '🌧',
+  63: '🌧',
+  65: '🌧',
+  71: '❄️',
+  73: '❄️',
+  75: '❄️',
+  77: '❄️',
+  80: '🌧',
+  81: '🌧',
+  82: '🌧',
+  85: '🌨',
+  86: '🌨',
+  95: '⛈',
+  96: '⛈',
+  99: '⛈',
 };
 
 export function iconFor(code: number, isDay: number | boolean = 1): string {
-  const day = typeof isDay === 'boolean' ? isDay : isDay !== 0;
-  const pair = TABLE[code] ?? { day: '🌡', night: '🌡' };
-  return day ? pair.day : pair.night;
+  const isDaytime = typeof isDay === 'boolean' ? isDay : isDay !== 0;
+  return (isDaytime ? day : night)[code] ?? '❓';
 }

@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { CloudRain, Ruler, Thermometer, Wind, X } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { Settings } from '../types';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 
 interface Toggle<K extends keyof Settings> {
   label: string;
+  icon: LucideIcon;
   key: K;
   options: { label: string; value: Settings[K] }[];
 }
@@ -23,6 +25,7 @@ const TOGGLES: [
 ] = [
   {
     label: 'Temperature',
+    icon: Thermometer,
     key: 'temp',
     options: [
       { label: '°F', value: 'fahrenheit' },
@@ -31,6 +34,7 @@ const TOGGLES: [
   },
   {
     label: 'Wind',
+    icon: Wind,
     key: 'wind',
     options: [
       { label: 'mph', value: 'mph' },
@@ -39,6 +43,7 @@ const TOGGLES: [
   },
   {
     label: 'Distance',
+    icon: Ruler,
     key: 'distance',
     options: [
       { label: 'mi', value: 'mi' },
@@ -47,6 +52,7 @@ const TOGGLES: [
   },
   {
     label: 'Precipitation',
+    icon: CloudRain,
     key: 'precip',
     options: [
       { label: 'in', value: 'inch' },
@@ -73,11 +79,11 @@ export function SettingsSheet({ open, onClose, settings, onChange }: Props) {
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-x-0 bottom-0 mx-auto max-w-md rounded-t-3xl bg-slate-900/95 p-5 backdrop-blur-2xl"
+            className="absolute inset-x-0 bottom-0 mx-auto max-w-md rounded-t-3xl bg-slate-900/95 px-5 pt-5 pb-7 backdrop-blur-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-medium text-white">Settings</h2>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-white">Settings</h2>
               <button
                 type="button"
                 aria-label="Close"
@@ -88,38 +94,50 @@ export function SettingsSheet({ open, onClose, settings, onChange }: Props) {
               </button>
             </div>
 
-            <div className="space-y-3">
-              {TOGGLES.map((row) => (
-                <div
-                  key={row.label}
-                  className="flex items-center justify-between rounded-2xl bg-white/8 px-4 py-3"
-                >
-                  <span className="text-[15px] text-white">{row.label}</span>
-                  <div className="flex rounded-full bg-white/10 p-0.5">
-                    {row.options.map((opt) => {
-                      const active =
-                        (settings as Settings)[row.key] === opt.value;
-                      return (
-                        <button
-                          key={String(opt.value)}
-                          type="button"
-                          onClick={() =>
-                            onChange(row.key, opt.value as Settings[typeof row.key])
-                          }
-                          className={`min-w-[48px] rounded-full px-3 py-1 text-[13px] font-medium transition-colors ${
-                            active ? 'bg-white text-slate-900' : 'text-white/80'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      );
-                    })}
+            <div className="divide-y divide-white/10">
+              {TOGGLES.map((row) => {
+                const Icon = row.icon;
+                return (
+                  <div
+                    key={row.label}
+                    className="flex items-center justify-between py-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon className="h-4 w-4 text-white/60" strokeWidth={2.2} />
+                      <span className="text-base font-medium text-white">
+                        {row.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center rounded-full bg-white/10 p-1">
+                      {row.options.map((opt) => {
+                        const active = settings[row.key] === opt.value;
+                        return (
+                          <button
+                            key={String(opt.value)}
+                            type="button"
+                            onClick={() =>
+                              onChange(
+                                row.key,
+                                opt.value as Settings[typeof row.key],
+                              )
+                            }
+                            className={`min-w-[48px] rounded-full px-3 py-1 text-[13px] font-semibold transition-colors ${
+                              active
+                                ? 'bg-white text-black'
+                                : 'text-white/70 hover:text-white'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            <p className="mt-5 text-center text-[12px] text-white/50">
+            <p className="mt-6 text-center text-[12px] text-white/50">
               Data from NWS (US) and Open-Meteo (international). No API keys.
             </p>
           </motion.div>

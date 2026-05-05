@@ -69,23 +69,24 @@ export function gradientFor(
   isDay: boolean,
   localHour: number,
 ): GradientName {
-  const info = describe(code);
-
-  if (info.group === 'thunderstorm') return 'thunderstorm';
-  if (info.group === 'snow') return 'snow';
-  if (info.group === 'rain' || info.group === 'showers' || info.group === 'drizzle')
-    return 'rain';
-  if (info.group === 'fog') return 'fog';
-
-  const isClearish =
-    info.group === 'clear' || info.group === 'partly_cloudy';
-
-  if (isDay && isClearish) {
+  // Sunrise / sunset overrides apply when the sky is mostly clear in daytime.
+  if (code <= 2 && isDay) {
     if (localHour >= 5 && localHour <= 7) return 'sunrise';
     if (localHour >= 17 && localHour <= 19) return 'sunset';
-    return 'clear-day';
   }
-  if (!isDay && isClearish) return 'clear-night';
 
-  return isDay ? 'cloudy-day' : 'cloudy-night';
+  if (code === 0 || code === 1) {
+    return isDay ? 'clear-day' : 'clear-night';
+  }
+  if (code === 2 || code === 3) {
+    return isDay ? 'cloudy-day' : 'cloudy-night';
+  }
+  if (code === 45 || code === 48) return 'fog';
+  if (code >= 51 && code <= 67) return 'rain';
+  if (code >= 71 && code <= 77) return 'snow';
+  if (code >= 80 && code <= 82) return 'rain';
+  if (code >= 85 && code <= 86) return 'snow';
+  if (code >= 95) return 'thunderstorm';
+
+  return isDay ? 'clear-day' : 'clear-night';
 }

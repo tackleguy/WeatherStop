@@ -14,17 +14,15 @@ function shouldShowRegion(city: City): boolean {
   const name = city.name.toLowerCase();
   const region = city.region.toLowerCase();
   if (region === name) return false;
-  if (name.includes(region) || region.includes(name)) return false;
+  if (name.includes(region)) return false;
   return true;
 }
 
 export function HeroCard({ city, data }: Props) {
   const info = describe(data.current.weather_code);
   const isDay = data.current.is_day === 1;
-  const today = {
-    high: data.daily.temperature_2m_max[0],
-    low: data.daily.temperature_2m_min[0],
-  };
+  const high = data.daily.temperature_2m_max[0];
+  const low = data.daily.temperature_2m_min[0];
 
   let subtitle: string | null = null;
   if (city.isCurrent) subtitle = 'My Location';
@@ -35,34 +33,31 @@ export function HeroCard({ city, data }: Props) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-col items-center pt-6 pb-2 text-center"
+      className="text-center pt-10 pb-8"
     >
-      <h1 className="text-[34px] font-light leading-tight text-white">
+      <h1 className="text-3xl font-light tracking-tight text-white">
         {city.name}
       </h1>
       {subtitle ? (
-        <div
-          className={`mt-0.5 text-[13px] ${
-            city.isCurrent ? 'font-medium text-white/80' : 'text-white/65'
-          }`}
-        >
+        <p className="mt-1 text-sm font-medium tracking-wide text-white/60">
           {subtitle}
-        </div>
+        </p>
       ) : null}
 
-      <div className="tabular mt-1 text-[112px] font-extralight leading-none tracking-[-0.04em] text-white">
-        {formatTemp(data.current.temperature_2m, { withDegree: false })}
-        <span className="font-extralight text-white/85">°</span>
+      <div className="tabular mt-6 text-[7rem] md:text-[9rem] font-thin leading-none tracking-tighter text-white">
+        {formatTemp(data.current.temperature_2m, { withDegree: false })}°
       </div>
 
-      <div className="mt-1 flex items-center gap-2 text-lg font-medium text-white/90">
-        <span className="text-2xl leading-none">{iconFor(data.current.weather_code, isDay)}</span>
-        <span>{info.label}</span>
+      <div className="mt-3 flex items-center justify-center gap-2">
+        <span className="text-2xl leading-none">
+          {iconFor(data.current.weather_code, isDay)}
+        </span>
+        <p className="text-xl font-medium text-white/90">{info.label}</p>
       </div>
 
-      <div className="tabular mt-1 text-[15px] font-medium text-white/80">
-        H:{formatTemp(today.high)}  L:{formatTemp(today.low)}
-      </div>
+      <p className="tabular mt-1 text-sm font-medium tracking-wide text-white/70">
+        H: {formatTemp(high)}  ·  L: {formatTemp(low)}
+      </p>
     </motion.section>
   );
 }

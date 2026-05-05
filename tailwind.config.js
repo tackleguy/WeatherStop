@@ -13,6 +13,12 @@ export default {
           'sans-serif',
         ],
       },
+      opacity: {
+        8: '0.08',
+        12: '0.12',
+        35: '0.35',
+        45: '0.45',
+      },
       keyframes: {
         twinkle: {
           '0%, 100%': { opacity: '0.2' },

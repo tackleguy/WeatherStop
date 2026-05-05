@@ -12,9 +12,9 @@ interface Props {
 const SWIPE_THRESHOLD = 80;
 
 const variants: Variants = {
-  enter: (d: number) => ({ opacity: 0, x: d > 0 ? 60 : d < 0 ? -60 : 0 }),
-  center: { opacity: 1, x: 0 },
-  exit: (d: number) => ({ opacity: 0, x: d > 0 ? -60 : d < 0 ? 60 : 0 }),
+  enter: { opacity: 0, y: 8 },
+  center: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
 };
 
 export function CityCarousel({ cities, active, onChange, renderCity }: Props) {
@@ -31,15 +31,14 @@ export function CityCarousel({ cities, active, onChange, renderCity }: Props) {
 
   return (
     <div className="relative">
-      <AnimatePresence mode="wait" custom={direction.current}>
+      <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={current.id}
-          custom={direction.current}
           variants={variants}
           initial="enter"
           animate="center"
           exit="exit"
-          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
           drag="x"
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.2}

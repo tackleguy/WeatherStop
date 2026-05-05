@@ -29,7 +29,7 @@ export function Card({
       {...rest}
     >
       {title ? (
-        <div className="mb-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-white/55">
+        <div className="mb-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-white/60">
           {Icon ? <Icon className="h-3.5 w-3.5" strokeWidth={2.2} /> : null}
           <span>{title}</span>
         </div>

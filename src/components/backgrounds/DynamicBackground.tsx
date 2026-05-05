@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import type { GradientName } from '../../lib/weatherCodes';
-import { GRADIENTS } from '../../constants/gradients';
+import { GRADIENTS, TOP_GLOW } from '../../constants/gradients';
 import { CloudLayer } from './CloudLayer';
 import { RainParticles } from './RainParticles';
 import { SnowParticles } from './SnowParticles';
@@ -84,23 +84,17 @@ export function DynamicBackground({ gradient, weatherCode, isDay }: Props) {
         />
       </AnimatePresence>
 
-      {/* Soft radial glow at the top of the viewport so the area above the
-          hero never reads as a flat black band. Tinted per condition. */}
+      {/* Tinted top-of-viewport halo so the area above the hero is never
+          a flat band of color. */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 -z-[7] h-[55vh]"
-        style={{
-          background: !isDay
-            ? weatherCode <= 2
-              ? 'radial-gradient(ellipse 90% 70% at 50% 0%, rgba(99,102,241,0.35), rgba(15,23,42,0) 70%)'
-              : 'radial-gradient(ellipse 90% 70% at 50% 0%, rgba(148,163,184,0.25), rgba(15,23,42,0) 70%)'
-            : 'radial-gradient(ellipse 100% 70% at 50% 0%, rgba(255,255,255,0.18), rgba(255,255,255,0) 70%)',
-        }}
+        className="pointer-events-none fixed inset-x-0 top-0 -z-[7] h-[60vh]"
+        style={{ background: TOP_GLOW[gradient] }}
       />
 
-      {/* Subtle vignette so cards read against bright gradients */}
+      {/* Subtle vignette to keep cards legible at the bottom of bright skies. */}
       <div
-        className="pointer-events-none fixed inset-0 -z-[8] bg-gradient-to-b from-black/0 via-black/0 to-black/35"
+        className="pointer-events-none fixed inset-0 -z-[8] bg-gradient-to-b from-black/0 via-black/0 to-black/25"
         aria-hidden
       />
 

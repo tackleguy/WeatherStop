@@ -68,6 +68,45 @@ body {
   animation: shimmer 2.2s linear infinite;
 }
 
+/* Atmospheric drift — clouds */
+@keyframes cloud-drift-0 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(var(--s, 1));
+  }
+  50% {
+    transform: translate(40px, -8px) scale(var(--s, 1));
+  }
+}
+@keyframes cloud-drift-1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(var(--s, 1));
+  }
+  50% {
+    transform: translate(-30px, 12px) scale(var(--s, 1));
+  }
+}
+@keyframes cloud-drift-2 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(var(--s, 1));
+  }
+  50% {
+    transform: translate(20px, 18px) scale(var(--s, 1));
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

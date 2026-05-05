@@ -1,11 +1,12 @@
 import { CalendarDays } from 'lucide-react';
 import { Card } from './Card';
-import { iconFor } from '../constants/weatherIcons';
+import { WeatherIcon } from '../lib/weatherIcons';
 import { formatDayLabel, formatTemp } from '../lib/format';
-import type { ForecastResponse } from '../types';
+import type { ForecastResponse, Settings } from '../types';
 
 interface Props {
   data: ForecastResponse;
+  settings: Settings;
   index?: number;
 }
 
@@ -14,7 +15,22 @@ interface RangeBarProps {
   dayHigh: number;
   weekLow: number;
   weekHigh: number;
+  fillColor: string;
   currentTemp?: number;
+}
+
+function tempInF(value: number, unit: Settings['temp']): number {
+  return unit === 'celsius' ? (value * 9) / 5 + 32 : value;
+}
+
+function rangeBarColor(low: number, high: number, unit: Settings['temp']): string {
+  const avgF = tempInF((low + high) / 2, unit);
+  if (avgF < 35) return 'linear-gradient(to right, #60a5fa, #93c5fd)';
+  if (avgF < 50) return 'linear-gradient(to right, #67e8f9, #a5f3fc)';
+  if (avgF < 65) return 'linear-gradient(to right, #34d399, #a7f3d0)';
+  if (avgF < 78) return 'linear-gradient(to right, #fbbf24, #fde68a)';
+  if (avgF < 90) return 'linear-gradient(to right, #fb923c, #fdba74)';
+  return 'linear-gradient(to right, #ef4444, #fca5a5)';
 }
 
 function RangeBar({
@@ -22,6 +38,7 @@ function RangeBar({
   dayHigh,
   weekLow,
   weekHigh,
+  fillColor,
   currentTemp,
 }: RangeBarProps) {
   const range = weekHigh - weekLow || 1;
@@ -39,8 +56,7 @@ function RangeBar({
         style={{
           left: `${startPct}%`,
           width: `${widthPct}%`,
-          background:
-            'linear-gradient(to right, #60a5fa 0%, #fbbf24 50%, #f87171 100%)',
+          background: fillColor,
         }}
       />
       {currentPct !== null ? (
@@ -56,7 +72,7 @@ function RangeBar({
   );
 }
 
-export function DailyForecast({ data, index }: Props) {
+export function DailyForecast({ data, settings, index }: Props) {
   const days = data.daily.time;
   const lows = data.daily.temperature_2m_min;
   const highs = data.daily.temperature_2m_max;
@@ -70,15 +86,16 @@ export function DailyForecast({ data, index }: Props) {
         {days.map((iso, i) => {
           const isToday = i === 0;
           return (
-            <div
-              key={iso}
-              className="flex items-center gap-3 py-2.5"
-            >
+            <div key={iso} className="flex items-center gap-3 py-2.5">
               <span className="w-14 text-base font-medium text-white">
                 {isToday ? 'Today' : formatDayLabel(iso, data.timezone)}
               </span>
-              <span className="w-8 text-2xl leading-none">
-                {iconFor(data.daily.weather_code[i], 1)}
+              <span className="w-8">
+                <WeatherIcon
+                  code={data.daily.weather_code[i]}
+                  isDay
+                  size={26}
+                />
               </span>
               <span className="tabular w-9 text-right text-base font-medium text-white/60">
                 {formatTemp(lows[i])}
@@ -89,6 +106,7 @@ export function DailyForecast({ data, index }: Props) {
                   dayHigh={highs[i]}
                   weekLow={weekLow}
                   weekHigh={weekHigh}
+                  fillColor={rangeBarColor(lows[i], highs[i], settings.temp)}
                   currentTemp={isToday ? currentTemp : undefined}
                 />
               </div>

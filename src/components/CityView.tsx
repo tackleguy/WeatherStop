@@ -92,8 +92,8 @@ export function CityView({ city, settings, onWeather }: Props) {
         <AlertsBanner alerts={data.alerts} />
       ) : null}
       <HeroCard city={city} data={data.forecast} />
-      <HourlyStrip data={data.forecast} index={0} />
-      <DailyForecast data={data.forecast} index={1} />
+      <HourlyStrip data={data.forecast} settings={settings} index={0} />
+      <DailyForecast data={data.forecast} settings={settings} index={1} />
       <AirQualityCard data={data.airQuality} index={2} />
       <UVIndexCard data={data.forecast} index={3} />
       <div className="grid grid-cols-2 gap-3">

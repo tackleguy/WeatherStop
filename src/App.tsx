@@ -1,6 +1,7 @@
-import { Plus, Settings as SettingsIcon } from 'lucide-react';
+import { Plus, Search, Settings as SettingsIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CityCarousel } from './components/CityCarousel';
+import { CityListItem } from './components/CityListItem';
 import { CitySearch } from './components/CitySearch';
 import { CityView } from './components/CityView';
 import { PageIndicator } from './components/PageIndicator';
@@ -25,7 +26,6 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeBundle, setActiveBundle] = useState<WeatherBundle | undefined>();
 
-  // Capture initial empty-state once so re-renders don't retrigger seeding.
   const bootstrapRan = useRef(false);
   const initiallyEmptyRef = useRef(cities.length === 0);
 
@@ -34,17 +34,13 @@ export default function App() {
     bootstrapRan.current = true;
 
     (async () => {
-      // 1. Seed default cities if this is a first-run user.
       if (initiallyEmptyRef.current) {
         for (const city of INITIAL_SEED) add(city);
       }
 
-      // 2. Try to capture the device's current location and pin it first.
       const coords = await geo.request();
       if (!coords) return;
 
-      // Resolve a pretty city name. NWS /points returns city/state for free
-      // when we're in the US; otherwise fall back to a timezone-derived name.
       const us = await reverseGeocodeUS(coords.latitude, coords.longitude);
       const name = us?.city
         ? us.city
@@ -97,48 +93,106 @@ export default function App() {
   const gradient = gradientFor(code, isDay, localHour);
 
   const hasCurrent = cities.some((c) => c.isCurrent);
+  const activeCity = cities[Math.min(active, Math.max(0, cities.length - 1))];
 
   return (
-    <div className="relative mx-auto flex min-h-[100dvh] max-w-md flex-col">
+    <div className="relative min-h-[100dvh]">
       <DynamicBackground gradient={gradient} weatherCode={code} isDay={isDay} />
 
-      <header className="flex items-center justify-between px-4 pt-4 pb-2 sm:px-6">
-        <button
-          type="button"
-          aria-label="Open settings"
-          onClick={() => setSettingsOpen(true)}
-          className="grid h-9 w-9 place-items-center rounded-full bg-white/12 text-white backdrop-blur hover:bg-white/20"
-        >
-          <SettingsIcon className="h-4 w-4" strokeWidth={2.2} />
-        </button>
-        <PageIndicator
-          count={cities.length}
-          active={active}
-          hasCurrent={hasCurrent}
-          onSelect={setActive}
-        />
-        <button
-          type="button"
-          aria-label="Add city"
-          onClick={() => setSearchOpen(true)}
-          className="grid h-9 w-9 place-items-center rounded-full bg-white/12 text-white backdrop-blur hover:bg-white/20"
-        >
-          <Plus className="h-4 w-4" strokeWidth={2.5} />
-        </button>
-      </header>
+      <div className="flex min-h-[100dvh]">
+        {/* Desktop sidebar */}
+        <aside className="hidden w-72 shrink-0 flex-col gap-2 overflow-y-auto border-r border-white/10 px-3 py-4 md:flex lg:w-80">
+          <div className="mb-2 flex items-center justify-between px-2">
+            <h1 className="text-2xl font-semibold text-white">Weather</h1>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                aria-label="Open settings"
+                onClick={() => setSettingsOpen(true)}
+                className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              >
+                <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
+              </button>
+              <button
+                type="button"
+                aria-label="Add city"
+                onClick={() => setSearchOpen(true)}
+                className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              >
+                <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="mx-2 mb-2 flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-left text-sm text-white/65 transition hover:bg-white/15"
+          >
+            <Search className="h-4 w-4" strokeWidth={2.2} />
+            Search city or airport
+          </button>
+          {cities.map((c, i) => (
+            <CityListItem
+              key={c.id}
+              city={c}
+              active={i === active}
+              settings={settings}
+              onClick={() => setActive(i)}
+            />
+          ))}
+        </aside>
 
-      <main className="flex-1">
-        {cities.length > 0 ? (
-          <CityCarousel
-            cities={cities}
-            active={Math.min(active, cities.length - 1)}
-            onChange={setActive}
-            renderCity={renderCity}
-          />
-        ) : (
-          <EmptyState onSearch={() => setSearchOpen(true)} />
-        )}
-      </main>
+        {/* Main content */}
+        <main className="relative flex flex-1 flex-col overflow-y-auto">
+          {/* Mobile header */}
+          <header className="flex items-center justify-between px-4 pt-4 pb-2 md:hidden">
+            <button
+              type="button"
+              aria-label="Open settings"
+              onClick={() => setSettingsOpen(true)}
+              className="grid h-9 w-9 place-items-center rounded-full bg-white/12 text-white backdrop-blur hover:bg-white/20"
+            >
+              <SettingsIcon className="h-4 w-4" strokeWidth={2.2} />
+            </button>
+            <PageIndicator
+              count={cities.length}
+              active={active}
+              hasCurrent={hasCurrent}
+              onSelect={setActive}
+            />
+            <button
+              type="button"
+              aria-label="Add city"
+              onClick={() => setSearchOpen(true)}
+              className="grid h-9 w-9 place-items-center rounded-full bg-white/12 text-white backdrop-blur hover:bg-white/20"
+            >
+              <Plus className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+          </header>
+
+          <div className="mx-auto w-full max-w-2xl flex-1 px-0 sm:px-2">
+            {cities.length > 0 ? (
+              // On desktop the carousel index is driven by sidebar clicks;
+              // on mobile, swipes change `active`.
+              <CityCarousel
+                cities={cities}
+                active={Math.min(active, cities.length - 1)}
+                onChange={setActive}
+                renderCity={renderCity}
+              />
+            ) : (
+              <EmptyState onSearch={() => setSearchOpen(true)} />
+            )}
+
+            {/* When desktop sidebar is showing but there's no city, show a hint */}
+            {cities.length > 0 && activeCity === undefined ? (
+              <div className="hidden md:block px-6 py-12 text-center text-white/60">
+                Pick a city from the sidebar.
+              </div>
+            ) : null}
+          </div>
+        </main>
+      </div>
 
       <CitySearch
         open={searchOpen}

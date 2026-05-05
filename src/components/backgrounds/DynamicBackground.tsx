@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import type { GradientName } from '../../lib/weatherCodes';
 import { GRADIENTS } from '../../constants/gradients';
+import { CloudLayer } from './CloudLayer';
 import { RainParticles } from './RainParticles';
 import { SnowParticles } from './SnowParticles';
 import { StarField } from './StarField';
@@ -89,10 +90,23 @@ export function DynamicBackground({ gradient, weatherCode, isDay }: Props) {
         aria-hidden
       />
 
+      {!reduced && !isDay && weatherCode <= 3 ? (
+        <StarField count={weatherCode === 0 ? 100 : 60} />
+      ) : null}
+
+      {(weatherCode === 1 || weatherCode === 2) ? (
+        <CloudLayer
+          density={weatherCode === 1 ? 'low' : 'medium'}
+          tint={isDay ? 'light' : 'dark'}
+        />
+      ) : null}
+      {weatherCode === 3 ? (
+        <CloudLayer density="high" tint={isDay ? 'light' : 'dark'} />
+      ) : null}
+
       {!reduced && isThunderCode(weatherCode) ? <LightningOverlay /> : null}
       {!reduced && isRainCode(weatherCode) ? <RainParticles /> : null}
       {!reduced && isSnowCode(weatherCode) ? <SnowParticles /> : null}
-      {!reduced && !isDay && weatherCode <= 3 ? <StarField /> : null}
     </>
   );
 }

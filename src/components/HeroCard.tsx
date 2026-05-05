@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { describe } from '../lib/weatherCodes';
-import { iconFor } from '../constants/weatherIcons';
+import { WeatherIcon } from '../lib/weatherIcons';
 import { formatTemp } from '../lib/format';
 import type { City, ForecastResponse } from '../types';
 
@@ -49,9 +49,7 @@ export function HeroCard({ city, data }: Props) {
       </div>
 
       <div className="mt-3 flex items-center justify-center gap-2">
-        <span className="text-2xl leading-none">
-          {iconFor(data.current.weather_code, isDay)}
-        </span>
+        <WeatherIcon code={data.current.weather_code} isDay={isDay} size={28} />
         <p className="text-xl font-medium text-white/90">{info.label}</p>
       </div>
 

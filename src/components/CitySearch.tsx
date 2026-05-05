@@ -5,7 +5,7 @@ import { SUGGESTED_CITIES } from '../constants/cities';
 import { debouncedSearch } from '../lib/geocoding';
 import { forecast } from '../lib/openMeteo';
 import { formatTemp } from '../lib/format';
-import { describe } from '../lib/weatherCodes';
+import { WeatherIcon } from '../lib/weatherIcons';
 import type { City, GeocodingResult, Settings } from '../types';
 
 interface Props {
@@ -228,7 +228,7 @@ function ResultsList({
             </div>
             <div className="flex items-center gap-2">
               {r.liveCode !== undefined ? (
-                <span className="text-xl">{describe(r.liveCode).emoji}</span>
+                <WeatherIcon code={r.liveCode} isDay size={20} />
               ) : null}
               {r.liveTemp !== undefined ? (
                 <span className="tabular text-xl font-light text-white">

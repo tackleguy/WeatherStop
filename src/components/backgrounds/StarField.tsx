@@ -1,40 +1,35 @@
 import { useMemo } from 'react';
 
-const COUNT = 80;
-
-interface Star {
-  x: number;
-  y: number;
-  size: number;
-  delay: number;
-  duration: number;
+interface Props {
+  count?: number;
 }
 
-export function StarField() {
-  const stars = useMemo<Star[]>(
+export function StarField({ count = 80 }: Props) {
+  const stars = useMemo(
     () =>
-      Array.from({ length: COUNT }, () => ({
-        x: Math.random() * 100,
-        y: Math.random() * 70,
-        size: Math.random() < 0.7 ? 1 : 2,
-        delay: -Math.random() * 3,
-        duration: 2 + Math.random() * 3,
+      Array.from({ length: count }).map(() => ({
+        top: Math.random() * 100,
+        left: Math.random() * 100,
+        size: 1 + Math.random() * 1.5,
+        delay: Math.random() * 4,
+        baseOpacity: 0.4 + Math.random() * 0.5,
       })),
-    [],
+    [count],
   );
 
   return (
-    <div className="pointer-events-none fixed inset-0 -z-[6] overflow-hidden">
+    <div className="pointer-events-none fixed inset-0 -z-[6]">
       {stars.map((s, i) => (
-        <span
+        <div
           key={i}
-          className="absolute block rounded-full bg-white"
+          className="absolute rounded-full bg-white"
           style={{
-            left: `${s.x}%`,
-            top: `${s.y}%`,
-            width: s.size,
-            height: s.size,
-            animation: `twinkle ${s.duration}s ease-in-out ${s.delay}s infinite`,
+            top: `${s.top}%`,
+            left: `${s.left}%`,
+            width: `${s.size}px`,
+            height: `${s.size}px`,
+            opacity: s.baseOpacity,
+            animation: `twinkle 3.5s ease-in-out ${s.delay}s infinite`,
           }}
         />
       ))}

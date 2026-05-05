@@ -34,58 +34,121 @@ export interface GeocodingResult {
   timezone?: string;
 }
 
-export interface CurrentWeather {
-  time: string;
-  temperature_2m: number;
-  relative_humidity_2m: number;
-  apparent_temperature: number;
-  is_day: 0 | 1;
-  precipitation: number;
-  weather_code: number;
-  wind_speed_10m: number;
-  wind_direction_10m: number;
-  wind_gusts_10m: number;
-  pressure_msl: number;
-  cloud_cover: number;
-  visibility: number;
-  uv_index: number;
+// ── Canonical normalized weather data ──────────────────────────────────────
+//
+// Every numeric field is finite and uses the canonical unit listed below.
+// Display layers convert at render time. Validation runs before any consumer
+// sees a WeatherData; if anything is missing or impossible, normalize throws.
+
+export interface WeatherData {
+  location: {
+    name: string;
+    region: string;
+    country: string;
+    lat: number;
+    lon: number;
+    timezone: string;
+  };
+  fetchedAt: number;
+
+  current: {
+    temp: number; // °F
+    feelsLike: number; // °F
+    code: number; // WMO 0-99
+    conditionLabel: string;
+    isDay: boolean;
+    humidity: number; // 1-100
+    dewPoint: number; // °F
+    windSpeed: number; // mph
+    windGust: number; // mph
+    windDirection: string; // 'NNE' …
+    windDirectionDeg: number; // 0-360
+    pressure: number; // inHg
+    visibility: number; // miles
+    uvIndex: number; // 0-11+
+  };
+
+  today: {
+    high: number; // °F
+    low: number; // °F
+    sunrise: string; // ISO with offset
+    sunset: string; // ISO with offset
+    precipProbMax: number; // 0-100
+  };
+
+  hourly: Array<{
+    time: string;
+    temp: number; // °F
+    code: number;
+    isDay: boolean;
+    precipProb: number; // 0-100
+    windSpeed: number; // mph
+  }>;
+
+  daily: Array<{
+    date: string; // YYYY-MM-DD local
+    high: number; // °F
+    low: number; // °F
+    code: number;
+    sunrise: string;
+    sunset: string;
+    precipProbMax: number;
+    summary: string;
+  }>;
+
+  sourceMeta: {
+    forecast: 'open-meteo' | 'nws';
+    observations: 'open-meteo' | 'nws' | 'mixed';
+    gapsFilled: string[];
+  };
 }
 
-export interface HourlyData {
-  time: string[];
-  temperature_2m: number[];
-  weather_code: number[];
-  precipitation_probability: number[];
-  precipitation: number[];
-  is_day: number[];
-}
+// ── Raw API shapes ─────────────────────────────────────────────────────────
 
-export interface DailyData {
-  time: string[];
-  weather_code: number[];
-  temperature_2m_max: number[];
-  temperature_2m_min: number[];
-  sunrise: string[];
-  sunset: string[];
-  uv_index_max: number[];
-  precipitation_sum: number[];
-  precipitation_probability_max: number[];
-  wind_speed_10m_max: number[];
-  wind_direction_10m_dominant: number[];
-}
-
-export interface ForecastResponse {
+export interface OpenMeteoRaw {
   latitude: number;
   longitude: number;
   timezone: string;
   timezone_abbreviation: string;
   utc_offset_seconds: number;
-  current: CurrentWeather;
-  current_units: Record<string, string>;
-  hourly: HourlyData;
-  hourly_units: Record<string, string>;
-  daily: DailyData;
-  daily_units: Record<string, string>;
+  current: {
+    time: string;
+    temperature_2m: number;
+    relative_humidity_2m: number;
+    apparent_temperature: number;
+    is_day: 0 | 1;
+    precipitation: number;
+    weather_code: number;
+    wind_speed_10m: number;
+    wind_direction_10m: number;
+    wind_gusts_10m: number;
+    pressure_msl: number;
+    cloud_cover: number;
+    visibility: number;
+    uv_index: number;
+  };
+  hourly: {
+    time: string[];
+    temperature_2m: number[];
+    weather_code: number[];
+    precipitation_probability: number[];
+    precipitation: number[];
+    is_day: number[];
+    wind_speed_10m: number[];
+  };
+  daily: {
+    time: string[];
+    weather_code: number[];
+    temperature_2m_max: number[];
+    temperature_2m_min: number[];
+    sunrise: string[];
+    sunset: string[];
+    uv_index_max: number[];
+    precipitation_sum: number[];
+    precipitation_probability_max: number[];
+    wind_speed_10m_max: number[];
+    wind_direction_10m_dominant: number[];
+  };
 }
 
 export interface AirQualityResponse {
@@ -104,14 +167,6 @@ export interface AirQualityResponse {
   current_units: Record<string, string>;
 }
 
-export interface WeatherBundle {
-  forecast: ForecastResponse;
-  airQuality?: AirQualityResponse;
-  alerts?: WeatherAlert[];
-  source: 'nws' | 'open-meteo';
-  fetchedAt: number;
-}
-
 export interface WeatherAlert {
   id: string;
   event: string;
@@ -121,4 +176,12 @@ export interface WeatherAlert {
   areaDesc: string;
   effective: string;
   expires: string;
+}
+
+// ── Bundle returned by useWeather ──────────────────────────────────────────
+
+export interface WeatherSnapshot {
+  data: WeatherData;
+  airQuality?: AirQualityResponse;
+  alerts: WeatherAlert[];
 }

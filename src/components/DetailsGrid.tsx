@@ -2,14 +2,14 @@ import { Droplets, Eye, Gauge, Thermometer } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Card } from './Card';
 import {
-  formatPressure,
-  formatTemp,
-  formatVisibility,
-} from '../lib/format';
-import type { ForecastResponse, Settings } from '../types';
+  displayPressure,
+  displayTemp,
+  displayVisibility,
+} from '../lib/display';
+import type { Settings, WeatherData } from '../types';
 
 interface Props {
-  data: ForecastResponse;
+  data: WeatherData;
   settings: Settings;
   index?: number;
 }
@@ -21,50 +21,30 @@ interface Tile {
   hint?: string;
 }
 
-function dewPoint(tempC: number, rh: number) {
-  // Magnus approximation
-  const a = 17.625;
-  const b = 243.04;
-  const alpha = (a * tempC) / (b + tempC) + Math.log(rh / 100);
-  return (b * alpha) / (a - alpha);
-}
-
 export function DetailsGrid({ data, settings, index }: Props) {
   const c = data.current;
-
-  let dewLabel = '';
-  if (c.relative_humidity_2m > 0) {
-    const tempC =
-      settings.temp === 'celsius'
-        ? c.temperature_2m
-        : ((c.temperature_2m - 32) * 5) / 9;
-    const dpC = dewPoint(tempC, c.relative_humidity_2m);
-    const dpDisplay =
-      settings.temp === 'celsius' ? dpC : (dpC * 9) / 5 + 32;
-    dewLabel = `Dew ${formatTemp(dpDisplay)}`;
-  }
 
   const tiles: Tile[] = [
     {
       title: 'Feels Like',
       icon: Thermometer,
-      value: formatTemp(c.apparent_temperature),
+      value: displayTemp(c.feelsLike, settings),
     },
     {
       title: 'Humidity',
       icon: Droplets,
-      value: `${Math.round(c.relative_humidity_2m)}%`,
-      hint: dewLabel,
+      value: `${Math.round(c.humidity)}%`,
+      hint: `Dew ${displayTemp(c.dewPoint, settings)}`,
     },
     {
       title: 'Visibility',
       icon: Eye,
-      value: formatVisibility(c.visibility, settings.distance),
+      value: displayVisibility(c.visibility, settings),
     },
     {
       title: 'Pressure',
       icon: Gauge,
-      value: formatPressure(c.pressure_msl),
+      value: displayPressure(c.pressure),
     },
   ];
 

@@ -1,25 +1,23 @@
 import { Wind } from 'lucide-react';
 import { Card } from './Card';
-import { formatWindDir, formatWindSpeed } from '../lib/format';
-import type { ForecastResponse, Settings } from '../types';
+import { displayWindSpeed } from '../lib/display';
+import type { Settings, WeatherData } from '../types';
 
 interface Props {
-  data: ForecastResponse;
+  data: WeatherData;
   settings: Settings;
   index?: number;
 }
 
 export function WindCard({ data, settings, index }: Props) {
-  const speed = data.current.wind_speed_10m;
-  const dir = data.current.wind_direction_10m;
-  const gusts = data.current.wind_gusts_10m;
+  const { windSpeed, windGust, windDirection, windDirectionDeg } =
+    data.current;
 
   const cx = 60;
   const cy = 60;
   const radius = 48;
 
-  // SVG: 0° = north (up). The wind direction is "from", so the needle points away.
-  const radians = ((dir - 90) * Math.PI) / 180;
+  const radians = ((windDirectionDeg - 90) * Math.PI) / 180;
   const tipX = cx + Math.cos(radians) * (radius - 6);
   const tipY = cy + Math.sin(radians) * (radius - 6);
   const tailX = cx - Math.cos(radians) * (radius - 18);
@@ -65,20 +63,20 @@ export function WindCard({ data, settings, index }: Props) {
           />
           <polygon
             points={`${tipX},${tipY} ${tipX - 5},${tipY - 5} ${tipX + 5},${tipY - 5}`}
-            transform={`rotate(${dir} ${tipX} ${tipY})`}
+            transform={`rotate(${windDirectionDeg} ${tipX} ${tipY})`}
             fill="white"
           />
           <circle cx={cx} cy={cy} r="3.5" fill="white" />
         </svg>
         <div className="flex flex-col">
           <div className="tabular text-3xl font-light text-white">
-            {formatWindSpeed(speed, settings.wind)}
+            {displayWindSpeed(windSpeed, settings)}
           </div>
           <div className="text-[13px] font-medium uppercase tracking-wide text-white/65">
-            From {formatWindDir(dir)}
+            From {windDirection}
           </div>
           <div className="mt-2 text-[13px] text-white/75">
-            Gusts {formatWindSpeed(gusts, settings.wind)}
+            Gusts {displayWindSpeed(windGust, settings)}
           </div>
         </div>
       </div>

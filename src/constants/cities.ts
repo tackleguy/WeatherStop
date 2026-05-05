@@ -167,6 +167,7 @@ export const INITIAL_SEED: City[] = INITIAL_SEED_IDS.map((id) => CITIES[id]);
 export const SUGGESTED_CITIES: City[] = SUGGESTED_CITY_IDS.map(
   (id) => CITIES[id],
 );
+export const DEFAULT_CITIES: City[] = Object.values(CITIES);
 
 export function shouldUseNWS(city: Pick<City, 'countryCode'>): boolean {
   return city.countryCode === 'US';

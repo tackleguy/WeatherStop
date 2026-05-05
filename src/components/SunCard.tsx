@@ -1,27 +1,26 @@
 import { Sunrise } from 'lucide-react';
 import { Card } from './Card';
 import { durationBetween, formatTime } from '../lib/format';
-import type { ForecastResponse } from '../types';
+import type { WeatherData } from '../types';
 
 interface Props {
-  data: ForecastResponse;
+  data: WeatherData;
   index?: number;
 }
 
 export function SunCard({ data, index }: Props) {
-  const sunrise = data.daily.sunrise[0];
-  const sunset = data.daily.sunset[0];
-  const now = new Date(data.current.time).getTime();
+  const { sunrise, sunset } = data.today;
+  const tz = data.location.timezone;
+  const now = Date.now();
   const sr = new Date(sunrise).getTime();
   const ss = new Date(sunset).getTime();
-  // Linear progress along the daylight arc; clamp before sunrise / after sunset.
   const progress = Math.min(1, Math.max(0, (now - sr) / Math.max(1, ss - sr)));
 
   const cx = 80;
   const cy = 70;
   const radius = 60;
-  const startAngle = Math.PI; // sunrise on the left
-  const endAngle = 0; // sunset on the right
+  const startAngle = Math.PI;
+  const endAngle = 0;
   const angle = startAngle - progress * (startAngle - endAngle);
   const sunX = cx + Math.cos(angle) * radius;
   const sunY = cy - Math.sin(angle) * radius;
@@ -29,7 +28,7 @@ export function SunCard({ data, index }: Props) {
   return (
     <Card title="Sunrise" icon={Sunrise} index={index}>
       <div className="tabular text-3xl font-light text-white">
-        {formatTime(sunrise, data.timezone)}
+        {formatTime(sunrise, tz)}
       </div>
 
       <svg viewBox="0 0 160 90" className="mt-2 h-24 w-full">
@@ -46,7 +45,7 @@ export function SunCard({ data, index }: Props) {
       </svg>
 
       <div className="mt-2 flex items-end justify-between text-[13px] text-white/75">
-        <span>Sunset {formatTime(sunset, data.timezone)}</span>
+        <span>Sunset {formatTime(sunset, tz)}</span>
         <span>Daylight {durationBetween(sunrise, sunset)}</span>
       </div>
     </Card>

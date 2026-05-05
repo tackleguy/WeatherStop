@@ -1,10 +1,10 @@
 import { Sun } from 'lucide-react';
 import { Card } from './Card';
 import { formatTime } from '../lib/format';
-import type { ForecastResponse } from '../types';
+import type { WeatherData } from '../types';
 
 interface Props {
-  data: ForecastResponse;
+  data: WeatherData;
   index?: number;
 }
 
@@ -16,37 +16,21 @@ function uvCategory(uv: number) {
   return { label: 'Extreme', color: '#a855f7' };
 }
 
-function lastSafeHourToday(data: ForecastResponse): string | null {
-  const today = data.daily.time[0];
-  const max = data.daily.uv_index_max[0] ?? 0;
-  if (max < 3) return null;
-
-  // Walk hourly entries for today, find the last one with uv >= 3, +1h gives "until".
-  // We only have hourly weather, but UV is on daily; approximate: noon ± window.
-  // Use sunset as a sane upper bound when we don't have hourly UV.
-  const sunset = data.daily.sunset[0];
-  if (!sunset) return null;
-  return today ? sunset : null;
-}
-
 export function UVIndexCard({ data, index }: Props) {
-  const uv = Math.max(0, Math.round(data.current.uv_index ?? 0));
+  const uv = Math.max(0, Math.round(data.current.uvIndex));
   const cat = uvCategory(uv);
-  // Gauge: 11 max
   const ratio = Math.min(1, uv / 11);
 
   const radius = 64;
   const cx = 70;
   const cy = 72;
-  const startAngle = Math.PI; // 180°
-  const endAngle = 0; // 0°
-
-  // Needle angle
+  const startAngle = Math.PI;
+  const endAngle = 0;
   const angle = startAngle - ratio * (startAngle - endAngle);
   const needleX = cx + Math.cos(angle) * (radius - 6);
   const needleY = cy - Math.sin(angle) * (radius - 6);
 
-  const cutoff = lastSafeHourToday(data);
+  const cutoff = uv >= 3 ? data.today.sunset : null;
 
   return (
     <Card title="UV Index" icon={Sun} index={index}>
@@ -97,7 +81,7 @@ export function UVIndexCard({ data, index }: Props) {
 
       {cutoff ? (
         <p className="mt-1 text-[13px] text-white/75">
-          Use sun protection until {formatTime(cutoff, data.timezone)}.
+          Use sun protection until {formatTime(cutoff, data.location.timezone)}.
         </p>
       ) : (
         <p className="mt-1 text-[13px] text-white/75">Low risk today.</p>

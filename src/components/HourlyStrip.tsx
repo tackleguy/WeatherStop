@@ -2,11 +2,12 @@ import { Clock, Sunrise, Sunset } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { WeatherIcon } from '../lib/weatherIcons';
 import { describeNext24h } from '../lib/forecastNarrative';
-import { formatHourLabel, formatTemp, formatTime } from '../lib/format';
-import type { ForecastResponse, Settings } from '../types';
+import { displayTemp } from '../lib/display';
+import { formatHourLabel, formatTime } from '../lib/format';
+import type { Settings, WeatherData } from '../types';
 
 interface Props {
-  data: ForecastResponse;
+  data: WeatherData;
   settings: Settings;
   index?: number;
 }
@@ -16,7 +17,7 @@ interface HourCell {
   iso: string;
   temp: number;
   code: number;
-  isDay: number;
+  isDay: boolean;
   pop: number;
   label: string;
 }
@@ -29,43 +30,49 @@ interface SunCell {
 
 type Cell = HourCell | SunCell;
 
-function buildCells(data: ForecastResponse): Cell[] {
-  const now = new Date(data.current.time).getTime();
-  const hours: HourCell[] = [];
-  for (let i = 0; i < data.hourly.time.length && hours.length < 24; i++) {
-    const t = new Date(data.hourly.time[i]).getTime();
+function buildCells(data: WeatherData): Cell[] {
+  const now = Date.now();
+  const tz = data.location.timezone;
+  const upcoming: HourCell[] = [];
+  for (let i = 0; i < data.hourly.length && upcoming.length < 24; i++) {
+    const h = data.hourly[i];
+    const t = new Date(h.time).getTime();
     if (t < now - 60 * 60_000) continue;
-    hours.push({
+    upcoming.push({
       kind: 'hour',
-      iso: data.hourly.time[i],
-      temp: data.hourly.temperature_2m[i],
-      code: data.hourly.weather_code[i],
-      isDay: data.hourly.is_day[i],
-      pop: data.hourly.precipitation_probability?.[i] ?? 0,
-      label:
-        hours.length === 0
-          ? 'Now'
-          : formatHourLabel(data.hourly.time[i], data.timezone),
+      iso: h.time,
+      temp: h.temp,
+      code: h.code,
+      isDay: h.isDay,
+      pop: h.precipProb,
+      label: upcoming.length === 0 ? 'Now' : formatHourLabel(h.time, tz),
     });
   }
 
-  // Splice in sunrise / sunset events that fall within the visible window.
   const sunEvents: { time: number; subtype: 'rise' | 'set'; iso: string }[] =
     [];
-  for (const iso of data.daily.sunrise) {
-    if (!iso) continue;
-    sunEvents.push({ time: new Date(iso).getTime(), subtype: 'rise', iso });
-  }
-  for (const iso of data.daily.sunset) {
-    if (!iso) continue;
-    sunEvents.push({ time: new Date(iso).getTime(), subtype: 'set', iso });
+  for (const day of data.daily) {
+    if (day.sunrise) {
+      sunEvents.push({
+        time: new Date(day.sunrise).getTime(),
+        subtype: 'rise',
+        iso: day.sunrise,
+      });
+    }
+    if (day.sunset) {
+      sunEvents.push({
+        time: new Date(day.sunset).getTime(),
+        subtype: 'set',
+        iso: day.sunset,
+      });
+    }
   }
 
   const out: Cell[] = [];
-  for (let i = 0; i < hours.length; i++) {
-    out.push(hours[i]);
-    const start = new Date(hours[i].iso).getTime();
-    const next = hours[i + 1] ? new Date(hours[i + 1].iso).getTime() : null;
+  for (let i = 0; i < upcoming.length; i++) {
+    out.push(upcoming[i]);
+    const start = new Date(upcoming[i].iso).getTime();
+    const next = upcoming[i + 1] ? new Date(upcoming[i + 1].iso).getTime() : null;
     if (next === null) continue;
     for (const ev of sunEvents) {
       if (ev.time > start && ev.time <= next) {
@@ -79,6 +86,7 @@ function buildCells(data: ForecastResponse): Cell[] {
 export function HourlyStrip({ data, settings, index }: Props) {
   const cells = buildCells(data);
   const narrative = describeNext24h(data, settings);
+  const tz = data.location.timezone;
 
   return (
     <motion.div
@@ -112,16 +120,14 @@ export function HourlyStrip({ data, settings, index }: Props) {
             const Icon = cell.subtype === 'rise' ? Sunrise : Sunset;
             const label = cell.subtype === 'rise' ? 'Sunrise' : 'Sunset';
             const color =
-              cell.subtype === 'rise'
-                ? 'text-orange-300'
-                : 'text-orange-400';
+              cell.subtype === 'rise' ? 'text-orange-300' : 'text-orange-400';
             return (
               <div
                 key={`s-${i}`}
                 className="flex w-16 shrink-0 flex-col items-center gap-2 py-2"
               >
                 <span className="text-xs font-medium text-white/70">
-                  {formatTime(cell.time, data.timezone)}
+                  {formatTime(cell.time, tz)}
                 </span>
                 <Icon size={28} strokeWidth={1.5} className={color} />
                 <span className="text-[11px] font-medium text-white/85">
@@ -150,7 +156,7 @@ export function HourlyStrip({ data, settings, index }: Props) {
                 {cell.pop >= 20 ? `${Math.round(cell.pop)}%` : '0%'}
               </span>
               <span className="tabular text-base font-semibold text-white">
-                {formatTemp(cell.temp)}
+                {displayTemp(cell.temp, settings)}
               </span>
             </div>
           );

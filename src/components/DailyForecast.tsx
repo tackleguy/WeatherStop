@@ -1,11 +1,12 @@
 import { CalendarDays } from 'lucide-react';
 import { Card } from './Card';
 import { WeatherIcon } from '../lib/weatherIcons';
-import { formatDayLabel, formatTemp } from '../lib/format';
-import type { ForecastResponse, Settings } from '../types';
+import { displayTemp } from '../lib/display';
+import { formatDayLabel } from '../lib/format';
+import type { Settings, WeatherData } from '../types';
 
 interface Props {
-  data: ForecastResponse;
+  data: WeatherData;
   settings: Settings;
   index?: number;
 }
@@ -19,12 +20,8 @@ interface RangeBarProps {
   currentTemp?: number;
 }
 
-function tempInF(value: number, unit: Settings['temp']): number {
-  return unit === 'celsius' ? (value * 9) / 5 + 32 : value;
-}
-
-function rangeBarColor(low: number, high: number, unit: Settings['temp']): string {
-  const avgF = tempInF((low + high) / 2, unit);
+function rangeBarColor(low: number, high: number): string {
+  const avgF = (low + high) / 2; // canonical °F
   if (avgF < 35) return 'linear-gradient(to right, #60a5fa, #93c5fd)';
   if (avgF < 50) return 'linear-gradient(to right, #67e8f9, #a5f3fc)';
   if (avgF < 65) return 'linear-gradient(to right, #34d399, #a7f3d0)';
@@ -73,45 +70,41 @@ function RangeBar({
 }
 
 export function DailyForecast({ data, settings, index }: Props) {
-  const days = data.daily.time;
-  const lows = data.daily.temperature_2m_min;
-  const highs = data.daily.temperature_2m_max;
-  const weekLow = Math.min(...lows);
-  const weekHigh = Math.max(...highs);
-  const currentTemp = data.current.temperature_2m;
+  const days = data.daily;
+  const weekLow = Math.min(...days.map((d) => d.low));
+  const weekHigh = Math.max(...days.map((d) => d.high));
+  const currentTemp = data.current.temp;
 
   return (
     <Card title="10-Day Forecast" icon={CalendarDays} index={index}>
       <div className="divide-y divide-white/10">
-        {days.map((iso, i) => {
+        {days.map((day, i) => {
           const isToday = i === 0;
           return (
-            <div key={iso} className="flex items-center gap-3 py-2.5">
+            <div key={day.date} className="flex items-center gap-3 py-2.5">
               <span className="w-14 text-base font-medium text-white">
-                {isToday ? 'Today' : formatDayLabel(iso, data.timezone)}
+                {isToday
+                  ? 'Today'
+                  : formatDayLabel(day.date, data.location.timezone)}
               </span>
               <span className="w-8">
-                <WeatherIcon
-                  code={data.daily.weather_code[i]}
-                  isDay
-                  size={26}
-                />
+                <WeatherIcon code={day.code} isDay size={26} />
               </span>
               <span className="tabular w-9 text-right text-base font-medium text-white/60">
-                {formatTemp(lows[i])}
+                {displayTemp(day.low, settings)}
               </span>
               <div className="flex-1">
                 <RangeBar
-                  dayLow={lows[i]}
-                  dayHigh={highs[i]}
+                  dayLow={day.low}
+                  dayHigh={day.high}
                   weekLow={weekLow}
                   weekHigh={weekHigh}
-                  fillColor={rangeBarColor(lows[i], highs[i], settings.temp)}
+                  fillColor={rangeBarColor(day.low, day.high)}
                   currentTemp={isToday ? currentTemp : undefined}
                 />
               </div>
               <span className="tabular w-9 text-right text-base font-medium text-white">
-                {formatTemp(highs[i])}
+                {displayTemp(day.high, settings)}
               </span>
             </div>
           );

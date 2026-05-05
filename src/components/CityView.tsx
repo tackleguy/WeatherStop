@@ -12,12 +12,12 @@ import { PrecipitationCard } from './PrecipitationCard';
 import { DetailsGrid } from './DetailsGrid';
 import { useWeather } from '../hooks/useWeather';
 import { relativeTimeShort } from '../lib/format';
-import type { City, Settings, WeatherBundle } from '../types';
+import type { City, Settings, WeatherSnapshot } from '../types';
 
 interface Props {
   city: City;
   settings: Settings;
-  onWeather: (bundle: WeatherBundle | undefined) => void;
+  onSnapshot: (snapshot: WeatherSnapshot | undefined) => void;
 }
 
 function SkeletonCard({ heightClass = 'h-32' }: { heightClass?: string }) {
@@ -47,13 +47,13 @@ function ErrorState({
   );
 }
 
-export function CityView({ city, settings, onWeather }: Props) {
-  const { data, loading, error, refresh } = useWeather(city, settings);
-  const [now, setNow] = useState(Date.now());
+export function CityView({ city, settings, onSnapshot }: Props) {
+  const { data, error, refresh } = useWeather(city);
+  const [, setNow] = useState(Date.now());
 
   useEffect(() => {
-    onWeather(data);
-  }, [data, onWeather]);
+    onSnapshot(data);
+  }, [data, onSnapshot]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -76,10 +76,11 @@ export function CityView({ city, settings, onWeather }: Props) {
           <SkeletonCard heightClass="h-28" />
           <SkeletonCard heightClass="h-28" />
         </div>
-        {loading ? null : null}
       </div>
     );
   }
+
+  const w = data.data;
 
   return (
     <motion.div
@@ -91,20 +92,20 @@ export function CityView({ city, settings, onWeather }: Props) {
       {data.alerts && data.alerts.length > 0 ? (
         <AlertsBanner alerts={data.alerts} />
       ) : null}
-      <HeroCard city={city} data={data.forecast} />
-      <HourlyStrip data={data.forecast} settings={settings} index={0} />
-      <DailyForecast data={data.forecast} settings={settings} index={1} />
+      <HeroCard data={w} settings={settings} isCurrent={city.isCurrent} />
+      <HourlyStrip data={w} settings={settings} index={0} />
+      <DailyForecast data={w} settings={settings} index={1} />
       <AirQualityCard data={data.airQuality} index={2} />
-      <UVIndexCard data={data.forecast} index={3} />
+      <UVIndexCard data={w} index={3} />
       <div className="grid grid-cols-2 gap-3">
-        <SunCard data={data.forecast} index={4} />
-        <WindCard data={data.forecast} settings={settings} index={5} />
+        <SunCard data={w} index={4} />
+        <WindCard data={w} settings={settings} index={5} />
       </div>
-      <PrecipitationCard data={data.forecast} settings={settings} index={6} />
-      <DetailsGrid data={data.forecast} settings={settings} index={7} />
+      <PrecipitationCard data={w} index={6} />
+      <DetailsGrid data={w} settings={settings} index={7} />
 
       <div className="pt-2 text-center text-[11px] text-white/55">
-        Updated {relativeTimeShort(data.fetchedAt)}
+        Updated {relativeTimeShort(w.fetchedAt)}
         <span className="mx-2">·</span>
         <button
           type="button"
@@ -113,7 +114,6 @@ export function CityView({ city, settings, onWeather }: Props) {
         >
           Refresh
         </button>
-        <span className="hidden">{now}</span>
       </div>
     </motion.div>
   );

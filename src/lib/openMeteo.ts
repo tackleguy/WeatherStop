@@ -1,8 +1,4 @@
-import type {
-  AirQualityResponse,
-  ForecastResponse,
-  Settings,
-} from '../types';
+import type { AirQualityResponse, OpenMeteoRaw } from '../types';
 
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const AQ_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality';
@@ -29,6 +25,7 @@ const HOURLY_FIELDS = [
   'precipitation_probability',
   'precipitation',
   'is_day',
+  'wind_speed_10m',
 ].join(',');
 
 const DAILY_FIELDS = [
@@ -44,12 +41,13 @@ const DAILY_FIELDS = [
   'wind_direction_10m_dominant',
 ].join(',');
 
-export async function forecast(
+// Always fetched in the canonical units used inside WeatherData
+// (°F / mph / inch). Display layer converts to the user's settings.
+export async function fetchOpenMeteoRaw(
   latitude: number,
   longitude: number,
-  settings: Settings,
   signal?: AbortSignal,
-): Promise<ForecastResponse> {
+): Promise<OpenMeteoRaw> {
   const params = new URLSearchParams({
     latitude: String(latitude),
     longitude: String(longitude),
@@ -57,17 +55,16 @@ export async function forecast(
     hourly: HOURLY_FIELDS,
     daily: DAILY_FIELDS,
     timezone: 'auto',
-    temperature_unit: settings.temp,
-    wind_speed_unit: settings.wind,
-    precipitation_unit: settings.precip,
+    temperature_unit: 'fahrenheit',
+    wind_speed_unit: 'mph',
+    precipitation_unit: 'inch',
     forecast_days: '10',
+    timeformat: 'iso8601',
   });
 
   const res = await fetch(`${FORECAST_URL}?${params.toString()}`, { signal });
-  if (!res.ok) {
-    throw new Error(`Forecast request failed: ${res.status}`);
-  }
-  return (await res.json()) as ForecastResponse;
+  if (!res.ok) throw new Error(`Open-Meteo forecast ${res.status}`);
+  return (await res.json()) as OpenMeteoRaw;
 }
 
 export async function airQuality(

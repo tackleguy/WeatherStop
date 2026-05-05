@@ -1,5 +1,7 @@
-import { formatHourLabel, formatWindSpeed } from './format';
-import type { ForecastResponse, Settings } from '../types';
+import { displayWindSpeed } from './display';
+import { formatHourLabel } from './format';
+import { mphToKmh } from './units';
+import type { Settings, WeatherData } from '../types';
 
 function conditionPhrase(code: number): string {
   if (code === 0) return 'Clear conditions';
@@ -14,31 +16,16 @@ function conditionPhrase(code: number): string {
 }
 
 export function describeNext24h(
-  data: ForecastResponse,
+  data: WeatherData,
   settings: Settings,
 ): string {
-  const hourly = data.hourly;
-  const now = new Date(data.current.time).getTime();
-
-  // Slice future hours so the change-detection runs on what's coming.
-  const future: { time: string; code: number; gust: number }[] = [];
-  for (let i = 0; i < hourly.time.length; i++) {
-    const t = new Date(hourly.time[i]).getTime();
-    if (t < now - 60 * 60_000) continue;
-    future.push({
-      time: hourly.time[i],
-      code: hourly.weather_code[i],
-      gust: data.current.wind_gusts_10m,
-    });
-    if (future.length >= 12) break;
-  }
-
-  if (future.length < 4) return '';
-  const nowCode = future[0].code;
+  const hourly = data.hourly.slice(0, 12);
+  if (hourly.length < 4) return '';
+  const nowCode = hourly[0].code;
 
   let changeIdx = -1;
-  for (let i = 1; i < future.length; i++) {
-    if (Math.abs(future[i].code - nowCode) >= 2) {
+  for (let i = 1; i < hourly.length; i++) {
+    if (Math.abs(hourly[i].code - nowCode) >= 2) {
       changeIdx = i;
       break;
     }
@@ -46,21 +33,20 @@ export function describeNext24h(
 
   let primary: string;
   if (changeIdx > 0) {
-    primary = `${conditionPhrase(future[changeIdx].code)} expected around ${formatHourLabel(
-      future[changeIdx].time,
-      data.timezone,
+    primary = `${conditionPhrase(hourly[changeIdx].code)} expected around ${formatHourLabel(
+      hourly[changeIdx].time,
+      data.location.timezone,
     )}.`;
   } else {
     primary = `${conditionPhrase(nowCode)} for the next several hours.`;
   }
 
-  // Gust threshold is in mph regardless of display unit.
-  const gustValue = data.current.wind_gusts_10m;
-  const gustMph =
-    settings.wind === 'kmh' ? gustValue * 0.621371 : gustValue;
+  // windGust is canonical mph in WeatherData; threshold is 15 mph.
+  const gustMph = data.current.windGust;
+  void mphToKmh; // imported for future use
   const gustNote =
     gustMph > 15
-      ? ` Wind gusts up to ${formatWindSpeed(gustValue, settings.wind)}.`
+      ? ` Wind gusts up to ${displayWindSpeed(gustMph, settings)}.`
       : '';
 
   return primary + gustNote;

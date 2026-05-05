@@ -14,7 +14,7 @@ import { useSettings } from './hooks/useSettings';
 import { localHourIn } from './lib/format';
 import { gradientFor } from './lib/weatherCodes';
 import { reverseGeocodeUS } from './lib/nws';
-import type { City, WeatherBundle } from './types';
+import type { City, WeatherSnapshot } from './types';
 
 export default function App() {
   const { cities, add, remove, reorder, upsertCurrent } = useCities();
@@ -24,7 +24,7 @@ export default function App() {
   const [active, setActive] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeBundle, setActiveBundle] = useState<WeatherBundle | undefined>();
+  const [activeBundle, setActiveBundle] = useState<WeatherSnapshot | undefined>();
 
   const bootstrapRan = useRef(false);
   const initiallyEmptyRef = useRef(cities.length === 0);
@@ -71,8 +71,8 @@ export default function App() {
     if (active >= cities.length) setActive(Math.max(0, cities.length - 1));
   }, [active, cities.length]);
 
-  const onWeather = useCallback((bundle: WeatherBundle | undefined) => {
-    setActiveBundle(bundle);
+  const onSnapshot = useCallback((snapshot: WeatherSnapshot | undefined) => {
+    setActiveBundle(snapshot);
   }, []);
 
   const renderCity = useCallback(
@@ -81,15 +81,18 @@ export default function App() {
         key={city.id}
         city={city}
         settings={settings}
-        onWeather={onWeather}
+        onSnapshot={onSnapshot}
       />
     ),
-    [onWeather, settings],
+    [onSnapshot, settings],
   );
 
-  const code = activeBundle?.forecast.current.weather_code ?? 1;
-  const isDay = activeBundle?.forecast.current.is_day === 1;
-  const localHour = localHourIn(activeBundle?.forecast.timezone, new Date());
+  const code = activeBundle?.data.current.code ?? 1;
+  const isDay = activeBundle?.data.current.isDay ?? true;
+  const localHour = localHourIn(
+    activeBundle?.data.location.timezone,
+    new Date(),
+  );
   const gradient = gradientFor(code, isDay, localHour);
 
   const hasCurrent = cities.some((c) => c.isCurrent);

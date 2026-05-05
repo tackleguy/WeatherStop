@@ -3,8 +3,8 @@ import { MapPin, Search, Trash2, X, GripVertical } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SUGGESTED_CITIES } from '../constants/cities';
 import { debouncedSearch } from '../lib/geocoding';
-import { forecast } from '../lib/openMeteo';
-import { formatTemp } from '../lib/format';
+import { fetchOpenMeteoRaw } from '../lib/openMeteo';
+import { displayTemp } from '../lib/display';
 import { WeatherIcon } from '../lib/weatherIcons';
 import type { City, GeocodingResult, Settings } from '../types';
 
@@ -82,8 +82,12 @@ export function CitySearch({
         const enriched = await Promise.all(
           rows.map(async (r) => {
             try {
-              const f = await forecast(r.latitude, r.longitude, settings);
-              return { ...r, liveTemp: f.current.temperature_2m, liveCode: f.current.weather_code };
+              const f = await fetchOpenMeteoRaw(r.latitude, r.longitude);
+              return {
+                ...r,
+                liveTemp: f.current.temperature_2m,
+                liveCode: f.current.weather_code,
+              };
             } catch {
               return { ...r };
             }
@@ -149,6 +153,7 @@ export function CitySearch({
               <ResultsList
                 rows={results}
                 loading={loading}
+                settings={settings}
                 onAdd={(r) => {
                   onAdd(toCity(r));
                   onClose();
@@ -191,11 +196,13 @@ export function CitySearch({
 function ResultsList({
   rows,
   loading,
+  settings,
   onAdd,
   onSelect,
 }: {
   rows: ResultRow[];
   loading: boolean;
+  settings: Settings;
   onAdd: (r: ResultRow) => void;
   onSelect: (r: ResultRow) => void;
 }) {
@@ -232,7 +239,7 @@ function ResultsList({
               ) : null}
               {r.liveTemp !== undefined ? (
                 <span className="tabular text-xl font-light text-white">
-                  {formatTemp(r.liveTemp)}
+                  {displayTemp(r.liveTemp, settings)}
                 </span>
               ) : (
                 <span className="text-xs font-medium text-white/55">Add</span>

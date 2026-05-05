@@ -1,6 +1,6 @@
 import { MapPin } from 'lucide-react';
 import { describeCondition } from '../lib/describeCondition';
-import { formatTemp } from '../lib/format';
+import { displayTemp } from '../lib/display';
 import { WeatherIcon } from '../lib/weatherIcons';
 import { useLocalTime } from '../hooks/useLocalTime';
 import { useWeather } from '../hooks/useWeather';
@@ -14,8 +14,12 @@ interface Props {
 }
 
 export function CityListItem({ city, active, settings, onClick }: Props) {
-  const { data } = useWeather(city, settings);
-  const cityTime = useLocalTime(city.timezone ?? data?.forecast.timezone);
+  const { data } = useWeather(city);
+  const cityTime = useLocalTime(
+    city.timezone ?? data?.data.location.timezone,
+  );
+
+  const w = data?.data;
 
   return (
     <button
@@ -37,37 +41,30 @@ export function CityListItem({ city, active, settings, onClick }: Props) {
               {city.name}
             </span>
           </div>
-          <div className="mt-0.5 text-xs text-white/60 tabular">
+          <div className="tabular mt-0.5 text-xs text-white/60">
             {city.isCurrent ? 'My Location' : cityTime}
           </div>
-          {data ? (
+          {w ? (
             <div className="mt-2 truncate text-xs text-white/75">
-              {describeCondition(
-                data.forecast.current.temperature_2m,
-                settings.temp,
-                data.forecast.current.weather_code,
-              )}
+              {describeCondition(w.current.temp, w.current.code)}
             </div>
           ) : null}
         </div>
 
-        {data ? (
+        {w ? (
           <div className="flex shrink-0 flex-col items-end">
             <WeatherIcon
-              code={data.forecast.current.weather_code}
-              isDay={data.forecast.current.is_day === 1}
+              code={w.current.code}
+              isDay={w.current.isDay}
               size={20}
               className="mb-1"
             />
             <div className="tabular text-3xl font-thin leading-none text-white">
-              {formatTemp(data.forecast.current.temperature_2m, {
-                withDegree: false,
-              })}
-              °
+              {displayTemp(w.current.temp, settings, { withDegree: false })}°
             </div>
             <div className="tabular mt-1.5 text-[10px] text-white/60">
-              H:{formatTemp(data.forecast.daily.temperature_2m_max[0])} L:
-              {formatTemp(data.forecast.daily.temperature_2m_min[0])}
+              H:{displayTemp(w.today.high, settings)} L:
+              {displayTemp(w.today.low, settings)}
             </div>
           </div>
         ) : (

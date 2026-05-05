@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { MapPin, Search, Trash2, X, GripVertical } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SUGGESTED_CITIES } from '../constants/cities';
 import { debouncedSearch } from '../lib/geocoding';
 import { forecast } from '../lib/openMeteo';
 import { formatTemp } from '../lib/format';
@@ -22,14 +23,6 @@ interface ResultRow extends GeocodingResult {
   liveTemp?: number;
   liveCode?: number;
 }
-
-const SUGGESTIONS: GeocodingResult[] = [
-  { id: 1, name: 'New York', latitude: 40.7128, longitude: -74.006, country: 'United States', country_code: 'US', admin1: 'New York' },
-  { id: 2, name: 'Los Angeles', latitude: 34.0522, longitude: -118.2437, country: 'United States', country_code: 'US', admin1: 'California' },
-  { id: 3, name: 'London', latitude: 51.5074, longitude: -0.1278, country: 'United Kingdom', country_code: 'GB' },
-  { id: 4, name: 'Tokyo', latitude: 35.6762, longitude: 139.6503, country: 'Japan', country_code: 'JP' },
-  { id: 5, name: 'Sydney', latitude: -33.8688, longitude: 151.2093, country: 'Australia', country_code: 'AU' },
-];
 
 function toCity(result: GeocodingResult): City {
   return {
@@ -182,8 +175,8 @@ export function CitySearch({
                   onSelect(i);
                   onClose();
                 }}
-                onAddSuggestion={(s) => {
-                  onAdd(toCity(s));
+                onAddSuggestion={(c) => {
+                  onAdd(c);
                   onClose();
                 }}
               />
@@ -265,12 +258,14 @@ function SavedAndSuggestions({
   onRemove: (id: string) => void;
   onReorder: (from: number, to: number) => void;
   onSelectIndex: (i: number) => void;
-  onAddSuggestion: (s: GeocodingResult) => void;
+  onAddSuggestion: (c: City) => void;
 }) {
   const dragIndexRef = useRef<number | null>(null);
   const [dragHover, setDragHover] = useState<number | null>(null);
 
   const currentCity = cities.find((c) => c.isCurrent);
+  const savedIds = new Set(cities.map((c) => c.id));
+  const chips = SUGGESTED_CITIES.filter((c) => !savedIds.has(c.id));
 
   return (
     <div className="space-y-5">
@@ -288,6 +283,26 @@ function SavedAndSuggestions({
         </button>
       ) : null}
 
+      {chips.length > 0 ? (
+        <div>
+          <h3 className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wider text-white/55">
+            Quick Add
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {chips.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => onAddSuggestion(c)}
+                className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/20"
+              >
+                + {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {savedNonCurrent.length > 0 ? (
         <div>
           <h3 className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wider text-white/55">
@@ -295,7 +310,6 @@ function SavedAndSuggestions({
           </h3>
           <ul className="space-y-2">
             {savedNonCurrent.map((c, ix) => {
-              // Map back to overall city index for selection.
               const overallIndex = cities.findIndex((x) => x.id === c.id);
               const isHovered = dragHover === ix;
               return (
@@ -343,30 +357,7 @@ function SavedAndSuggestions({
             })}
           </ul>
         </div>
-      ) : (
-        <div>
-          <h3 className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wider text-white/55">
-            Suggestions
-          </h3>
-          <ul className="space-y-2">
-            {SUGGESTIONS.map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => onAddSuggestion(s)}
-                  className="flex w-full items-center justify-between rounded-2xl bg-white/12 px-4 py-3 text-left transition-colors hover:bg-white/20"
-                >
-                  <div>
-                    <div className="text-[15px] font-medium text-white">{s.name}</div>
-                    <div className="text-[12px] text-white/65">{s.country}</div>
-                  </div>
-                  <span className="text-xs font-medium text-white/55">Add</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

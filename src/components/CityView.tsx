@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { AlertsBanner } from './AlertsBanner';
 import { HeroCard } from './HeroCard';
 import { HourlyStrip } from './HourlyStrip';
 import { DailyForecast } from './DailyForecast';
@@ -79,6 +80,9 @@ export function CityView({ city, settings, onWeather }: Props) {
       transition={{ duration: 0.4 }}
       className="flex flex-col gap-3 px-4 pb-10"
     >
+      {data.alerts && data.alerts.length > 0 ? (
+        <AlertsBanner alerts={data.alerts} />
+      ) : null}
       <HeroCard city={city} data={data.forecast} />
       <HourlyStrip data={data.forecast} index={0} />
       <DailyForecast data={data.forecast} index={1} />

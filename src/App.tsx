@@ -1,17 +1,18 @@
 import { Plus, Settings as SettingsIcon } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CityCarousel } from './components/CityCarousel';
 import { CitySearch } from './components/CitySearch';
 import { CityView } from './components/CityView';
 import { PageIndicator } from './components/PageIndicator';
 import { SettingsSheet } from './components/SettingsSheet';
 import { DynamicBackground } from './components/backgrounds/DynamicBackground';
+import { INITIAL_SEED } from './constants/cities';
 import { useCities } from './hooks/useCities';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useSettings } from './hooks/useSettings';
 import { localHourIn } from './lib/format';
 import { gradientFor } from './lib/weatherCodes';
-import { forecast } from './lib/openMeteo';
+import { reverseGeocodeUS } from './lib/nws';
 import type { City, WeatherBundle } from './types';
 
 export default function App() {
@@ -23,39 +24,53 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeBundle, setActiveBundle] = useState<WeatherBundle | undefined>();
-  const [bootstrapped, setBootstrapped] = useState(false);
 
-  // First-load: try geolocation, fall back to opening the search modal.
+  // Capture initial empty-state once so re-renders don't retrigger seeding.
+  const bootstrapRan = useRef(false);
+  const initiallyEmptyRef = useRef(cities.length === 0);
+
   useEffect(() => {
-    if (bootstrapped) return;
-    setBootstrapped(true);
+    if (bootstrapRan.current) return;
+    bootstrapRan.current = true;
 
     (async () => {
-      const coords = await geo.request();
-      if (coords) {
-        try {
-          const f = await forecast(coords.latitude, coords.longitude, settings);
-          const city: City = {
-            id: 'current',
-            name: f.timezone.split('/').pop()?.replace(/_/g, ' ') || 'Current Location',
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            timezone: f.timezone,
-            isCurrent: true,
-          };
-          upsertCurrent(city);
-          setActive(0);
-        } catch {
-          if (cities.length === 0) setSearchOpen(true);
-        }
-      } else if (cities.length === 0) {
-        setSearchOpen(true);
+      // 1. Seed default cities if this is a first-run user.
+      if (initiallyEmptyRef.current) {
+        for (const city of INITIAL_SEED) add(city);
       }
+
+      // 2. Try to capture the device's current location and pin it first.
+      const coords = await geo.request();
+      if (!coords) return;
+
+      // Resolve a pretty city name. NWS /points returns city/state for free
+      // when we're in the US; otherwise fall back to a timezone-derived name.
+      const us = await reverseGeocodeUS(coords.latitude, coords.longitude);
+      const name = us?.city
+        ? us.city
+        : Intl.DateTimeFormat()
+            .resolvedOptions()
+            .timeZone.split('/')
+            .pop()
+            ?.replace(/_/g, ' ') || 'Current Location';
+
+      const city: City = {
+        id: 'current',
+        name,
+        region: us?.state,
+        country: us ? 'United States' : undefined,
+        countryCode: us ? 'US' : undefined,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        timezone: us?.timeZone,
+        isCurrent: true,
+      };
+      upsertCurrent(city);
+      setActive(0);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Whenever the active index goes out of bounds, clamp.
   useEffect(() => {
     if (active >= cities.length) setActive(Math.max(0, cities.length - 1));
   }, [active, cities.length]);
@@ -76,7 +91,6 @@ export default function App() {
     [onWeather, settings],
   );
 
-  // Pick the gradient for the active city based on its weather + local hour.
   const code = activeBundle?.forecast.current.weather_code ?? 1;
   const isDay = activeBundle?.forecast.current.is_day === 1;
   const localHour = localHourIn(activeBundle?.forecast.timezone, new Date());
@@ -132,7 +146,6 @@ export default function App() {
         cities={cities}
         onAdd={(city) => {
           add(city);
-          // Activate the newly added city.
           setActive(cities.length);
         }}
         onRemove={remove}

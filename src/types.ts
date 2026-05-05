@@ -107,5 +107,18 @@ export interface AirQualityResponse {
 export interface WeatherBundle {
   forecast: ForecastResponse;
   airQuality?: AirQualityResponse;
+  alerts?: WeatherAlert[];
+  source: 'nws' | 'open-meteo';
   fetchedAt: number;
+}
+
+export interface WeatherAlert {
+  id: string;
+  event: string;
+  severity: string;
+  headline: string;
+  description: string;
+  areaDesc: string;
+  effective: string;
+  expires: string;
 }

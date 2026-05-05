@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { describe } from '../lib/weatherCodes';
+import { iconFor } from '../constants/weatherIcons';
 import { formatTemp } from '../lib/format';
 import type { City, ForecastResponse } from '../types';
 
@@ -8,12 +9,26 @@ interface Props {
   data: ForecastResponse;
 }
 
+function shouldShowRegion(city: City): boolean {
+  if (!city.region) return false;
+  const name = city.name.toLowerCase();
+  const region = city.region.toLowerCase();
+  if (region === name) return false;
+  if (name.includes(region) || region.includes(name)) return false;
+  return true;
+}
+
 export function HeroCard({ city, data }: Props) {
   const info = describe(data.current.weather_code);
+  const isDay = data.current.is_day === 1;
   const today = {
     high: data.daily.temperature_2m_max[0],
     low: data.daily.temperature_2m_min[0],
   };
+
+  let subtitle: string | null = null;
+  if (city.isCurrent) subtitle = 'My Location';
+  else if (shouldShowRegion(city)) subtitle = city.region!;
 
   return (
     <motion.section
@@ -25,10 +40,14 @@ export function HeroCard({ city, data }: Props) {
       <h1 className="text-[34px] font-light leading-tight text-white">
         {city.name}
       </h1>
-      {city.isCurrent ? (
-        <div className="mt-0.5 text-[13px] font-medium text-white/80">My Location</div>
-      ) : city.region ? (
-        <div className="mt-0.5 text-[13px] text-white/65">{city.region}</div>
+      {subtitle ? (
+        <div
+          className={`mt-0.5 text-[13px] ${
+            city.isCurrent ? 'font-medium text-white/80' : 'text-white/65'
+          }`}
+        >
+          {subtitle}
+        </div>
       ) : null}
 
       <div className="tabular mt-1 text-[112px] font-extralight leading-none tracking-[-0.04em] text-white">
@@ -37,7 +56,7 @@ export function HeroCard({ city, data }: Props) {
       </div>
 
       <div className="mt-1 flex items-center gap-2 text-lg font-medium text-white/90">
-        <span className="text-2xl leading-none">{info.emoji}</span>
+        <span className="text-2xl leading-none">{iconFor(data.current.weather_code, isDay)}</span>
         <span>{info.label}</span>
       </div>
 

@@ -120,7 +120,7 @@ export function SettingsSheet({ open, onClose, settings, onChange }: Props) {
             </div>
 
             <p className="mt-5 text-center text-[12px] text-white/50">
-              Data from Open-Meteo. WeatherStop has no API keys.
+              Data from NWS (US) and Open-Meteo (international). No API keys.
             </p>
           </motion.div>
         </motion.div>

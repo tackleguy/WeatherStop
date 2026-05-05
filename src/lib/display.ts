@@ -44,17 +44,19 @@ export function displayPressure(inHg: number): string {
   return `${Math.round(hpa)} hPa`;
 }
 
+// Visibility is capped at 10 miles / 16 km. Apple Weather treats that as
+// "as far as the eye can see"; raw values can exceed 70 miles in clear,
+// dry desert air, which is misleading on a 0-10 visibility report card.
 export function displayVisibility(
   miles: number,
   settings: Settings,
 ): string {
+  const capped = Math.min(Math.max(miles, 0), 10);
   if (settings.distance === 'mi') {
-    return miles >= 10
-      ? `${Math.round(miles)} mi`
-      : `${miles.toFixed(1)} mi`;
+    return capped >= 10 ? '10 mi' : `${capped.toFixed(1)} mi`;
   }
-  const km = milesToKm(miles);
-  return km >= 10 ? `${Math.round(km)} km` : `${km.toFixed(1)} km`;
+  const km = milesToKm(capped);
+  return km >= 16 ? '16 km' : `${km.toFixed(1)} km`;
 }
 
 export function displayPrecip(

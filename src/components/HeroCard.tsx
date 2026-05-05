@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { HeroScene } from './HeroScene';
 import { WeatherIcon } from '../lib/weatherIcons';
 import { displayTemp } from '../lib/display';
 import type { Settings, WeatherData } from '../types';
@@ -34,9 +35,10 @@ export function HeroCard({ data, settings, isCurrent }: Props) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="text-center pt-10 pb-8"
+      className="text-center pt-4 pb-8"
     >
-      <h1 className="text-3xl font-light tracking-tight text-white">
+      <HeroScene code={current.code} isDay={current.isDay} />
+      <h1 className="mt-2 text-3xl font-light tracking-tight text-white">
         {location.name}
       </h1>
       {subtitle ? (

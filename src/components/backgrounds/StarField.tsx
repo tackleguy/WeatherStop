@@ -8,11 +8,13 @@ export function StarField({ count = 80 }: Props) {
   const stars = useMemo(
     () =>
       Array.from({ length: count }).map(() => ({
-        top: Math.random() * 100,
+        // Concentrate stars in the upper 70% of the viewport so the area
+        // above and around the hero scene reads as starry.
+        top: Math.random() * 70,
         left: Math.random() * 100,
-        size: 1 + Math.random() * 1.5,
+        size: 1.2 + Math.random() * 1.6,
         delay: Math.random() * 4,
-        baseOpacity: 0.4 + Math.random() * 0.5,
+        baseOpacity: 0.55 + Math.random() * 0.45,
       })),
     [count],
   );

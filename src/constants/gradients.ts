@@ -1,15 +1,15 @@
 import type { GradientName } from '../lib/weatherCodes';
 
-// Tailwind gradient class strings indexed by gradient name.
-// We pre-list every variant so Tailwind's JIT picks them up.
+// Tailwind gradient class strings indexed by gradient name. None of these
+// fade to pure black — the top of the viewport stays graphical.
 export const GRADIENTS: Record<GradientName, string> = {
   'clear-day': 'from-sky-400 via-sky-500 to-blue-700',
-  'clear-night': 'from-indigo-950 via-slate-900 to-black',
+  'clear-night': 'from-indigo-900 via-slate-800 to-slate-950',
   'cloudy-day': 'from-slate-400 via-slate-500 to-slate-700',
-  'cloudy-night': 'from-slate-800 via-slate-900 to-black',
-  rain: 'from-slate-700 via-slate-800 to-slate-950',
+  'cloudy-night': 'from-slate-700 via-slate-800 to-slate-900',
+  rain: 'from-slate-600 via-slate-700 to-slate-900',
   snow: 'from-slate-300 via-slate-400 to-slate-600',
-  thunderstorm: 'from-slate-900 via-purple-950 to-black',
+  thunderstorm: 'from-purple-900 via-slate-800 to-slate-950',
   fog: 'from-slate-500 via-slate-600 to-slate-800',
   sunset: 'from-orange-400 via-pink-500 to-purple-700',
   sunrise: 'from-orange-300 via-amber-400 to-sky-500',

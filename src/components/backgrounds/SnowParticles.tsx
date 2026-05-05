@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-const COUNT = 40;
+const COUNT = 55;
 
 interface Flake {
   left: number;
@@ -15,10 +15,10 @@ export function SnowParticles() {
     () =>
       Array.from({ length: COUNT }, () => ({
         left: Math.random() * 100,
-        size: 2 + Math.random() * 4,
+        size: 3 + Math.random() * 4,
         delay: -Math.random() * 8,
-        duration: 6 + Math.random() * 8,
-        opacity: 0.35 + Math.random() * 0.4,
+        duration: 5 + Math.random() * 6,
+        opacity: 0.55 + Math.random() * 0.4,
       })),
     [],
   );

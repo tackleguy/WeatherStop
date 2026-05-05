@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-const COUNT = 50;
+const COUNT = 70;
 
 interface Drop {
   left: number;
@@ -8,6 +8,7 @@ interface Drop {
   duration: number;
   length: number;
   opacity: number;
+  width: number;
 }
 
 export function RainParticles() {
@@ -16,9 +17,10 @@ export function RainParticles() {
       Array.from({ length: COUNT }, () => ({
         left: Math.random() * 100,
         delay: -Math.random() * 1.4,
-        duration: 0.7 + Math.random() * 0.6,
-        length: 14 + Math.random() * 14,
-        opacity: 0.2 + Math.random() * 0.25,
+        duration: 0.55 + Math.random() * 0.45,
+        length: 16 + Math.random() * 18,
+        opacity: 0.4 + Math.random() * 0.4,
+        width: Math.random() < 0.6 ? 1.6 : 2.2,
       })),
     [],
   );
@@ -28,11 +30,11 @@ export function RainParticles() {
       {drops.map((d, i) => (
         <span
           key={i}
-          className="absolute block bg-gradient-to-b from-white/0 via-white/70 to-white/0"
+          className="absolute block bg-gradient-to-b from-white/0 via-white/95 to-white/0"
           style={{
             left: `${d.left}%`,
             top: '-10%',
-            width: 1.4,
+            width: d.width,
             height: d.length,
             opacity: d.opacity,
             transform: 'rotate(14deg)',

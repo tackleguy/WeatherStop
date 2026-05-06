@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import type { GradientName } from '../../lib/weatherCodes';
 import { GRADIENTS, TOP_GLOW } from '../../constants/gradients';
+import { AtmosphereGrain } from './AtmosphereGrain';
 import { CloudLayer } from './CloudLayer';
 import { RainParticles } from './RainParticles';
 import { SnowParticles } from './SnowParticles';
@@ -79,10 +80,12 @@ export function DynamicBackground({ gradient, weatherCode, isDay }: Props) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 1.0 }}
+          transition={{ duration: 1.2 }}
           className={`fixed inset-0 -z-10 bg-gradient-to-b ${GRADIENTS[gradient]}`}
         />
       </AnimatePresence>
+
+      <AtmosphereGrain />
 
       {/* Tinted top-of-viewport halo so the area above the hero is never
           a flat band of color. */}

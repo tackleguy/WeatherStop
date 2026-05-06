@@ -18,9 +18,9 @@ export function RainParticles() {
         left: Math.random() * 100,
         delay: -Math.random() * 1.4,
         duration: 0.55 + Math.random() * 0.45,
-        length: 16 + Math.random() * 18,
-        opacity: 0.4 + Math.random() * 0.4,
-        width: Math.random() < 0.6 ? 1.6 : 2.2,
+        length: 14 + Math.random() * 18,
+        opacity: 0.18 + Math.random() * 0.18,
+        width: Math.random() < 0.7 ? 1.4 : 1.8,
       })),
     [],
   );

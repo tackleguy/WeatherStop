@@ -11,10 +11,20 @@ interface Props {
 
 const SWIPE_THRESHOLD = 80;
 
+// Out: opacity 1 → 0, scale 1 → 0.98, 180ms
+// In:  opacity 0 → 1, scale 1.02 → 1, 220ms (delay 80ms)
 const variants: Variants = {
-  enter: { opacity: 0, y: 8 },
-  center: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
+  enter: { opacity: 0, scale: 1.02 },
+  center: {
+    opacity: 1,
+    scale: 1,
+    transition: { duration: 0.22, ease: [0.4, 0, 0.2, 1], delay: 0.08 },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.98,
+    transition: { duration: 0.18, ease: [0.4, 0, 0.2, 1] },
+  },
 };
 
 export function CityCarousel({ cities, active, onChange, renderCity }: Props) {
@@ -38,7 +48,6 @@ export function CityCarousel({ cities, active, onChange, renderCity }: Props) {
           initial="enter"
           animate="center"
           exit="exit"
-          transition={{ duration: 0.25, ease: 'easeOut' }}
           drag="x"
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.2}

@@ -21,7 +21,7 @@ interface RangeBarProps {
 }
 
 function rangeBarColor(low: number, high: number): string {
-  const avgF = (low + high) / 2; // canonical °F
+  const avgF = (low + high) / 2;
   if (avgF < 35) return 'linear-gradient(to right, #60a5fa, #93c5fd)';
   if (avgF < 50) return 'linear-gradient(to right, #67e8f9, #a5f3fc)';
   if (avgF < 65) return 'linear-gradient(to right, #34d399, #a7f3d0)';
@@ -47,7 +47,7 @@ function RangeBar({
       : null;
 
   return (
-    <div className="relative h-1.5 w-full rounded-full bg-white/15">
+    <div className="relative h-1 w-full rounded-full bg-white/10">
       <div
         className="absolute inset-y-0 rounded-full"
         style={{
@@ -58,11 +58,9 @@ function RangeBar({
       />
       {currentPct !== null ? (
         <div
-          className="absolute top-1/2 h-2.5 w-2.5 rounded-full bg-white shadow"
-          style={{
-            left: `${currentPct}%`,
-            transform: 'translate(-50%, -50%)',
-          }}
+          aria-hidden
+          className="absolute top-1/2 h-3 w-[2px] -translate-y-1/2 rounded-sm bg-white shadow"
+          style={{ left: `${currentPct}%`, transform: 'translate(-50%, -50%)' }}
         />
       ) : null}
     </div>
@@ -75,35 +73,42 @@ export function DailyForecast({ data, settings, index }: Props) {
   const weekHigh = Math.max(...days.map((d) => d.high));
   const currentTemp = data.current.temp;
 
+  const meta = `${displayTemp(data.today.high, settings)} / ${displayTemp(data.today.low, settings)}`;
+
   return (
-    <Card title="10-Day Forecast" icon={CalendarDays} index={index}>
-      <div className="divide-y divide-white/10">
+    <Card
+      title="10-Day Forecast"
+      icon={CalendarDays}
+      index={index}
+      meta={meta}
+    >
+      <div className="-mx-1">
         {days.map((day, i) => {
           const isToday = i === 0;
           return (
-            <div key={day.date} className="flex items-center gap-3 py-2.5">
-              <span className="w-14 text-base font-medium text-white">
-                {isToday
-                  ? 'Today'
-                  : formatDayLabel(day.date, data.location.timezone)}
+            <div
+              key={day.date}
+              className="grid grid-cols-[60px_24px_36px_1fr_36px] items-center gap-3 rounded-lg px-1 py-1.5 transition-colors duration-200 hover:bg-white/[0.05]"
+              style={{ minHeight: 32 }}
+            >
+              <span className="text-[14px] font-medium text-white">
+                {isToday ? 'Today' : formatDayLabel(day.date, data.location.timezone)}
               </span>
-              <span className="w-8">
-                <WeatherIcon code={day.code} isDay size={26} />
+              <span>
+                <WeatherIcon code={day.code} isDay size={20} />
               </span>
-              <span className="tabular w-9 text-right text-base font-medium text-white/60">
+              <span className="tabular text-right text-[13px] font-medium text-white/55">
                 {displayTemp(day.low, settings)}
               </span>
-              <div className="flex-1">
-                <RangeBar
-                  dayLow={day.low}
-                  dayHigh={day.high}
-                  weekLow={weekLow}
-                  weekHigh={weekHigh}
-                  fillColor={rangeBarColor(day.low, day.high)}
-                  currentTemp={isToday ? currentTemp : undefined}
-                />
-              </div>
-              <span className="tabular w-9 text-right text-base font-medium text-white">
+              <RangeBar
+                dayLow={day.low}
+                dayHigh={day.high}
+                weekLow={weekLow}
+                weekHigh={weekHigh}
+                fillColor={rangeBarColor(day.low, day.high)}
+                currentTemp={isToday ? currentTemp : undefined}
+              />
+              <span className="tabular text-right text-[13px] font-medium text-white">
                 {displayTemp(day.high, settings)}
               </span>
             </div>

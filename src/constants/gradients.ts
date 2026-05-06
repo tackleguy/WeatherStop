@@ -1,53 +1,39 @@
 import type { GradientName } from '../lib/weatherCodes';
 
-// Tailwind gradient class strings indexed by gradient name. Colors are
-// chosen so the top of the viewport always reads as a clear sky tint — no
-// gradient bottoms out at black.
+// Windy-ish atmosphere palette: deeper, more saturated, never pure black
+// or bright sky-blue. Each gradient is two stops only — Layer 2 (grain)
+// + Layer 3 (particles) handle the rest of the visual texture.
 export const GRADIENTS: Record<GradientName, string> = {
-  'clear-day': 'from-sky-300 via-sky-500 to-blue-700',
-  'clear-night': 'from-indigo-700 via-indigo-900 to-slate-800',
-  'cloudy-day': 'from-slate-300 via-slate-500 to-slate-700',
-  'cloudy-night': 'from-slate-500 via-slate-700 to-slate-900',
-  rain: 'from-slate-500 via-slate-600 to-slate-800',
-  snow: 'from-slate-200 via-slate-400 to-slate-600',
-  thunderstorm: 'from-purple-700 via-indigo-900 to-slate-900',
-  fog: 'from-slate-400 via-slate-500 to-slate-700',
-  sunset: 'from-orange-400 via-pink-500 to-purple-700',
-  sunrise: 'from-orange-300 via-amber-400 to-sky-500',
+  'clear-day': 'from-[#1a3a5c] to-[#0f1e2e]',
+  'clear-night': 'from-[#0a1a2e] to-[#050810]',
+  'cloudy-day': 'from-[#2a3038] to-[#15181d]',
+  'cloudy-night': 'from-[#1a1f29] to-[#0a0e15]',
+  rain: 'from-[#1f2937] to-[#0c1117]',
+  snow: 'from-[#2d3640] to-[#1a1d22]',
+  thunderstorm: 'from-[#1a1525] to-[#06040a]',
+  fog: 'from-[#262d36] to-[#10131a]',
+  sunset: 'from-[#3d2540] to-[#1a0f1f]',
+  sunrise: 'from-[#3a2818] to-[#181020]',
 };
 
-// Tinted top-of-viewport halos for the radial overlay. Picked to hint at
-// horizon light without overwhelming the gradient.
+// Tinted top halos — subtler than before so the grain + particle layers
+// can do the atmospheric work.
 export const TOP_GLOW: Record<GradientName, string> = {
   'clear-day':
-    'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(255,255,255,0.35), rgba(255,255,255,0) 70%)',
+    'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(56,189,248,0.22), rgba(0,0,0,0) 70%)',
   'clear-night':
-    'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(99,102,241,0.65), rgba(15,23,42,0) 70%)',
+    'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(99,102,241,0.32), rgba(0,0,0,0) 70%)',
   'cloudy-day':
-    'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(255,255,255,0.3), rgba(255,255,255,0) 70%)',
+    'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(255,255,255,0.18), rgba(0,0,0,0) 70%)',
   'cloudy-night':
-    'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(148,163,184,0.55), rgba(15,23,42,0) 70%)',
-  rain: 'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(148,163,184,0.45), rgba(15,23,42,0) 70%)',
-  snow: 'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(255,255,255,0.45), rgba(255,255,255,0) 70%)',
+    'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(148,163,184,0.28), rgba(0,0,0,0) 70%)',
+  rain: 'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(96,165,250,0.25), rgba(0,0,0,0) 70%)',
+  snow: 'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(255,255,255,0.32), rgba(0,0,0,0) 70%)',
   thunderstorm:
-    'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(168,85,247,0.55), rgba(15,23,42,0) 70%)',
-  fog: 'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(226,232,240,0.45), rgba(15,23,42,0) 70%)',
+    'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(168,85,247,0.32), rgba(0,0,0,0) 70%)',
+  fog: 'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(226,232,240,0.25), rgba(0,0,0,0) 70%)',
   sunset:
-    'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(251,146,60,0.5), rgba(15,23,42,0) 70%)',
+    'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(251,146,60,0.35), rgba(0,0,0,0) 70%)',
   sunrise:
-    'radial-gradient(ellipse 100% 75% at 50% 0%, rgba(253,224,71,0.5), rgba(15,23,42,0) 70%)',
-};
-
-// Hint at the dominant accent for child UI.
-export const ACCENTS: Record<GradientName, string> = {
-  'clear-day': '#38bdf8',
-  'clear-night': '#1e1b4b',
-  'cloudy-day': '#94a3b8',
-  'cloudy-night': '#0f172a',
-  rain: '#1e293b',
-  snow: '#cbd5e1',
-  thunderstorm: '#3b0764',
-  fog: '#475569',
-  sunset: '#f97316',
-  sunrise: '#fbbf24',
+    'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(253,224,71,0.3), rgba(0,0,0,0) 70%)',
 };

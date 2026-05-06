@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { AlertsBanner } from './AlertsBanner';
 import { HeroCard } from './HeroCard';
-import { HourlyStrip } from './HourlyStrip';
+import { Meteogram } from './Meteogram';
 import { DailyForecast } from './DailyForecast';
 import { AirQualityCard } from './AirQualityCard';
 import { UVIndexCard } from './UVIndexCard';
@@ -93,7 +93,7 @@ export function CityView({ city, settings, onSnapshot }: Props) {
         <AlertsBanner alerts={data.alerts} />
       ) : null}
       <HeroCard data={w} settings={settings} isCurrent={city.isCurrent} />
-      <HourlyStrip data={w} settings={settings} index={0} />
+      <Meteogram data={w} settings={settings} index={0} />
       <DailyForecast data={w} settings={settings} index={1} />
       <AirQualityCard data={data.airQuality} index={2} />
       <UVIndexCard data={w} index={3} />

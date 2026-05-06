@@ -32,6 +32,11 @@ export function useAlerts(): AlertsHook {
     refreshInterval: 60_000,
     revalidateOnFocus: false,
     keepPreviousData: true,
+    // /api routes 503 in `npm run dev` (no Vercel functions). Retry once
+    // and stop so the dev console stays quiet; in production this still
+    // re-tries on the next 60s tick.
+    errorRetryCount: 1,
+    errorRetryInterval: 5_000,
   });
 
   const alerts = parseAlerts(data ?? { features: [] }).sort(

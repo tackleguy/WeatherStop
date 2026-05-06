@@ -158,14 +158,30 @@ export function RadarMap({ onMapReady }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useRadarLayers({
+  const manualSite = useRadarStore((s) => s.manualSite);
+  const sourcePlan = useRadarLayers({
     map: mapRef.current,
     styleLoaded,
     activeProduct,
     catalog,
     frameIndex: rainViewerFrameIndex,
     ts,
+    manualSite,
   });
+
+  // Push the active plan to the store so the layer-info chip can read
+  // it without lifting state. Cheap setState — Zustand bails on equality.
+  const setSourcePlan = useRadarStore((s) => s.setSourcePlan);
+  useEffect(() => {
+    setSourcePlan({
+      kind: sourcePlan.kind,
+      label: sourcePlan.label,
+      attribution: sourcePlan.attribution,
+      siteId: sourcePlan.site?.id ?? null,
+      siteName: sourcePlan.site?.name ?? null,
+      siteState: sourcePlan.site?.state ?? null,
+    });
+  }, [sourcePlan, setSourcePlan]);
 
   // Alerts source + layers, kept in sync with the live `alerts` array.
   useEffect(() => {

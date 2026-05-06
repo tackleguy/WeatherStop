@@ -1,5 +1,19 @@
 import { create } from 'zustand';
 import { DEFAULT_PRODUCT, type ProductId } from '../constants/products';
+import type { NexradSite } from '../lib/nexradSites';
+
+// Mirror of the SourcePlan that RadarMap pushes from useRadarLayers.
+// Stored as plain primitives so other components (LayerInfoChip,
+// FocusedSiteChip) can subscribe selectively without re-rendering on
+// every plan churn.
+export interface ActiveSourcePlan {
+  kind: string;
+  label: string;
+  attribution: string;
+  siteId: string | null;
+  siteName: string | null;
+  siteState: string | null;
+}
 
 // 13 frames × 5 minutes = 60 minute rolling window. Index FRAME_COUNT-1
 // is "live" (most recent frame).
@@ -143,6 +157,14 @@ interface RadarState {
   inspectAt: [number, number] | null;
   setInspectAt: (p: [number, number] | null) => void;
 
+  // Active radar source (mirrored from useRadarLayers' resolver) + the
+  // user's manual site override (when set, the resolver locks the per-
+  // site WMS to this station instead of the auto-nearest pick).
+  sourcePlan: ActiveSourcePlan | null;
+  setSourcePlan: (plan: ActiveSourcePlan) => void;
+  manualSite: NexradSite | null;
+  setManualSite: (site: NexradSite | null) => void;
+
   // Panel visibility
   panelsOpen: Record<PanelKey, boolean>;
   togglePanel: (key: PanelKey) => void;
@@ -226,6 +248,23 @@ export const useRadarStore = create<RadarState>((set, get) => ({
 
   inspectAt: null,
   setInspectAt: (p) => set({ inspectAt: p }),
+
+  sourcePlan: null,
+  setSourcePlan: (plan) =>
+    set((state) => {
+      const prev = state.sourcePlan;
+      if (
+        prev &&
+        prev.kind === plan.kind &&
+        prev.label === plan.label &&
+        prev.siteId === plan.siteId
+      ) {
+        return state;
+      }
+      return { sourcePlan: plan };
+    }),
+  manualSite: null,
+  setManualSite: (site) => set({ manualSite: site }),
 
   panelsOpen: {
     alerts: true,

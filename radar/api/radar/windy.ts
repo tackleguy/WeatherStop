@@ -1,33 +1,40 @@
 // Vercel Edge Function — proxies the browser's tile request to Windy so
-// WINDY_KEY never leaves the server. Cached at the edge for 5 min.
+// WINDY_KEY never leaves the server.
 //
-// Frontend calls: /api/radar/windy?ts=...&z=...&x=...&y=...
-//                 ↑ {z}/{x}/{y} are MapLibre's tile placeholders.
+// Frontend calls: /api/radar/windy?z=...&x=...&y=...&ts=...&product=radar
+// Upstream:       https://tiles.windy.com/tiles/v10.0/{product}-{ts}/{z}/{x}/{y}.png?key=...
 //
-// Required env: WINDY_KEY (windy.com/account/api free tier)
+// `ts` is a 10-minute-rounded epoch in seconds (current radar frame); if
+// omitted, we round `Date.now()` and use that. Cached at the edge for 5 min.
 
 export const config = { runtime: 'edge' };
 
-export default async function handler(req: Request): Promise<Response> {
-  const url = new URL(req.url);
-  const z = url.searchParams.get('z');
-  const x = url.searchParams.get('x');
-  const y = url.searchParams.get('y');
-  const ts = url.searchParams.get('ts');
+function roundToTenMinutes(epochSec: number): number {
+  return Math.floor(epochSec / 600) * 600;
+}
 
-  if (!z || !x || !y || !ts) {
-    return new Response('Missing z/x/y/ts', { status: 400 });
+export default async function handler(req: Request): Promise<Response> {
+  const { searchParams } = new URL(req.url);
+  const z = searchParams.get('z');
+  const x = searchParams.get('x');
+  const y = searchParams.get('y');
+  const tsRaw = searchParams.get('ts');
+  const product = searchParams.get('product') ?? 'radar';
+
+  if (!z || !x || !y) {
+    return new Response('missing z/x/y', { status: 400 });
   }
 
   const key = process.env.WINDY_KEY;
-  if (!key) {
-    return new Response('WINDY_KEY not configured', { status: 503 });
-  }
+  if (!key) return new Response('WINDY_KEY not configured', { status: 503 });
 
-  const upstream = `https://tiles.windy.com/tiles/v10.0/radar/${ts}/${z}/${x}/${y}.png?key=${key}`;
-  const res = await fetch(upstream, {
-    cf: { cacheTtl: 300, cacheEverything: true },
-  } as RequestInit);
+  const ts =
+    tsRaw && /^\d+$/.test(tsRaw)
+      ? Number(tsRaw)
+      : roundToTenMinutes(Math.floor(Date.now() / 1000));
+
+  const upstream = `https://tiles.windy.com/tiles/v10.0/${product}-${ts}/${z}/${x}/${y}.png?key=${key}`;
+  const res = await fetch(upstream);
 
   if (!res.ok) {
     return new Response(`Windy ${res.status}`, { status: res.status });

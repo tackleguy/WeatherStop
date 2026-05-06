@@ -11,11 +11,11 @@ storm-scale detail from Level II — chosen automatically by the resolver.
 |---|---|---|
 | 0 | Reference notes (`docs/REFERENCE_NOTES.md`) | ✅ |
 | 1 | OpenFreeMap base map + NWS active alerts (severity-tinted polygons, tornado pulse) | ✅ |
-| 1 | Windy proxy edge function (`api/radar/windy.ts`) wired to MapLibre raster source at zoom < 8 | ✅ skeleton — needs `WINDY_KEY` env var to actually serve tiles |
-| 4 | supercell-wx UX shell — left product rail, bottom time scrubber, right alerts inspector, station inventory modal | ✅ |
-| — | Source resolver + NEXRAD site list + zoom-aware layer hook | ✅ |
-| 2 | Level III regional layer | ⏳ pending |
-| 3 | Level II storm-scale layer | ⏳ pending |
+| 1 | Windy proxy edge function (`api/radar/windy.ts`) — needs `WINDY_KEY` env on Vercel | ✅ |
+| 2 | NEXRAD via NOAA mapservices ImageServer (`api/radar/nexrad.ts` + `useNexradLayer`), debounced bbox refresh, opacity crossfade through zoom 7-8 | ✅ |
+| 3 | Satellite via SSEC RealEarth raster tiles (`useSatelliteLayer`) — IR + visible, no key | ✅ |
+| 4 | UX shell — collapsible product rail, time scrubber w/ LIVE pill, alerts inspector, station inventory modal, geocoded search bar, dBZ legend | ✅ |
+| — | NEXRAD site list + nearest-site resolver (Phase 5 prep) | ✅ |
 | 5 | Storm cell tracking from L3 STI product | ⏳ pending |
 
 ## Run locally

@@ -1,18 +1,17 @@
-import { Radio } from 'lucide-react';
+import { Bell, Radio, Settings as SettingsIcon } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { AlertsInspector } from './components/AlertsInspector';
 import { ProductRail } from './components/ProductRail';
 import { RadarMap } from './components/RadarMap';
+import { SearchBar } from './components/SearchBar';
 import { StationInventory } from './components/StationInventory';
 import { TimeScrubber } from './components/TimeScrubber';
 import { DEFAULT_PRODUCT, PRODUCTS, type ProductId } from './constants/products';
 import { useAlerts, type NWSAlert } from './hooks/useAlerts';
 import type { NexradSite } from './lib/nexradSites';
-import type { StormCell } from './lib/sourceResolver';
 
 function flyToGeometry(map: maplibregl.Map, geometry: GeoJSON.Geometry) {
-  if (!geometry) return;
   const bounds = new maplibregl.LngLatBounds();
   const coords: number[][] = [];
   function collect(g: GeoJSON.Geometry) {
@@ -38,24 +37,25 @@ export default function App() {
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
   const [stationModalOpen, setStationModalOpen] = useState(false);
   const [focusedSite, setFocusedSite] = useState<NexradSite | null>(null);
-  const [focusedStorm] = useState<StormCell | null>(null);
+  const [alertsPanelOpen, setAlertsPanelOpen] = useState(true);
   const mapRef = useRef<maplibregl.Map | null>(null);
 
-  const productCode = useMemo(
-    () =>
-      PRODUCTS.find((p) => p.id === selectedProduct)?.l3Code ?? 'p19r0',
+  const product = useMemo(
+    () => PRODUCTS.find((p) => p.id === selectedProduct) ?? PRODUCTS[0],
     [selectedProduct],
   );
 
-  const handleAlertSelect = useCallback(
-    (alert: NWSAlert) => {
-      setSelectedAlertId(alert.id);
-      if (mapRef.current && alert.geometry) {
-        flyToGeometry(mapRef.current, alert.geometry);
-      }
-    },
-    [],
-  );
+  const layerMode: 'radar' | 'satellite' =
+    product.kind === 'satellite' ? 'satellite' : 'radar';
+  const satelliteProduct: 'ir' | 'vis' =
+    product.id === 'sat-vis' ? 'vis' : 'ir';
+
+  const handleAlertSelect = useCallback((alert: NWSAlert) => {
+    setSelectedAlertId(alert.id);
+    if (mapRef.current && alert.geometry) {
+      flyToGeometry(mapRef.current, alert.geometry);
+    }
+  }, []);
 
   const handleSiteSelect = useCallback((site: NexradSite) => {
     setFocusedSite(site);
@@ -71,85 +71,62 @@ export default function App() {
   return (
     <div className="flex h-[100dvh] w-full flex-col bg-ink-950 text-white">
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-white/5 px-4 py-2">
+      <header className="flex h-11 items-center justify-between gap-3 border-b border-white/5 bg-[rgba(15,18,23,0.92)] px-4 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <Radio className="h-4 w-4 text-emerald-400" strokeWidth={2.2} />
-          <h1 className="text-sm font-semibold uppercase tracking-[0.18em]">
+          <h1 className="text-[13px] font-semibold uppercase tracking-[0.2em]">
             WeatherStop Radar
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <SearchBar
+            onPick={(p) => {
+              if (mapRef.current) {
+                mapRef.current.flyTo({
+                  center: [p.lon, p.lat],
+                  zoom: 9,
+                  duration: 800,
+                });
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setAlertsPanelOpen((v) => !v)}
+            aria-label="Toggle alerts"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/8 bg-black/45 text-white/75 hover:bg-white/12"
+          >
+            <Bell className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
           <button
             type="button"
             onClick={() => setStationModalOpen(true)}
-            className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/85 hover:bg-white/20"
+            aria-label="Stations"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-white/8 bg-black/45 text-white/75 hover:bg-white/12"
           >
-            Stations
+            <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
           </button>
         </div>
       </header>
 
-      {/* Main row: rail + map + alerts */}
-      <div className="relative flex flex-1 gap-2 overflow-hidden p-2">
-        <div className="hidden md:block">
-          <ProductRail active={selectedProduct} onSelect={setSelectedProduct} />
-        </div>
-        <main className="relative flex-1 overflow-hidden rounded-2xl">
-          <RadarMap
-            alerts={alerts}
-            selectedProduct={productCode}
-            selectedTime={selectedTime}
-            focusedStorm={focusedStorm}
-            onAlertClick={handleAlertSelect}
-            onMapReady={(m) => {
-              mapRef.current = m;
-            }}
-          />
-          {focusedSite ? (
-            <div className="absolute left-3 top-3 z-10 rounded-full bg-black/60 px-3 py-1 text-[11px] font-medium text-white/85 backdrop-blur">
-              Locked on {focusedSite.id} · {focusedSite.name}
-              <button
-                type="button"
-                onClick={() => setFocusedSite(null)}
-                className="ml-2 text-white/60 hover:text-white"
-              >
-                ×
-              </button>
-            </div>
-          ) : null}
-        </main>
-        <div className="hidden lg:block">
-          <AlertsInspector
-            alerts={alerts}
-            loading={loading}
-            selectedId={selectedAlertId}
-            onSelect={handleAlertSelect}
-            onRefresh={refresh}
-          />
-        </div>
-      </div>
-
-      {/* Time scrubber */}
-      <div className="px-2 pb-2">
-        <TimeScrubber
-          selectedTime={selectedTime}
-          onChange={setSelectedTime}
-        />
-      </div>
-
-      {/* Mobile bottom rail (mini) */}
-      <div className="md:hidden border-t border-white/5 px-2 pb-2 pt-2">
+      {/* Mobile horizontal product strip — hidden ≥md */}
+      <div className="border-b border-white/5 bg-[rgba(15,18,23,0.92)] px-2 py-2 md:hidden">
         <div className="flex gap-1 overflow-x-auto no-scrollbar">
-          {PRODUCTS.map(({ id, short, label, icon: Icon }) => {
+          {PRODUCTS.map(({ id, short, label, icon: Icon, disabled }) => {
             const isActive = id === selectedProduct;
             return (
               <button
                 key={id}
                 type="button"
-                onClick={() => setSelectedProduct(id)}
+                disabled={disabled}
+                onClick={() => !disabled && setSelectedProduct(id)}
                 aria-label={label}
-                className={`flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-3 py-1.5 text-[9px] font-semibold tracking-wider ${
-                  isActive ? 'bg-white/15 text-white' : 'bg-white/5 text-white/60'
+                className={`flex shrink-0 flex-col items-center gap-0.5 rounded-md px-3 py-1.5 text-[9px] font-semibold tracking-wider ${
+                  disabled
+                    ? 'text-white/25'
+                    : isActive
+                      ? 'bg-white text-black'
+                      : 'bg-white/5 text-white/60'
                 }`}
               >
                 <Icon className="h-4 w-4" strokeWidth={1.8} />
@@ -159,6 +136,66 @@ export default function App() {
           })}
         </div>
       </div>
+
+      {/* Body */}
+      <div className="relative flex flex-1 gap-2 overflow-hidden p-2">
+        <div className="hidden md:block">
+          <ProductRail active={selectedProduct} onSelect={setSelectedProduct} />
+        </div>
+        <main className="relative flex-1 overflow-hidden rounded-xl border border-white/5">
+          <RadarMap
+            alerts={alerts}
+            selectedTime={selectedTime}
+            layerMode={layerMode}
+            satelliteProduct={satelliteProduct}
+            onAlertClick={handleAlertSelect}
+            onMapReady={(m) => {
+              mapRef.current = m;
+            }}
+          />
+          {focusedSite ? (
+            <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-lg border border-white/8 bg-black/55 px-3 py-1 text-[11px] font-medium text-white/85 backdrop-blur-md">
+              Locked on {focusedSite.id} · {focusedSite.name}
+              <button
+                type="button"
+                onClick={() => setFocusedSite(null)}
+                className="text-white/60 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
+        </main>
+        {alertsPanelOpen ? (
+          <div className="hidden lg:block">
+            <AlertsInspector
+              alerts={alerts}
+              loading={loading}
+              selectedId={selectedAlertId}
+              onSelect={handleAlertSelect}
+              onRefresh={refresh}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {/* Time scrubber */}
+      <div className="px-2 pb-2">
+        <TimeScrubber selectedTime={selectedTime} onChange={setSelectedTime} />
+      </div>
+
+      {/* Mobile alerts drawer */}
+      {alertsPanelOpen ? (
+        <div className="lg:hidden border-t border-white/5">
+          <AlertsInspector
+            alerts={alerts}
+            loading={loading}
+            selectedId={selectedAlertId}
+            onSelect={handleAlertSelect}
+            onRefresh={refresh}
+          />
+        </div>
+      ) : null}
 
       <StationInventory
         open={stationModalOpen}

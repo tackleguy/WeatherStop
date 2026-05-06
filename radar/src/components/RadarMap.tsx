@@ -1,12 +1,11 @@
 import maplibregl from 'maplibre-gl';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { severityColor, type NWSAlert } from '../hooks/useAlerts';
-import { useRadarLayers } from '../hooks/useRadarLayers';
-import {
-  pickRadarSource,
-  type SourcePlan,
-  type StormCell,
-} from '../lib/sourceResolver';
+import { useNexradLayer } from '../hooks/useNexradLayer';
+import { useRadarStack } from '../hooks/useRadarStack';
+import { useSatelliteLayer } from '../hooks/useSatelliteLayer';
+import { useWindyLayer } from '../hooks/useWindyLayer';
+import { RadarLegend } from './RadarLegend';
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/dark';
 const ALERTS_SOURCE_ID = 'nws-alerts';
@@ -16,9 +15,12 @@ const ALERTS_PULSE_LAYER = 'nws-alerts-pulse';
 
 interface Props {
   alerts: NWSAlert[];
-  selectedProduct: string;
+  /** Active timestamp in unix seconds (snapped to 5-min). */
   selectedTime: number;
-  focusedStorm: StormCell | null;
+  /** ProductId-driven mode picker. */
+  layerMode: 'radar' | 'satellite';
+  /** Satellite product when layerMode='satellite'. */
+  satelliteProduct: 'ir' | 'vis';
   onAlertClick: (alert: NWSAlert) => void;
   onMapReady?: (map: maplibregl.Map) => void;
 }
@@ -51,9 +53,9 @@ function alertsToFeatureCollection(
 
 export function RadarMap({
   alerts,
-  selectedProduct,
   selectedTime,
-  focusedStorm,
+  layerMode,
+  satelliteProduct,
   onAlertClick,
   onMapReady,
 }: Props) {
@@ -61,13 +63,6 @@ export function RadarMap({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [styleLoaded, setStyleLoaded] = useState(false);
 
-  const [zoom, setZoom] = useState(4.2);
-  const [center, setCenter] = useState<{ lng: number; lat: number }>({
-    lng: -97,
-    lat: 38,
-  });
-
-  // Set up the map once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
@@ -85,11 +80,6 @@ export function RadarMap({
       setStyleLoaded(true);
       onMapReady?.(map);
     });
-    map.on('moveend', () => {
-      const c = map.getCenter();
-      setCenter({ lng: c.lng, lat: c.lat });
-      setZoom(map.getZoom());
-    });
 
     map.addControl(
       new maplibregl.NavigationControl({ visualizePitch: false }),
@@ -103,26 +93,30 @@ export function RadarMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Resolve which radar source to render given the current state.
-  const plan: SourcePlan = useMemo(
-    () =>
-      pickRadarSource({
-        zoom,
-        centerLon: center.lng,
-        centerLat: center.lat,
-        focusedStorm,
-        selectedProduct,
-      }),
-    [zoom, center, focusedStorm, selectedProduct],
-  );
+  // Keep Windy ts as a 10-min-rounded epoch-second value driven by the
+  // global selectedTime so scrubbing back loads historical Windy frames.
+  const windyTs = Math.floor(selectedTime / 600) * 600;
 
-  useRadarLayers({
-    map: styleLoaded ? mapRef.current : null,
-    plan,
-    selectedTime,
+  useWindyLayer({
+    map: styleLoaded && layerMode === 'radar' ? mapRef.current : null,
+    ts: windyTs,
+    product: 'radar',
   });
 
-  // Maintain alerts source + layers.
+  useNexradLayer({
+    map: styleLoaded && layerMode === 'radar' ? mapRef.current : null,
+    time: selectedTime * 1000,
+  });
+
+  useRadarStack(styleLoaded && layerMode === 'radar' ? mapRef.current : null);
+
+  useSatelliteLayer({
+    map: styleLoaded ? mapRef.current : null,
+    enabled: layerMode === 'satellite',
+    product: satelliteProduct,
+  });
+
+  // Alerts source + layers stay mounted across mode switches.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleLoaded) return;
@@ -140,10 +134,7 @@ export function RadarMap({
       id: ALERTS_FILL_LAYER,
       type: 'fill',
       source: ALERTS_SOURCE_ID,
-      paint: {
-        'fill-color': ['get', 'color'],
-        'fill-opacity': 0.18,
-      },
+      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.18 },
     });
     map.addLayer({
       id: ALERTS_LINE_LAYER,
@@ -155,7 +146,6 @@ export function RadarMap({
         'line-opacity': 0.95,
       },
     });
-    // Pulsing red outline only on tornado events.
     map.addLayer({
       id: ALERTS_PULSE_LAYER,
       type: 'line',
@@ -184,12 +174,12 @@ export function RadarMap({
     });
   }, [styleLoaded, alerts, onAlertClick]);
 
-  // Tornado pulse via animated paint properties (CSS isn't reachable here).
+  // Tornado pulse animation.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleLoaded) return;
     let raf = 0;
-    let start = performance.now();
+    const start = performance.now();
     const tick = (now: number) => {
       const t = ((now - start) % 1400) / 1400;
       const opacity = 0.55 + Math.abs(Math.sin(t * Math.PI)) * 0.45;
@@ -205,15 +195,7 @@ export function RadarMap({
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="absolute inset-0" />
-      {plan.source === 'WINDY' ? (
-        <div className="absolute bottom-3 right-3 z-10 rounded-full bg-black/55 px-2 py-1 text-[10px] font-medium text-white/80 backdrop-blur">
-          Radar by Windy.com
-        </div>
-      ) : (
-        <div className="absolute bottom-3 right-3 z-10 rounded-full bg-black/55 px-2 py-1 text-[10px] font-medium text-white/80 backdrop-blur">
-          {plan.source} · {plan.site.id} · {plan.site.name}
-        </div>
-      )}
+      <RadarLegend />
     </div>
   );
 }

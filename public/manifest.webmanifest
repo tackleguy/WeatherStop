@@ -1,0 +1,20 @@
+{
+  "name": "WeatherStop",
+  "short_name": "WeatherStop",
+  "description": "Apple Weather-style hourly + 10-day forecasts with NWS-aware data and a built-in radar.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#060912",
+  "theme_color": "#0a0d12",
+  "categories": ["weather", "lifestyle", "navigation"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

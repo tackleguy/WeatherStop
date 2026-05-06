@@ -1,10 +1,14 @@
 import maplibregl from 'maplibre-gl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useRadarLayers } from '../../hooks/useRadarLayers';
 import { useAlerts } from '../../hooks/useAlerts';
 import { useTimeFrames } from '../../hooks/useTimeFrames';
-import { useRadarStore } from '../../store/useRadarStore';
+import {
+  categorizeAlertEvent,
+  type AlertCategory,
+  useRadarStore,
+} from '../../store/useRadarStore';
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/dark';
 const ALERTS_SOURCE = 'nws-alerts';
@@ -12,6 +16,9 @@ const ALERTS_FILL = 'nws-alerts-fill';
 const ALERTS_LINE = 'nws-alerts-line';
 const ALERTS_PULSE = 'nws-alerts-pulse';
 const ALERTS_FOCUS = 'nws-alerts-focus';
+const RULER_SOURCE = 'ruler-line';
+const RULER_LINE_LAYER = 'ruler-line-layer';
+const RULER_POINTS_LAYER = 'ruler-points-layer';
 
 interface Props {
   onMapReady?: (map: maplibregl.Map) => void;
@@ -31,6 +38,18 @@ const SEV_COLOR_EXPR: maplibregl.DataDrivenPropertyValueSpecification<string> = 
   '#94a3b8',
 ];
 
+function buildCategoryFilter(
+  filter: Set<AlertCategory>,
+): maplibregl.FilterSpecification | undefined {
+  if (filter.size === 0) return undefined;
+  const allowed: maplibregl.FilterSpecification = [
+    'in',
+    ['get', 'category'],
+    ['literal', Array.from(filter)],
+  ] as maplibregl.FilterSpecification;
+  return allowed;
+}
+
 export function RadarMap({ onMapReady }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -40,13 +59,38 @@ export function RadarMap({ onMapReady }: Props) {
   const currentFrameIdx = useRadarStore((s) => s.currentFrameIdx);
   const setMapZoom = useRadarStore((s) => s.setMapZoom);
   const setBbox = useRadarStore((s) => s.setBbox);
+  const setMapCenter = useRadarStore((s) => s.setMapCenter);
   const focusedAlertId = useRadarStore((s) => s.focusedAlertId);
   const focusAlert = useRadarStore((s) => s.focusAlert);
+  const alertFilter = useRadarStore((s) => s.alertFilter);
+  const setInspectAt = useRadarStore((s) => s.setInspectAt);
+  const rulerActive = useRadarStore((s) => s.rulerActive);
+  const rulerPoints = useRadarStore((s) => s.rulerPoints);
+  const pushRulerPoint = useRadarStore((s) => s.pushRulerPoint);
 
   const frames = useTimeFrames();
   const ts = frames[currentFrameIdx] ?? frames[frames.length - 1];
 
   const { alerts } = useAlerts();
+
+  const features = useMemo<GeoJSON.Feature[]>(
+    () =>
+      alerts
+        .filter((a) => a.geometry !== null)
+        .map((a) => ({
+          type: 'Feature',
+          id: a.id,
+          properties: {
+            id: a.id,
+            event: a.event,
+            severity: a.severity,
+            category: categorizeAlertEvent(a.event),
+            isTornado: /tornado/i.test(a.event),
+          },
+          geometry: a.geometry as GeoJSON.Geometry,
+        })),
+    [alerts],
+  );
 
   // Map setup.
   useEffect(() => {
@@ -61,12 +105,17 @@ export function RadarMap({ onMapReady }: Props) {
       attributionControl: { compact: true },
     });
     mapRef.current = map;
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(
+      new maplibregl.NavigationControl({ showCompass: false }),
+      'top-right',
+    );
 
     const updateViewport = () => {
       const b = map.getBounds();
+      const c = map.getCenter();
       setMapZoom(map.getZoom());
       setBbox([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+      setMapCenter([c.lng, c.lat]);
     };
 
     map.on('load', () => {
@@ -96,19 +145,6 @@ export function RadarMap({ onMapReady }: Props) {
     const map = mapRef.current;
     if (!map || !styleLoaded) return;
 
-    const features: GeoJSON.Feature[] = alerts
-      .filter((a) => a.geometry !== null)
-      .map((a) => ({
-        type: 'Feature',
-        id: a.id,
-        properties: {
-          id: a.id,
-          event: a.event,
-          severity: a.severity,
-          isTornado: /tornado/i.test(a.event),
-        },
-        geometry: a.geometry as GeoJSON.Geometry,
-      }));
     const collection: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
       features,
@@ -163,18 +199,69 @@ export function RadarMap({ onMapReady }: Props) {
       },
     });
 
-    map.on('click', ALERTS_FILL, (e) => {
-      const f = e.features?.[0];
-      const id = f?.properties?.id;
-      if (typeof id === 'string') focusAlert(id);
-    });
     map.on('mouseenter', ALERTS_FILL, () => {
       map.getCanvas().style.cursor = 'pointer';
     });
     map.on('mouseleave', ALERTS_FILL, () => {
       map.getCanvas().style.cursor = '';
     });
-  }, [alerts, styleLoaded, focusAlert]);
+  }, [features, styleLoaded]);
+
+  // Apply category filter to all alert layers as the user toggles it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoaded) return;
+    const catFilter = buildCategoryFilter(alertFilter);
+    if (map.getLayer(ALERTS_FILL)) {
+      map.setFilter(ALERTS_FILL, catFilter ?? null);
+    }
+    if (map.getLayer(ALERTS_LINE)) {
+      map.setFilter(ALERTS_LINE, catFilter ?? null);
+    }
+  }, [alertFilter, styleLoaded]);
+
+  // Click handling: alerts → focus; otherwise → ruler/inspect.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoaded) return;
+
+    const handler = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+      // If the click landed on an alert polygon, treat it as alert focus
+      // (highest-priority interaction).
+      const hits = map.queryRenderedFeatures(e.point, {
+        layers: [ALERTS_FILL],
+      });
+      if (hits.length > 0 && !rulerActive) {
+        const id = hits[0].properties?.id;
+        if (typeof id === 'string') {
+          focusAlert(id);
+          return;
+        }
+      }
+
+      const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+
+      if (rulerActive) {
+        pushRulerPoint(lngLat);
+        return;
+      }
+
+      // Otherwise — show inspector for the clicked point.
+      setInspectAt(lngLat);
+    };
+
+    map.on('click', handler);
+    return () => {
+      map.off('click', handler);
+    };
+  }, [styleLoaded, rulerActive, focusAlert, pushRulerPoint, setInspectAt]);
+
+  // Cursor hint when the ruler tool is active.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = rulerActive ? 'crosshair' : '';
+  }, [rulerActive]);
 
   // Tornado pulse animation.
   useEffect(() => {
@@ -194,6 +281,70 @@ export function RadarMap({ onMapReady }: Props) {
     return () => cancelAnimationFrame(raf);
   }, [styleLoaded]);
 
+  // Ruler source + line layer.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoaded) return;
+
+    const collection: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features:
+        rulerPoints.length === 0
+          ? []
+          : [
+              ...(rulerPoints.length === 2
+                ? [
+                    {
+                      type: 'Feature',
+                      properties: { kind: 'line' },
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: rulerPoints,
+                      },
+                    } as GeoJSON.Feature,
+                  ]
+                : []),
+              ...rulerPoints.map<GeoJSON.Feature>((p, i) => ({
+                type: 'Feature',
+                properties: { kind: 'point', i },
+                geometry: { type: 'Point', coordinates: p },
+              })),
+            ],
+    };
+
+    const existing = map.getSource(RULER_SOURCE) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existing) {
+      existing.setData(collection);
+      return;
+    }
+    map.addSource(RULER_SOURCE, { type: 'geojson', data: collection });
+    map.addLayer({
+      id: RULER_LINE_LAYER,
+      type: 'line',
+      source: RULER_SOURCE,
+      filter: ['==', ['get', 'kind'], 'line'],
+      paint: {
+        'line-color': '#ff8a3d',
+        'line-width': 2,
+        'line-dasharray': [2, 2],
+      },
+    });
+    map.addLayer({
+      id: RULER_POINTS_LAYER,
+      type: 'circle',
+      source: RULER_SOURCE,
+      filter: ['==', ['get', 'kind'], 'point'],
+      paint: {
+        'circle-radius': 5,
+        'circle-color': '#ff8a3d',
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 2,
+      },
+    });
+  }, [rulerPoints, styleLoaded]);
+
   // Fly to + highlight a focused alert.
   useEffect(() => {
     const map = mapRef.current;
@@ -212,7 +363,6 @@ export function RadarMap({ onMapReady }: Props) {
       map.setFilter(ALERTS_FOCUS, ['==', ['get', 'id'], focusedAlertId]);
     }
 
-    // Compute bounds from geometry (Polygon / MultiPolygon / Point).
     const bounds = new maplibregl.LngLatBounds();
     const collect = (g: GeoJSON.Geometry) => {
       if (g.type === 'Polygon') for (const ring of g.coordinates) for (const c of ring) bounds.extend([c[0], c[1]] as [number, number]);

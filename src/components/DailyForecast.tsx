@@ -3,6 +3,7 @@ import { Card } from './Card';
 import { WeatherIcon } from '../lib/weatherIcons';
 import { displayTemp } from '../lib/display';
 import { formatDayLabel } from '../lib/format';
+import { weekHeadline } from '../lib/dayNarrative';
 import type { Settings, WeatherData } from '../types';
 
 interface Props {
@@ -74,6 +75,7 @@ export function DailyForecast({ data, settings, index }: Props) {
   const currentTemp = data.current.temp;
 
   const meta = `${displayTemp(data.today.high, settings)} / ${displayTemp(data.today.low, settings)}`;
+  const headline = weekHeadline(data);
 
   return (
     <Card
@@ -82,6 +84,9 @@ export function DailyForecast({ data, settings, index }: Props) {
       index={index}
       meta={meta}
     >
+      {headline ? (
+        <p className="mb-2 px-1 text-[12px] text-white/65">{headline}</p>
+      ) : null}
       <div className="-mx-1">
         {days.map((day, i) => {
           const isToday = i === 0;

@@ -1,16 +1,20 @@
-import { Plus, Search, Settings as SettingsIcon } from 'lucide-react';
+import { Layers, Plus, Search, Settings as SettingsIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CityCarousel } from './components/CityCarousel';
 import { CityListItem } from './components/CityListItem';
 import { CitySearch } from './components/CitySearch';
 import { CityView } from './components/CityView';
+import { CompareModal } from './components/CompareModal';
+import { InstallPrompt } from './components/InstallPrompt';
 import { PageIndicator } from './components/PageIndicator';
 import { SettingsSheet } from './components/SettingsSheet';
 import { DynamicBackground } from './components/backgrounds/DynamicBackground';
 import { INITIAL_SEED } from './constants/cities';
 import { useCities } from './hooks/useCities';
 import { useGeolocation } from './hooks/useGeolocation';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useSettings } from './hooks/useSettings';
+import { invalidate } from './lib/weatherCache';
 import { localHourIn } from './lib/format';
 import { gradientFor } from './lib/weatherCodes';
 import { reverseGeocodeUS } from './lib/nws';
@@ -24,6 +28,7 @@ export default function App() {
   const [active, setActive] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [activeBundle, setActiveBundle] = useState<WeatherSnapshot | undefined>();
 
   const bootstrapRan = useRef(false);
@@ -98,6 +103,26 @@ export default function App() {
   const hasCurrent = cities.some((c) => c.isCurrent);
   const activeCity = cities[Math.min(active, Math.max(0, cities.length - 1))];
 
+  useKeyboardShortcuts({
+    prevCity: () => setActive((i) => Math.max(0, i - 1)),
+    nextCity: () =>
+      setActive((i) => Math.min(Math.max(0, cities.length - 1), i + 1)),
+    openSearch: () => setSearchOpen(true),
+    openSettings: () => setSettingsOpen(true),
+    toggleCompare: () => setCompareOpen((v) => !v),
+    refresh: () => {
+      if (activeCity) invalidate(activeCity);
+      // Force a re-render of the active CityView; useWeather restarts
+      // its effect when refreshTick increments.
+      setActiveBundle((s) => (s ? { ...s } : s));
+    },
+    closeModals: () => {
+      setSearchOpen(false);
+      setSettingsOpen(false);
+      setCompareOpen(false);
+    },
+  });
+
   return (
     <div className="relative min-h-[100dvh]">
       <DynamicBackground gradient={gradient} weatherCode={code} isDay={isDay} />
@@ -115,6 +140,16 @@ export default function App() {
                 className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
               >
                 <SettingsIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
+              </button>
+              <button
+                type="button"
+                aria-label="Compare cities"
+                title="Compare (C)"
+                onClick={() => setCompareOpen(true)}
+                disabled={cities.length < 2}
+                className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Layers className="h-3.5 w-3.5" strokeWidth={2.2} />
               </button>
               <button
                 type="button"
@@ -217,6 +252,15 @@ export default function App() {
         settings={settings}
         onChange={update}
       />
+
+      <CompareModal
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        cities={cities}
+        settings={settings}
+      />
+
+      <InstallPrompt />
     </div>
   );
 }

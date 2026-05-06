@@ -10,7 +10,12 @@ import { SunCard } from './SunCard';
 import { WindCard } from './WindCard';
 import { PrecipitationCard } from './PrecipitationCard';
 import { DetailsGrid } from './DetailsGrid';
+import { ComfortCard } from './ComfortCard';
+import { PressureTrendCard } from './PressureTrendCard';
+import { MoonCard } from './MoonCard';
+import { TideCard } from './TideCard';
 import { useWeather } from '../hooks/useWeather';
+import { useTides } from '../hooks/useTides';
 import { relativeTimeShort } from '../lib/format';
 import type { City, Settings, WeatherSnapshot } from '../types';
 
@@ -49,6 +54,7 @@ function ErrorState({
 
 export function CityView({ city, settings, onSnapshot }: Props) {
   const { data, error, refresh } = useWeather(city);
+  const tides = useTides(city);
   const [, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -95,14 +101,25 @@ export function CityView({ city, settings, onSnapshot }: Props) {
       <HeroCard data={w} settings={settings} isCurrent={city.isCurrent} />
       <Meteogram data={w} settings={settings} index={0} />
       <DailyForecast data={w} settings={settings} index={1} />
-      <AirQualityCard data={data.airQuality} index={2} />
-      <UVIndexCard data={w} index={3} />
+      <ComfortCard data={w} settings={settings} index={2} />
+      <PrecipitationCard data={w} index={3} />
+      <AirQualityCard data={data.airQuality} index={4} />
+      <UVIndexCard data={w} index={5} />
       <div className="grid grid-cols-2 gap-3">
-        <SunCard data={w} index={4} />
-        <WindCard data={w} settings={settings} index={5} />
+        <SunCard data={w} index={6} />
+        <WindCard data={w} settings={settings} index={7} />
       </div>
-      <PrecipitationCard data={w} index={6} />
-      <DetailsGrid data={w} settings={settings} index={7} />
+      <PressureTrendCard data={w} index={8} />
+      {tides.station ? (
+        <TideCard
+          station={tides.station}
+          events={tides.events}
+          loading={tides.loading}
+          index={9}
+        />
+      ) : null}
+      <MoonCard index={tides.station ? 10 : 9} />
+      <DetailsGrid data={w} settings={settings} index={tides.station ? 11 : 10} />
 
       <div className="pt-2 text-center text-[11px] text-white/55">
         Updated {relativeTimeShort(w.fetchedAt)}

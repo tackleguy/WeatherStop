@@ -15,6 +15,7 @@ import maplibregl from 'maplibre-gl';
 import { fadeRasterTo } from '../lib/crossfade';
 import { getProduct, type ProductId } from '../constants/products';
 import { windyTileUrl } from '../lib/windy';
+import { useRadarStore } from '../store/useRadarStore';
 
 export const WINDY_SOURCE = 'windy-radar';
 export const WINDY_LAYER = 'windy-radar-layer';
@@ -130,13 +131,19 @@ export function useRadarLayers({ map, styleLoaded, activeProduct, ts }: Args) {
     };
   }, [map, styleLoaded, activeProduct, ts]);
 
-  // Crossfade by active layer source.
+  // Crossfade by active layer source. The user's overlayOpacity slider
+  // (store) acts as a multiplier so layer visibility reads as
+  // `target * userMultiplier`. We watch the store directly so changes
+  // to the slider propagate without re-rendering the whole map.
+  const overlay = useRadarStore((s) => s.overlayOpacity);
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const product = getProduct(activeProduct);
     const isWindy = product.layer === 'windy';
     const isNWS = product.layer === 'nws-overlay';
-    fadeRasterTo(map, WINDY_LAYER, isWindy ? 0.78 : 0);
-    fadeRasterTo(map, NWS_LAYER, isNWS ? 0.85 : 0);
-  }, [map, styleLoaded, activeProduct]);
+    const windyTarget = isWindy ? 0.78 : 0;
+    const nwsTarget = isNWS ? 0.85 : 0;
+    fadeRasterTo(map, WINDY_LAYER, windyTarget * overlay);
+    fadeRasterTo(map, NWS_LAYER, nwsTarget * overlay);
+  }, [map, styleLoaded, activeProduct, overlay]);
 }

@@ -1,12 +1,18 @@
 import { useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { TopBar } from './components/layout/TopBar';
-import { ProductRail } from './components/radar/ProductRail';
-import { TimeScrubber } from './components/radar/TimeScrubber';
+import { AlertFilterChips } from './components/radar/AlertFilterChips';
 import { AlertsPanel } from './components/radar/AlertsPanel';
-import { RadarMap } from './components/radar/RadarMap';
+import { BookmarkBar } from './components/radar/BookmarkBar';
+import { ClickInspector } from './components/radar/ClickInspector';
+import { DistanceRuler } from './components/radar/DistanceRuler';
+import { LayerOpacitySlider } from './components/radar/LayerOpacitySlider';
+import { ProductRail } from './components/radar/ProductRail';
 import { RadarLegend } from './components/radar/RadarLegend';
+import { RadarMap } from './components/radar/RadarMap';
+import { ScaleBar } from './components/radar/ScaleBar';
 import { StationModal } from './components/radar/StationModal';
+import { TimeScrubber } from './components/radar/TimeScrubber';
 import { useIsMobile } from './hooks/useMediaQuery';
 import { PRODUCTS } from './constants/products';
 import { useRadarStore } from './store/useRadarStore';
@@ -26,7 +32,15 @@ export default function App() {
 
         <main className="relative flex-1 overflow-hidden">
           <RadarMap onMapReady={setMap} />
+
+          {/* Floating chrome above the map */}
+          {!isMobile ? <AlertFilterChips /> : null}
+          {!isMobile ? <LayerOpacitySlider /> : null}
           <RadarLegend />
+          <ScaleBar map={map} />
+          <BookmarkBar map={map} />
+          <DistanceRuler />
+          <ClickInspector />
         </main>
 
         {!isMobile ? <AlertsPanel /> : null}

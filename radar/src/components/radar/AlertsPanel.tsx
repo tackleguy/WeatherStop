@@ -1,7 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
+import { useMemo } from 'react';
 import { useAlerts } from '../../hooks/useAlerts';
-import { useRadarStore } from '../../store/useRadarStore';
+import {
+  categorizeAlertEvent,
+  useRadarStore,
+} from '../../store/useRadarStore';
 import { severityColor } from '../../lib/colorTables';
 
 export function AlertsPanel() {
@@ -9,7 +13,16 @@ export function AlertsPanel() {
   const togglePanel = useRadarStore((s) => s.togglePanel);
   const focusedAlertId = useRadarStore((s) => s.focusedAlertId);
   const focusAlert = useRadarStore((s) => s.focusAlert);
-  const { alerts, loading } = useAlerts();
+  const filter = useRadarStore((s) => s.alertFilter);
+  const { alerts: rawAlerts, loading } = useAlerts();
+
+  const alerts = useMemo(
+    () =>
+      filter.size === 0
+        ? rawAlerts
+        : rawAlerts.filter((a) => filter.has(categorizeAlertEvent(a.event))),
+    [rawAlerts, filter],
+  );
 
   return (
     <AnimatePresence>

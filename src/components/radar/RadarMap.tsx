@@ -71,6 +71,19 @@ export function RadarMap({ onMapReady }: Props) {
 
   const frames = useTimeFrames();
   const ts = frames[currentFrameIdx] ?? frames[frames.length - 1];
+  // Iowa State historical frames need a YYYYMMDDHHMM path segment.
+  // The live (latest) frame uses the unversioned cache, so pass null.
+  const iowaTs = useMemo(() => {
+    if (currentFrameIdx >= frames.length - 1) return null;
+    const d = new Date(ts * 1000);
+    return (
+      `${d.getUTCFullYear()}` +
+      `${String(d.getUTCMonth() + 1).padStart(2, '0')}` +
+      `${String(d.getUTCDate()).padStart(2, '0')}` +
+      `${String(d.getUTCHours()).padStart(2, '0')}` +
+      `${String(d.getUTCMinutes()).padStart(2, '0')}`
+    );
+  }, [ts, currentFrameIdx, frames.length]);
 
   const { catalog } = useRainViewer();
   // Map our 0..FRAME_COUNT-1 scrubber index onto the actual RainViewer
@@ -166,6 +179,7 @@ export function RadarMap({ onMapReady }: Props) {
     catalog,
     frameIndex: rainViewerFrameIndex,
     ts,
+    iowaTs,
     manualSite,
   });
 

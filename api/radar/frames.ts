@@ -1,24 +1,56 @@
-// Returns the list of frame timestamps (epoch seconds, 5-min cadence)
-// available for scrubbing. Today this is a generated rolling window —
-// last 60 minutes — because both Windy and the NOAA mapservices return
-// the closest frame to a given timestamp without us having to enumerate.
+// Time-frame catalog for the radar scrubber. Returns 13 frames at
+// 5-minute intervals covering the last hour, each with the timestamp
+// shapes the various tile sources expect:
 //
-// Once we add server-side caching on the radar overlay, this is where we
-// would expose the actual cached list.
+//   • iowaTs  — YYYYMMDDHHMM (Iowa State path segment for historical)
+//   • windyTs — epoch seconds rounded to 10-min (Windy path segment)
+//
+// Iowa State updates ~every 5 min so the cadence lines up with their
+// frames. Windy snaps to 10-min on the upstream side, so consecutive
+// 5-min frames will sometimes repeat the same Windy ts — expected.
 
 export const config = { runtime: 'edge' };
 
-const WINDOW_MINUTES = 60;
-const STEP_MINUTES = 5;
+const FRAME_MIN = 5;
+const COUNT = 13;
 
 export default async function handler(): Promise<Response> {
-  const now = Math.floor(Date.now() / 1000 / 600) * 600;
-  const frames: number[] = [];
-  for (let m = WINDOW_MINUTES; m >= 0; m -= STEP_MINUTES) {
-    frames.push(now - m * 60);
+  const now = Date.now();
+  const latest = Math.floor(now / (FRAME_MIN * 60_000)) * (FRAME_MIN * 60_000);
+
+  const frames: Array<{
+    index: number;
+    timestamp: number;
+    iso: string;
+    iowaTs: string;
+    windyTs: number;
+    isLive: boolean;
+    minutesAgo: number;
+  }> = [];
+
+  for (let i = COUNT - 1; i >= 0; i--) {
+    const t = latest - i * FRAME_MIN * 60_000;
+    const d = new Date(t);
+    const iowaTs =
+      `${d.getUTCFullYear()}` +
+      `${String(d.getUTCMonth() + 1).padStart(2, '0')}` +
+      `${String(d.getUTCDate()).padStart(2, '0')}` +
+      `${String(d.getUTCHours()).padStart(2, '0')}` +
+      `${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    const windyTs = Math.floor(t / 600_000) * 600;
+    frames.push({
+      index: COUNT - 1 - i,
+      timestamp: t,
+      iso: d.toISOString(),
+      iowaTs,
+      windyTs,
+      isLive: i === 0,
+      minutesAgo: i * FRAME_MIN,
+    });
   }
+
   return new Response(
-    JSON.stringify({ frames, stepMinutes: STEP_MINUTES, generatedAt: now }),
+    JSON.stringify({ frames, latest, frameIntervalMin: FRAME_MIN }),
     {
       headers: {
         'Content-Type': 'application/json',

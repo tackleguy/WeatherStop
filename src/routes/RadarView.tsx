@@ -8,6 +8,7 @@ import { AlertsPanel } from '../components/radar/AlertsPanel';
 import { BookmarkBar } from '../components/radar/BookmarkBar';
 import { ClickInspector } from '../components/radar/ClickInspector';
 import { DistanceRuler } from '../components/radar/DistanceRuler';
+import { FocusedAlertChip } from '../components/radar/FocusedAlertChip';
 import { LayerOpacitySlider } from '../components/radar/LayerOpacitySlider';
 import { ProductRail } from '../components/radar/ProductRail';
 import { RadarLegend } from '../components/radar/RadarLegend';
@@ -42,6 +43,7 @@ export function RadarView() {
 
           {!isMobile ? <AlertFilterChips /> : null}
           {!isMobile ? <LayerOpacitySlider /> : null}
+          <FocusedAlertChip />
           <RadarLegend />
           <ScaleBar map={map} />
           <BookmarkBar map={map} />

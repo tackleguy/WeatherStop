@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, ChevronRight, X } from 'lucide-react';
 import { useMemo } from 'react';
 import { useAlerts } from '../../hooks/useAlerts';
 import {
@@ -7,6 +7,7 @@ import {
   useRadarStore,
 } from '../../store/useRadarStore';
 import { severityColor } from '../../lib/colorTables';
+import { AlertDetail } from './AlertDetail';
 
 export function AlertsPanel() {
   const open = useRadarStore((s) => s.panelsOpen.alerts);
@@ -24,6 +25,11 @@ export function AlertsPanel() {
     [rawAlerts, filter],
   );
 
+  const focused = focusedAlertId
+    ? alerts.find((a) => a.id === focusedAlertId) ??
+      rawAlerts.find((a) => a.id === focusedAlertId)
+    : null;
+
   return (
     <AnimatePresence>
       {open ? (
@@ -33,60 +39,66 @@ export function AlertsPanel() {
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 320, opacity: 0 }}
           transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-          className="absolute bottom-0 right-0 top-0 z-10 flex w-[320px] flex-col border-l border-[var(--line-default)] backdrop-blur-[28px]"
+          className="absolute bottom-0 right-0 top-0 z-10 flex w-[360px] flex-col border-l border-[var(--line-default)] backdrop-blur-[28px]"
           style={{ background: 'var(--glass-hi)' }}
         >
-          <header className="flex h-12 items-center justify-between border-b border-[var(--line-subtle)] px-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle
-                className="h-4 w-4"
-                strokeWidth={2}
-                style={{ color: 'var(--sev-severe)' }}
-              />
-              <h2 className="text-[13px] font-semibold uppercase tracking-wider">
-                Active Alerts
-              </h2>
-              <span
-                data-num
-                className="text-[11px] text-[var(--ink-3)]"
-              >
-                {alerts.length}
-              </span>
-            </div>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={() => togglePanel('alerts')}
-              className="rounded p-1 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
-            >
-              <X className="h-4 w-4" strokeWidth={2} />
-            </button>
-          </header>
-
-          <div className="flex-1 overflow-y-auto">
-            {loading && alerts.length === 0 ? (
-              <div className="p-4 text-sm text-[var(--ink-3)]">
-                Loading alerts…
-              </div>
-            ) : null}
-            {!loading && alerts.length === 0 ? (
-              <div className="p-8 text-center">
-                <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-[var(--ink-4)]" />
-                <p className="text-sm text-[var(--ink-3)]">No active alerts</p>
-              </div>
-            ) : null}
-            {alerts.map((a) => {
-              const active = a.id === focusedAlertId;
-              return (
+          {focused ? (
+            <AlertDetail
+              alert={focused}
+              onBack={() => focusAlert(null)}
+              onClose={() => {
+                focusAlert(null);
+                togglePanel('alerts');
+              }}
+              onLocate={null}
+            />
+          ) : (
+            <>
+              <header className="flex h-12 items-center justify-between border-b border-[var(--line-subtle)] px-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle
+                    className="h-4 w-4"
+                    strokeWidth={2}
+                    style={{ color: 'var(--sev-severe)' }}
+                  />
+                  <h2 className="text-[13px] font-semibold uppercase tracking-wider">
+                    Active Alerts
+                  </h2>
+                  <span data-num className="text-[11px] text-[var(--ink-3)]">
+                    {alerts.length}
+                  </span>
+                </div>
                 <button
-                  key={a.id}
                   type="button"
-                  onClick={() => focusAlert(a.id)}
-                  className={`w-full border-b border-[var(--line-subtle)] px-4 py-3 text-left transition-colors hover:bg-white/5 ${
-                    active ? 'bg-white/8' : ''
-                  }`}
+                  aria-label="Close"
+                  onClick={() => togglePanel('alerts')}
+                  className="rounded p-1 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
                 >
-                  <div className="flex items-start gap-3">
+                  <X className="h-4 w-4" strokeWidth={2} />
+                </button>
+              </header>
+
+              <div className="flex-1 overflow-y-auto">
+                {loading && alerts.length === 0 ? (
+                  <div className="p-4 text-sm text-[var(--ink-3)]">
+                    Loading alerts…
+                  </div>
+                ) : null}
+                {!loading && alerts.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-[var(--ink-4)]" />
+                    <p className="text-sm text-[var(--ink-3)]">
+                      No active alerts
+                    </p>
+                  </div>
+                ) : null}
+                {alerts.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => focusAlert(a.id)}
+                    className="flex w-full items-start gap-3 border-b border-[var(--line-subtle)] px-4 py-3 text-left transition-colors hover:bg-white/5"
+                  >
                     <div
                       className="mt-0.5 w-1 self-stretch rounded-full"
                       style={{ background: severityColor(a.severity) }}
@@ -102,11 +114,15 @@ export function AlertsPanel() {
                         Expires {a.expiresRelative}
                       </div>
                     </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                    <ChevronRight
+                      className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--ink-4)]"
+                      strokeWidth={2}
+                    />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </motion.aside>
       ) : null}
     </AnimatePresence>

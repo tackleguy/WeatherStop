@@ -1,15 +1,11 @@
-// Surface products for the left rail. Each row maps to either a NEXRAD
-// product (radar overlay path) or a satellite GOES band (satellite path).
-// Lightning is reserved for a future phase but listed here so the rail
-// can show it as disabled.
-
 import {
-  ArrowUp,
+  ArrowUpRight,
   CloudRain,
   Cloudy,
   Droplets,
   Globe,
   Sun,
+  Thermometer,
   Tornado,
   Wind,
   Zap,
@@ -17,37 +13,141 @@ import {
 import type { LucideIcon } from 'lucide-react';
 
 export type ProductId =
-  | 'refl'
-  | 'vel'
-  | 'srv'
-  | 'tops'
+  | 'reflectivity'
+  | 'velocity'
+  | 'storm-rel-velocity'
+  | 'echo-tops'
   | 'vil'
-  | 'comp'
-  | 'sat-ir'
-  | 'sat-vis'
-  | 'lightning';
+  | 'composite'
+  | 'satellite-ir'
+  | 'satellite-vis'
+  | 'lightning'
+  | 'temperature';
 
-export interface ProductDef {
+export type LayerSource = 'windy' | 'nws-overlay' | 'placeholder';
+export type LegendKind = 'dbz' | 'kts' | 'satellite' | 'temp' | 'none';
+
+export interface Product {
   id: ProductId;
   label: string;
-  short: string;
-  kind: 'radar' | 'satellite' | 'future';
-  /** Sub-key used by the proxy to pick the upstream product. */
-  proxyParam: string;
+  shortLabel: string;
   icon: LucideIcon;
-  disabled?: boolean;
+  layer: LayerSource;
+  /** Windy product slug (when layer === 'windy'). */
+  windyProduct?: string;
+  /** NOAA mapservices ImageServer name (when layer === 'nws-overlay'). */
+  nwsProduct?: string;
+  legend: LegendKind;
+  description: string;
+  /** Disabled below this map zoom level. */
+  requiresZoom?: number;
 }
 
-export const PRODUCTS: ProductDef[] = [
-  { id: 'refl',    label: 'Reflectivity',         short: 'BR',  kind: 'radar',     proxyParam: 'refl', icon: CloudRain },
-  { id: 'vel',     label: 'Velocity',             short: 'BV',  kind: 'radar',     proxyParam: 'vel',  icon: Wind },
-  { id: 'srv',     label: 'Storm-Rel Velocity',   short: 'SRV', kind: 'radar',     proxyParam: 'srv',  icon: Tornado },
-  { id: 'tops',    label: 'Echo Tops',            short: 'ET',  kind: 'radar',     proxyParam: 'tops', icon: ArrowUp },
-  { id: 'vil',     label: 'VIL',                  short: 'VIL', kind: 'radar',     proxyParam: 'vil',  icon: Droplets },
-  { id: 'comp',    label: 'Composite',            short: 'CR',  kind: 'radar',     proxyParam: 'comp', icon: Cloudy },
-  { id: 'sat-ir',  label: 'Satellite (IR)',       short: 'IR',  kind: 'satellite', proxyParam: 'ir',   icon: Globe },
-  { id: 'sat-vis', label: 'Satellite (Visible)',  short: 'VIS', kind: 'satellite', proxyParam: 'vis',  icon: Sun },
-  { id: 'lightning', label: 'Lightning (soon)',   short: 'LTG', kind: 'future',    proxyParam: '',     icon: Zap, disabled: true },
+export const PRODUCTS: Product[] = [
+  {
+    id: 'reflectivity',
+    label: 'Reflectivity',
+    shortLabel: 'REFL',
+    icon: CloudRain,
+    layer: 'windy',
+    windyProduct: 'radar',
+    legend: 'dbz',
+    description: 'Precipitation intensity (composite)',
+  },
+  {
+    id: 'velocity',
+    label: 'Base Velocity',
+    shortLabel: 'VEL',
+    icon: Wind,
+    layer: 'nws-overlay',
+    nwsProduct: 'radar_base_velocity_time',
+    legend: 'kts',
+    description: 'Wind toward / away from radar',
+  },
+  {
+    id: 'storm-rel-velocity',
+    label: 'Storm-Rel Velocity',
+    shortLabel: 'SRV',
+    icon: Tornado,
+    layer: 'nws-overlay',
+    nwsProduct: 'radar_storm_rel_velocity_time',
+    legend: 'kts',
+    description: 'Velocity relative to storm motion',
+    requiresZoom: 6,
+  },
+  {
+    id: 'echo-tops',
+    label: 'Echo Tops',
+    shortLabel: 'ET',
+    icon: ArrowUpRight,
+    layer: 'nws-overlay',
+    nwsProduct: 'radar_echo_tops_time',
+    legend: 'none',
+    description: 'Storm cloud top heights',
+  },
+  {
+    id: 'vil',
+    label: 'VIL',
+    shortLabel: 'VIL',
+    icon: Droplets,
+    layer: 'nws-overlay',
+    nwsProduct: 'radar_vil_time',
+    legend: 'none',
+    description: 'Vertically Integrated Liquid',
+  },
+  {
+    id: 'composite',
+    label: 'Composite Refl',
+    shortLabel: 'CR',
+    icon: Cloudy,
+    layer: 'windy',
+    windyProduct: 'radar',
+    legend: 'dbz',
+    description: 'Maximum reflectivity in column',
+  },
+  {
+    id: 'satellite-ir',
+    label: 'Satellite (IR)',
+    shortLabel: 'IR',
+    icon: Globe,
+    layer: 'windy',
+    windyProduct: 'satellite',
+    legend: 'satellite',
+    description: 'Infrared, day/night cloud coverage',
+  },
+  {
+    id: 'satellite-vis',
+    label: 'Satellite (Visible)',
+    shortLabel: 'VIS',
+    icon: Sun,
+    layer: 'windy',
+    windyProduct: 'satellite',
+    legend: 'satellite',
+    description: 'True-color daytime',
+  },
+  {
+    id: 'temperature',
+    label: 'Temperature',
+    shortLabel: 'TEMP',
+    icon: Thermometer,
+    layer: 'windy',
+    windyProduct: 'temp',
+    legend: 'temp',
+    description: 'Surface temperature',
+  },
+  {
+    id: 'lightning',
+    label: 'Lightning',
+    shortLabel: 'LTG',
+    icon: Zap,
+    layer: 'placeholder',
+    legend: 'none',
+    description: 'Coming soon',
+  },
 ];
 
-export const DEFAULT_PRODUCT: ProductId = 'refl';
+export const DEFAULT_PRODUCT: ProductId = 'reflectivity';
+
+export function getProduct(id: ProductId): Product {
+  return PRODUCTS.find((p) => p.id === id) ?? PRODUCTS[0];
+}

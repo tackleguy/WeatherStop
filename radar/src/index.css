@@ -4,40 +4,122 @@
 
 :root {
   color-scheme: dark;
+
+  /* Surfaces */
+  --surface-0: #060912;
+  --surface-1: #0b1020;
+  --surface-2: #111830;
+  --surface-3: #1a2240;
+
+  /* Glass panels */
+  --glass: rgba(11, 16, 32, 0.78);
+  --glass-hi: rgba(20, 28, 50, 0.86);
+  --blur-xl: blur(28px) saturate(160%);
+  --blur-md: blur(18px) saturate(140%);
+
+  /* Borders */
+  --line-subtle: rgba(255, 255, 255, 0.06);
+  --line-default: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.18);
+
+  /* Text */
+  --ink-1: #f4f6fb;
+  --ink-2: rgba(244, 246, 251, 0.78);
+  --ink-3: rgba(244, 246, 251, 0.56);
+  --ink-4: rgba(244, 246, 251, 0.36);
+
+  /* Accent — AccuWeather warm */
+  --accent: #ff8a3d;
+  --accent-2: #ffb066;
+  --accent-glow: rgba(255, 138, 61, 0.35);
+
+  /* Cool secondary */
+  --cool: #4dd9ff;
+  --cool-glow: rgba(77, 217, 255, 0.3);
+
+  /* Severity (NWS color code) */
+  --sev-extreme: #d946ef;
+  --sev-severe: #ef4444;
+  --sev-moderate: #f59e0b;
+  --sev-minor: #fbbf24;
+  --sev-unknown: #94a3b8;
+
+  /* Radar dBZ palette (NWS standard) */
+  --dbz-5: #00ecec;
+  --dbz-15: #0000f6;
+  --dbz-25: #00ff00;
+  --dbz-35: #ffff00;
+  --dbz-45: #ff0000;
+  --dbz-55: #ff00ff;
+  --dbz-65: #ffffff;
+
+  /* Motion */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --t-fast: 140ms;
+  --t-base: 220ms;
+  --t-slow: 400ms;
 }
 
 html,
 body,
 #root {
   height: 100%;
+}
+
+body {
   margin: 0;
-  padding: 0;
-  background: #0a0e1a;
-  color: #f9fafb;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--surface-0);
+  color: var(--ink-1);
+  font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss03', 'tnum';
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior: none;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
-.glass {
-  background: rgba(17, 24, 39, 0.78);
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
 
-.no-scrollbar {
-  scrollbar-width: none;
+[data-num] {
+  font-variant-numeric: tabular-nums;
 }
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .maplibregl-ctrl-attrib {
-  background: rgba(17, 24, 39, 0.6) !important;
-  color: rgba(255, 255, 255, 0.6) !important;
+  background: rgba(11, 16, 32, 0.6) !important;
+  color: rgba(244, 246, 251, 0.55) !important;
   font-size: 10px !important;
 }
 .maplibregl-ctrl-attrib a {
-  color: rgba(255, 255, 255, 0.85) !important;
+  color: rgba(244, 246, 251, 0.85) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

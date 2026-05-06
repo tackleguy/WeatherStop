@@ -8,25 +8,24 @@ export default {
           'Inter',
           '-apple-system',
           'BlinkMacSystemFont',
+          'SF Pro Text',
+          'system-ui',
           'sans-serif',
         ],
       },
-      colors: {
-        ink: {
-          950: '#0a0e1a',
-          900: '#111827',
-          800: '#1f2937',
-          700: '#374151',
-        },
-      },
       keyframes: {
-        'tornado-pulse': {
-          '0%, 100%': { opacity: '1' },
-          '50%': { opacity: '0.55' },
+        'pulse-dot': {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%': { opacity: '0.45', transform: 'scale(0.92)' },
+        },
+        'alert-pulse': {
+          '0%, 100%': { opacity: '0.85' },
+          '50%': { opacity: '0.45' },
         },
       },
       animation: {
-        'tornado-pulse': 'tornado-pulse 1.4s ease-in-out infinite',
+        'pulse-dot': 'pulse-dot 1.2s cubic-bezier(0.4,0,0.6,1) infinite',
+        'alert-pulse': 'alert-pulse 1.4s ease-in-out infinite',
       },
     },
   },

@@ -6,7 +6,7 @@ dist
 .eslintcache
 tsconfig.tsbuildinfo
 
-# Cloned reference repos (see docs/REFERENCE_NOTES.md)
+# Reference clones (see docs/REFERENCE_NOTES.md)
 ref/
 
 # Env

@@ -1,5 +1,8 @@
-// Edge proxy for Windy tile server. WINDY_KEY is server-only.
-// Tile URL pattern: tiles.windy.com/tiles/v10.0/{product}-{ts}/{z}/{x}/{y}.png
+// Convenience proxy for Windy's satellite tiles. Same upstream as
+// /api/radar/windy?product=satellite — having a separate route keeps the
+// product-rail wiring explicit ("satellite is its own thing"), and lets
+// us swap in a different upstream (e.g. RealEarth) without touching
+// the radar route.
 
 export const config = { runtime: 'edge' };
 
@@ -8,7 +11,7 @@ export default async function handler(req: Request): Promise<Response> {
   const z = searchParams.get('z');
   const x = searchParams.get('x');
   const y = searchParams.get('y');
-  const product = searchParams.get('product') ?? 'radar';
+  const product = searchParams.get('product') ?? 'satellite';
   const ts =
     searchParams.get('ts') ??
     String(Math.floor(Date.now() / 1000 / 600) * 600);

@@ -6,7 +6,7 @@ import useSWR from 'swr';
 import { useEffect } from 'react';
 import { useRadarStore } from '../store/useRadarStore';
 import { useViewport } from './useViewport';
-import { parseAlerts, type AlertRow } from '../lib/nws';
+import { parseAlerts, type AlertRow } from '../lib/nwsAlerts';
 import { severityRank } from '../lib/colorTables';
 
 const fetcher = (url: string) =>

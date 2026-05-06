@@ -1,39 +1,45 @@
-import { useState } from 'react';
-import maplibregl from 'maplibre-gl';
-import { TopBar } from './components/layout/TopBar';
-import { AlertFilterChips } from './components/radar/AlertFilterChips';
-import { AlertsPanel } from './components/radar/AlertsPanel';
-import { BookmarkBar } from './components/radar/BookmarkBar';
-import { ClickInspector } from './components/radar/ClickInspector';
-import { DistanceRuler } from './components/radar/DistanceRuler';
-import { LayerOpacitySlider } from './components/radar/LayerOpacitySlider';
-import { ProductRail } from './components/radar/ProductRail';
-import { RadarLegend } from './components/radar/RadarLegend';
-import { RadarMap } from './components/radar/RadarMap';
-import { ScaleBar } from './components/radar/ScaleBar';
-import { StationModal } from './components/radar/StationModal';
-import { TimeScrubber } from './components/radar/TimeScrubber';
-import { useIsMobile } from './hooks/useMediaQuery';
-import { PRODUCTS } from './constants/products';
-import { useRadarStore } from './store/useRadarStore';
+// Radar view. The pill nav and global chrome live in App.tsx; this
+// route just lays out the map + rail + scrubber + floating widgets.
 
-export default function App() {
+import maplibregl from 'maplibre-gl';
+import { useState } from 'react';
+import { AlertFilterChips } from '../components/radar/AlertFilterChips';
+import { AlertsPanel } from '../components/radar/AlertsPanel';
+import { BookmarkBar } from '../components/radar/BookmarkBar';
+import { ClickInspector } from '../components/radar/ClickInspector';
+import { DistanceRuler } from '../components/radar/DistanceRuler';
+import { LayerOpacitySlider } from '../components/radar/LayerOpacitySlider';
+import { ProductRail } from '../components/radar/ProductRail';
+import { RadarLegend } from '../components/radar/RadarLegend';
+import { RadarMap } from '../components/radar/RadarMap';
+import { ScaleBar } from '../components/radar/ScaleBar';
+import { StationModal } from '../components/radar/StationModal';
+import { TimeScrubber } from '../components/radar/TimeScrubber';
+import { useIsMobile } from '../hooks/useMediaQuery';
+import { PRODUCTS } from '../constants/products';
+import { useRadarStore } from '../store/useRadarStore';
+
+export function RadarView() {
   const [map, setMap] = useState<maplibregl.Map | null>(null);
   const isMobile = useIsMobile();
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col">
-      <TopBar map={map} />
+    <div className="absolute inset-0 flex flex-col" style={{ background: 'var(--surface-0)' }}>
+      {/* Top spacer for the floating pill nav */}
+      <div className="h-20 shrink-0 sm:h-24" aria-hidden />
 
       {isMobile ? <MobileProductStrip /> : null}
 
       <div className="relative flex flex-1 overflow-hidden">
-        {!isMobile ? <ProductRail /> : null}
+        {!isMobile ? (
+          <div className="ml-2 mt-2">
+            <ProductRail />
+          </div>
+        ) : null}
 
         <main className="relative flex-1 overflow-hidden">
           <RadarMap onMapReady={setMap} />
 
-          {/* Floating chrome above the map */}
           {!isMobile ? <AlertFilterChips /> : null}
           {!isMobile ? <LayerOpacitySlider /> : null}
           <RadarLegend />

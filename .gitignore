@@ -1,9 +1,13 @@
 node_modules
 dist
 .DS_Store
+.vercel
 
 # Local Claude state
 .claude
+
+# Reference clones
+ref/
 
 # TS / Vite caches
 tsconfig.tsbuildinfo

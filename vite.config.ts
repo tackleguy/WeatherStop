@@ -47,4 +47,35 @@ export default defineConfig({
       ignored: ['**/api/**', '**/.vercel/**', '**/dist/**'],
     },
   },
+  build: {
+    // Split big libs into their own chunks so a) the initial JS payload
+    // is smaller for the home view and b) MapLibre / Framer cache
+    // independently across deploys.
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('maplibre-gl')) return 'maplibre';
+            if (id.includes('framer-motion')) return 'motion';
+            if (
+              id.includes('react-router-dom') ||
+              id.includes('@remix-run/router')
+            )
+              return 'router';
+            if (id.includes('lucide-react')) return 'icons';
+            if (id.includes('zustand') || id.includes('swr')) {
+              return 'state';
+            }
+            if (id.includes('react-dom')) return 'react-dom';
+            if (id.includes('/react/')) return 'react';
+          }
+          return undefined;
+        },
+      },
+    },
+    // maplibre-gl is ~800 kB on its own and lives in a lazy-loaded
+    // chunk only fetched when the user navigates to a map route. Raise
+    // the warning above its size so we don't see noise on every build.
+    chunkSizeWarningLimit: 900,
+  },
 });

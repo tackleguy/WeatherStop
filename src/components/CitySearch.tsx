@@ -55,11 +55,11 @@ export function CitySearch({
   const fetchTokenRef = useRef(0);
 
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setResults([]);
-      setTimeout(() => inputRef.current?.focus(), 80);
-    }
+    if (!open) return;
+    setQuery('');
+    setResults([]);
+    const id = window.setTimeout(() => inputRef.current?.focus(), 80);
+    return () => window.clearTimeout(id);
   }, [open]);
 
   // Run search whenever the query changes.

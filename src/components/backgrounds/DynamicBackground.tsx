@@ -31,17 +31,29 @@ function useReducedMotion() {
 function LightningOverlay() {
   const [flashing, setFlashing] = useState(false);
   useEffect(() => {
-    let raf: number;
-    function schedule() {
+    let scheduleTimer: number | undefined;
+    let flashOffTimer: number | undefined;
+    let cancelled = false;
+
+    const schedule = () => {
       const wait = 5000 + Math.random() * 10_000;
-      raf = window.setTimeout(() => {
+      scheduleTimer = window.setTimeout(() => {
+        if (cancelled) return;
         setFlashing(true);
-        window.setTimeout(() => setFlashing(false), 200);
+        flashOffTimer = window.setTimeout(() => {
+          if (cancelled) return;
+          setFlashing(false);
+        }, 200);
         schedule();
-      }, wait) as unknown as number;
-    }
+      }, wait);
+    };
+
     schedule();
-    return () => window.clearTimeout(raf);
+    return () => {
+      cancelled = true;
+      if (scheduleTimer) window.clearTimeout(scheduleTimer);
+      if (flashOffTimer) window.clearTimeout(flashOffTimer);
+    };
   }, []);
   return (
     <div

@@ -1,5 +1,5 @@
 import { Search, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGeocode, type GeocodeResult } from '../../hooks/useGeocode';
 
 interface Props {
@@ -10,6 +10,18 @@ export function SearchBar({ onPick }: Props) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const { results, loading } = useGeocode(q);
+  const blurTimer = useRef<number | undefined>(undefined);
+
+  // Cancel any pending blur-close timer when the component unmounts so we
+  // don't fire setOpen(false) on an unmounted component.
+  useEffect(
+    () => () => {
+      if (blurTimer.current !== undefined) {
+        window.clearTimeout(blurTimer.current);
+      }
+    },
+    [],
+  );
 
   return (
     <div className="relative w-full">
@@ -22,8 +34,17 @@ export function SearchBar({ onPick }: Props) {
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onFocus={() => {
+            if (blurTimer.current !== undefined) {
+              window.clearTimeout(blurTimer.current);
+              blurTimer.current = undefined;
+            }
+            setOpen(true);
+          }}
+          onBlur={() => {
+            // 150ms grace so click events on the dropdown can register.
+            blurTimer.current = window.setTimeout(() => setOpen(false), 150);
+          }}
           placeholder="Search city, county, or coordinates"
           className="flex-1 bg-transparent text-[13px] text-[var(--ink-1)] placeholder-[var(--ink-4)] outline-none"
         />

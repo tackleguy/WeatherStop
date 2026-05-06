@@ -1,0 +1,18 @@
+node_modules
+dist
+.DS_Store
+.vercel
+.vite
+.eslintcache
+tsconfig.tsbuildinfo
+
+# Cloned reference repos (see docs/REFERENCE_NOTES.md)
+ref/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log

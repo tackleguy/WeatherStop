@@ -14,6 +14,7 @@ import { ComfortCard } from './ComfortCard';
 import { PressureTrendCard } from './PressureTrendCard';
 import { MoonCard } from './MoonCard';
 import { TideCard } from './TideCard';
+import { CamsCard } from './CamsCard';
 import { useWeather } from '../hooks/useWeather';
 import { useTides } from '../hooks/useTides';
 import { relativeTimeShort } from '../lib/format';
@@ -119,7 +120,8 @@ export function CityView({ city, settings, onSnapshot }: Props) {
         />
       ) : null}
       <MoonCard index={tides.station ? 10 : 9} />
-      <DetailsGrid data={w} settings={settings} index={tides.station ? 11 : 10} />
+      <CamsCard city={city} index={tides.station ? 11 : 10} />
+      <DetailsGrid data={w} settings={settings} index={tides.station ? 12 : 11} />
 
       <div className="pt-2 text-center text-[11px] text-white/55">
         Updated {relativeTimeShort(w.fetchedAt)}

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useRadarLayers } from '../../hooks/useRadarLayers';
 import { useAlerts } from '../../hooks/useAlerts';
+import { useRainViewer } from '../../hooks/useRainViewer';
 import { useTimeFrames } from '../../hooks/useTimeFrames';
 import {
   categorizeAlertEvent,
@@ -71,6 +72,30 @@ export function RadarMap({ onMapReady }: Props) {
   const frames = useTimeFrames();
   const ts = frames[currentFrameIdx] ?? frames[frames.length - 1];
 
+  const { catalog } = useRainViewer();
+  // Map our 0..FRAME_COUNT-1 scrubber index onto the actual RainViewer
+  // catalog frame list so each notch on the slider lines up with a real
+  // frame instead of an interpolated timestamp. We pick the frame whose
+  // time is closest to the slider's selected timestamp.
+  const rainViewerFrameIndex = useMemo(() => {
+    if (!catalog) return 0;
+    const list =
+      activeProduct === 'satellite-ir' || activeProduct === 'satellite-vis'
+        ? catalog.satelliteInfrared
+        : [...catalog.radarPast, ...catalog.radarNowcast];
+    if (list.length === 0) return 0;
+    let bestIdx = list.length - 1;
+    let bestDiff = Infinity;
+    for (let i = 0; i < list.length; i++) {
+      const d = Math.abs(list[i].time - ts);
+      if (d < bestDiff) {
+        bestDiff = d;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }, [catalog, activeProduct, ts]);
+
   const { alerts } = useAlerts();
 
   const features = useMemo<GeoJSON.Feature[]>(
@@ -137,6 +162,8 @@ export function RadarMap({ onMapReady }: Props) {
     map: mapRef.current,
     styleLoaded,
     activeProduct,
+    catalog,
+    frameIndex: rainViewerFrameIndex,
     ts,
   });
 

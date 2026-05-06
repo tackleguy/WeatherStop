@@ -1,24 +1,28 @@
 // Layer orchestration. Maintains:
-//   • a Windy raster source (always mounted, swapped via setTiles when
-//     ts/product change),
-//   • an NWS-overlay image source (always mounted, image refreshed on
-//     viewport changes when the active product is an nws-overlay),
-//   • crossfade between the two driven by the active product (Windy
-//     visible when Windy product, NWS visible when NWS product, both
-//     hidden for placeholder products like 'lightning').
+//   • a RainViewer raster tile source for the radar / satellite overlays
+//     (keyless public service used by RadrView; replaced Windy after
+//     WINDY_KEY became a deployment liability).
+//   • an NWS-overlay image source for products that come from the NOAA
+//     mapservices ImageServer (velocity, SRV, echo tops, VIL).
 //
-// Source IDs are stable so RadarMap can hand-edit layers (e.g. for
-// alert-fly-to highlight stroking).
+// Crossfade between the two is driven by the active product. Source ids
+// stay stable so RadarMap can hand-edit other layers (alerts focus, etc.)
+// in any order.
 
 import { useEffect } from 'react';
 import maplibregl from 'maplibre-gl';
 import { fadeRasterTo } from '../lib/crossfade';
 import { getProduct, type ProductId } from '../constants/products';
-import { windyTileUrl } from '../lib/windy';
+import {
+  buildTileUrl,
+  getFrames,
+  placeholderTileUrl,
+  type RainViewerCatalog,
+} from '../lib/rainviewer';
 import { useRadarStore } from '../store/useRadarStore';
 
-export const WINDY_SOURCE = 'windy-radar';
-export const WINDY_LAYER = 'windy-radar-layer';
+export const RAINVIEWER_SOURCE = 'rainviewer-tiles';
+export const RAINVIEWER_LAYER = 'rainviewer-layer';
 export const NWS_SOURCE = 'nws-overlay';
 export const NWS_LAYER = 'nws-overlay-layer';
 
@@ -26,7 +30,14 @@ interface Args {
   map: maplibregl.Map | null;
   styleLoaded: boolean;
   activeProduct: ProductId;
-  ts: number; // epoch seconds, snapped to 10-min
+  /** RainViewer catalog (from useRainViewer). May be undefined briefly
+   *  on first paint while SWR is fetching. */
+  catalog: RainViewerCatalog | undefined;
+  /** Currently-selected frame index into the radar/satellite frame list. */
+  frameIndex: number;
+  /** Active timestamp in epoch seconds for the NWS overlay's `time=` param.
+   *  Falls back to "now" inside the NWS branch when needed. */
+  ts: number;
 }
 
 function bboxFromMap(map: maplibregl.Map) {
@@ -47,47 +58,73 @@ function bboxFromMap(map: maplibregl.Map) {
   };
 }
 
-export function useRadarLayers({ map, styleLoaded, activeProduct, ts }: Args) {
-  // Mount Windy source/layer once; tiles swap via setTiles for ts/product.
+function tileUrlFor(
+  productId: ProductId,
+  catalog: RainViewerCatalog | undefined,
+  frameIndex: number,
+): string {
+  if (!catalog) return placeholderTileUrl();
+  const isSatellite =
+    productId === 'satellite-ir' || productId === 'satellite-vis';
+  return buildTileUrl({
+    catalog,
+    kind: isSatellite ? 'satellite' : 'radar',
+    frameIndex,
+    // Color 2 = Universal Blue (default radar palette). For satellite the
+    // server picks a sensible default when color = 0.
+    color: isSatellite ? undefined : 2,
+    smooth: 1,
+    snow: 1,
+  });
+}
+
+export function useRadarLayers({
+  map,
+  styleLoaded,
+  activeProduct,
+  catalog,
+  frameIndex,
+  ts,
+}: Args) {
+  // RainViewer tiles. Mount once, swap tile URLs as the catalog +
+  // frame index update.
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    const product = getProduct(activeProduct);
-    const slug = product.windyProduct ?? 'radar';
-    const endpoint =
-      product.id === 'satellite-ir' || product.id === 'satellite-vis'
-        ? 'satellite'
-        : 'radar';
-    const url = windyTileUrl({ product: slug, ts, endpoint });
+    const url = tileUrlFor(activeProduct, catalog, frameIndex);
 
-    const existing = map.getSource(WINDY_SOURCE) as
+    const existing = map.getSource(RAINVIEWER_SOURCE) as
       | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
       | undefined;
 
     if (existing && typeof existing.setTiles === 'function') {
       existing.setTiles([url]);
-    } else if (!existing) {
-      map.addSource(WINDY_SOURCE, {
-        type: 'raster',
-        tiles: [url],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 12,
-        attribution: '© <a href="https://windy.com">Windy.com</a>',
-      });
-      map.addLayer({
-        id: WINDY_LAYER,
-        type: 'raster',
-        source: WINDY_SOURCE,
-        paint: {
-          'raster-opacity': 0,
-          'raster-fade-duration': 400,
-          'raster-resampling': 'linear',
-        },
-      });
+      return;
     }
-  }, [map, styleLoaded, activeProduct, ts]);
+    if (existing) return;
 
-  // Mount NWS overlay; image refreshes on viewport change + ts.
+    map.addSource(RAINVIEWER_SOURCE, {
+      type: 'raster',
+      tiles: [url],
+      tileSize: 256,
+      minzoom: 0,
+      maxzoom: 12,
+      attribution:
+        '© <a href="https://rainviewer.com" target="_blank" rel="noopener">RainViewer</a>',
+    });
+    map.addLayer({
+      id: RAINVIEWER_LAYER,
+      type: 'raster',
+      source: RAINVIEWER_SOURCE,
+      paint: {
+        'raster-opacity': 0,
+        'raster-fade-duration': 400,
+        'raster-resampling': 'linear',
+      },
+    });
+  }, [map, styleLoaded, activeProduct, catalog, frameIndex]);
+
+  // NWS overlay (velocity / SRV / echo tops / VIL) — image source that
+  // refreshes on every settled map move + ts change.
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const product = getProduct(activeProduct);
@@ -131,19 +168,19 @@ export function useRadarLayers({ map, styleLoaded, activeProduct, ts }: Args) {
     };
   }, [map, styleLoaded, activeProduct, ts]);
 
-  // Crossfade by active layer source. The user's overlayOpacity slider
-  // (store) acts as a multiplier so layer visibility reads as
-  // `target * userMultiplier`. We watch the store directly so changes
-  // to the slider propagate without re-rendering the whole map.
+  // Crossfade by active layer source. Multiplied by the user's
+  // overlayOpacity slider so it composes cleanly on top.
   const overlay = useRadarStore((s) => s.overlayOpacity);
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const product = getProduct(activeProduct);
-    const isWindy = product.layer === 'windy';
+    const isRainViewer =
+      product.layer === 'windy' || product.id === 'satellite-ir' || product.id === 'satellite-vis';
     const isNWS = product.layer === 'nws-overlay';
-    const windyTarget = isWindy ? 0.78 : 0;
+    const rvTarget = isRainViewer ? 0.85 : 0;
     const nwsTarget = isNWS ? 0.85 : 0;
-    fadeRasterTo(map, WINDY_LAYER, windyTarget * overlay);
+    fadeRasterTo(map, RAINVIEWER_LAYER, rvTarget * overlay);
     fadeRasterTo(map, NWS_LAYER, nwsTarget * overlay);
+    void getFrames; // re-export side-effect kept for callers using the symbol
   }, [map, styleLoaded, activeProduct, overlay]);
 }

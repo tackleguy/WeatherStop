@@ -16,13 +16,29 @@ export function LayerInfoCard() {
   const center = useRadarStore((s) => s.mapCenter);
   const [open, setOpen] = useState(false);
 
-  const isPerSite = plan?.kind === 'wms-site';
+  const isPerSite = plan?.kind === 'ridge-wms' || plan?.kind === 'level2';
   const nearby = useMemo(() => {
     if (!isPerSite || !center) return [];
     return nearestNexradSites(center[0], center[1], 6);
   }, [isPerSite, center]);
 
   if (!plan) return null;
+
+  // Banner shown when the active product isn't available in this region
+  // (e.g. velocity over Europe). Replaces the chip entirely so the user
+  // doesn't think the layer just hasn't loaded yet.
+  if (plan.kind === 'unavailable' && plan.unavailableReason) {
+    return (
+      <div
+        className="pointer-events-auto absolute left-3 bottom-[88px] z-10 max-w-[280px] rounded-xl border border-amber-500/30 px-3 py-2 backdrop-blur-md"
+        style={{ background: 'rgba(245, 158, 11, 0.12)' }}
+      >
+        <div className="text-[11px] font-medium text-amber-200">
+          {plan.unavailableReason}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

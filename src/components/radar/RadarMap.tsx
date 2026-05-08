@@ -194,6 +194,7 @@ export function RadarMap({ onMapReady }: Props) {
       siteId: sourcePlan.site?.id ?? null,
       siteName: sourcePlan.site?.name ?? null,
       siteState: sourcePlan.site?.state ?? null,
+      unavailableReason: sourcePlan.unavailableReason ?? null,
     });
   }, [sourcePlan, setSourcePlan]);
 

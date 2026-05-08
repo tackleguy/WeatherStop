@@ -15,8 +15,7 @@ export function ProductRail() {
       {PRODUCTS.map((p) => {
         const Icon = p.icon;
         const disabled =
-          p.layer === 'placeholder' ||
-          (p.requiresZoom !== undefined && mapZoom < p.requiresZoom);
+          p.requiresZoom !== undefined && mapZoom < p.requiresZoom;
         const active = activeProduct === p.id;
 
         return (

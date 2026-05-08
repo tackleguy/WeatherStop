@@ -1,14 +1,17 @@
+// The radar product catalog. Each entry describes one toggle in the
+// product rail; the actual upstream picked at runtime is decided by
+// `lib/sourceResolver.ts` based on zoom + region. Products marked with
+// `requiresZoom` are dimmed on the rail until the user zooms in far
+// enough to see useful data.
+
 import {
-  ArrowUpRight,
+  Atom,
   CloudRain,
   Cloudy,
-  Droplets,
-  Globe,
   Sun,
   Thermometer,
   Tornado,
   Wind,
-  Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -16,27 +19,27 @@ export type ProductId =
   | 'reflectivity'
   | 'velocity'
   | 'storm-rel-velocity'
-  | 'echo-tops'
-  | 'vil'
-  | 'composite'
+  | 'correlation'
   | 'satellite-ir'
   | 'satellite-vis'
-  | 'lightning'
-  | 'temperature';
+  | 'wind'
+  | 'temperature'
+  | 'composite';
 
-export type LayerSource = 'windy' | 'nws-overlay' | 'placeholder';
-export type LegendKind = 'dbz' | 'kts' | 'satellite' | 'temp' | 'none';
+export type LegendKind =
+  | 'dbz'
+  | 'kts'
+  | 'rho'
+  | 'satellite'
+  | 'wind'
+  | 'temp'
+  | 'none';
 
 export interface Product {
   id: ProductId;
   label: string;
   shortLabel: string;
   icon: LucideIcon;
-  layer: LayerSource;
-  /** Windy product slug (when layer === 'windy'). */
-  windyProduct?: string;
-  /** NOAA mapservices ImageServer name (when layer === 'nws-overlay'). */
-  nwsProduct?: string;
   legend: LegendKind;
   description: string;
   /** Disabled below this map zoom level. */
@@ -49,100 +52,66 @@ export const PRODUCTS: Product[] = [
     label: 'Reflectivity',
     shortLabel: 'REFL',
     icon: CloudRain,
-    layer: 'windy',
-    windyProduct: 'radar',
     legend: 'dbz',
-    description: 'Precipitation intensity (composite)',
+    description: 'Precipitation intensity',
   },
   {
     id: 'velocity',
     label: 'Base Velocity',
     shortLabel: 'VEL',
     icon: Wind,
-    layer: 'nws-overlay',
-    nwsProduct: 'radar_base_velocity_time',
     legend: 'kts',
-    description: 'Wind toward / away from radar',
+    description: 'Wind toward / away from radar (US only)',
   },
   {
     id: 'storm-rel-velocity',
     label: 'Storm-Rel Velocity',
     shortLabel: 'SRV',
     icon: Tornado,
-    layer: 'nws-overlay',
-    nwsProduct: 'radar_storm_rel_velocity_time',
     legend: 'kts',
-    description: 'Velocity relative to storm motion',
+    description: 'Velocity relative to storm motion (US only)',
     requiresZoom: 6,
   },
   {
-    id: 'echo-tops',
-    label: 'Echo Tops',
-    shortLabel: 'ET',
-    icon: ArrowUpRight,
-    layer: 'nws-overlay',
-    nwsProduct: 'radar_echo_tops_time',
-    legend: 'none',
-    description: 'Storm cloud top heights',
-  },
-  {
-    id: 'vil',
-    label: 'VIL',
-    shortLabel: 'VIL',
-    icon: Droplets,
-    layer: 'nws-overlay',
-    nwsProduct: 'radar_vil_time',
-    legend: 'none',
-    description: 'Vertically Integrated Liquid',
-  },
-  {
-    id: 'composite',
-    label: 'Composite Refl',
-    shortLabel: 'CR',
-    icon: Cloudy,
-    layer: 'windy',
-    windyProduct: 'radar',
-    legend: 'dbz',
-    description: 'Maximum reflectivity in column',
+    id: 'correlation',
+    label: 'Correlation Coefficient',
+    shortLabel: 'CC',
+    icon: Atom,
+    legend: 'rho',
+    description: 'Hail / debris detection (US, zoom 8+)',
+    requiresZoom: 8,
   },
   {
     id: 'satellite-ir',
     label: 'Satellite (IR)',
     shortLabel: 'IR',
-    icon: Globe,
-    layer: 'windy',
-    windyProduct: 'satellite',
+    icon: Cloudy,
     legend: 'satellite',
-    description: 'Infrared, day/night cloud coverage',
+    description: 'Infrared cloud cover (global)',
   },
   {
     id: 'satellite-vis',
     label: 'Satellite (Visible)',
     shortLabel: 'VIS',
     icon: Sun,
-    layer: 'windy',
-    windyProduct: 'satellite',
     legend: 'satellite',
-    description: 'True-color daytime',
+    description: 'Visible cloud cover (best US)',
+  },
+  {
+    id: 'wind',
+    label: 'Wind',
+    shortLabel: 'WIND',
+    icon: Wind,
+    legend: 'wind',
+    description: 'Surface wind speed (forecast)',
   },
   {
     id: 'temperature',
     label: 'Temperature',
     shortLabel: 'TEMP',
     icon: Thermometer,
-    layer: 'windy',
-    windyProduct: 'temp',
     legend: 'temp',
-    description: 'Surface temperature',
-  },
-  {
-    id: 'lightning',
-    label: 'Lightning',
-    shortLabel: 'LTG',
-    icon: Zap,
-    layer: 'placeholder',
-    legend: 'none',
-    description: 'Coming soon',
+    description: 'Surface temperature (forecast)',
   },
 ];
 

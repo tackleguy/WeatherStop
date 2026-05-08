@@ -54,3 +54,42 @@ export const KTS_STOPS: DBZStop[] = [
   { dbz: 32, color: '#FF9000' },
   { dbz: 64, color: '#FF0000' },
 ];
+
+// Correlation Coefficient: low values flag debris / hail / non-met
+// scatter; near-1.0 is uniform precipitation. Stops mirror the
+// renderer's `ccColor` palette in api/radar/level2.ts.
+export interface RhoStop {
+  rho: number;
+  color: string;
+  label: string;
+}
+export const RHO_STOPS: RhoStop[] = [
+  { rho: 0.5, color: '#b400c8', label: 'Debris' },
+  { rho: 0.7, color: '#dc6400', label: 'Hail' },
+  { rho: 0.85, color: '#dcdc00', label: 'Mixed' },
+  { rho: 0.95, color: '#50c850', label: 'Rain' },
+  { rho: 1.0, color: '#50c850', label: 'Pure rain' },
+];
+
+// Surface wind palette (mph). Mirrors `windColor` in api/weather/grid.ts.
+export interface ScalarStop {
+  value: number;
+  color: string;
+}
+export const WIND_STOPS: ScalarStop[] = [
+  { value: 0, color: '#3250c8' },
+  { value: 20, color: '#50c864' },
+  { value: 40, color: '#dcdc00' },
+  { value: 60, color: '#ff0000' },
+];
+
+// Surface temperature palette (°F). Mirrors `tempColor` in api/weather/grid.ts.
+export const TEMP_STOPS: ScalarStop[] = [
+  { value: -20, color: '#8000c0' },
+  { value: 0, color: '#3264dc' },
+  { value: 32, color: '#64c8f0' },
+  { value: 60, color: '#50c864' },
+  { value: 80, color: '#ffdc3c' },
+  { value: 100, color: '#f0503c' },
+  { value: 120, color: '#f050c8' },
+];

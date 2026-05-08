@@ -64,6 +64,16 @@ function velToColor(kts: number): [number, number, number, number] {
   return [Math.round(140 + t * 115), 0, 0, 220];
 }
 
+// Correlation Coefficient: 0.5 (debris) → 1.0 (uniform precip). Hail
+// and tornado debris signatures show as low-CC blobs.
+function ccColor(rho: number): [number, number, number, number] {
+  if (Number.isNaN(rho) || rho < 0.3) return [0, 0, 0, 0];
+  if (rho < 0.7) return [180, 0, 200, 220]; // purple — debris / non-met
+  if (rho < 0.85) return [220, 100, 0, 220]; // red — large hail
+  if (rho < 0.95) return [220, 220, 0, 200]; // yellow — mixed
+  return [80, 200, 80, 180]; // green — uniform rain
+}
+
 interface L2RadialMomentSamples {
   data?: number[];
   values?: number[];
@@ -83,12 +93,39 @@ interface L2Sweep {
 function readSweepRadials(sweep: L2Sweep): L2Radial[] {
   return sweep.record?.radials ?? sweep.radials ?? [];
 }
-function readGates(radial: L2Radial, momentKey: 'REF' | 'VEL'): number[] {
+type MomentKey = 'REF' | 'VEL' | 'RHO';
+
+function readGates(radial: L2Radial, momentKey: MomentKey): number[] {
   const m = radial.moments?.[momentKey];
   if (m?.data) return m.data;
   if (m?.values) return m.values;
   if (radial.gates) return radial.gates;
   return [];
+}
+
+type L2Product = 'reflectivity' | 'velocity' | 'correlation';
+
+function momentForProduct(p: L2Product): MomentKey {
+  if (p === 'velocity') return 'VEL';
+  if (p === 'correlation') return 'RHO';
+  return 'REF';
+}
+
+function colorForProduct(
+  p: L2Product,
+  v: number,
+): [number, number, number, number] {
+  if (p === 'velocity') return velToColor(v);
+  if (p === 'correlation') return ccColor(v);
+  return dbzToColor(v);
+}
+
+function shouldDropGate(p: L2Product, v: number): boolean {
+  if (v == null || Number.isNaN(v)) return true;
+  if (p === 'reflectivity' && v < -32) return true;
+  if (p === 'velocity' && Math.abs(v) > 100) return true;
+  if (p === 'correlation' && (v < 0.3 || v > 1.05)) return true;
+  return false;
 }
 
 function bboxForSite(siteId: string): [number, number, number, number] {
@@ -119,7 +156,7 @@ async function listLatestL2Key(site: string): Promise<string | null> {
 
 function renderSweep(
   sweep: L2Sweep,
-  product: 'reflectivity' | 'velocity',
+  product: L2Product,
 ): { png: Buffer; volumeStart?: string } {
   const SIZE = 1024;
   const canvas = createCanvas(SIZE, SIZE);
@@ -135,7 +172,7 @@ function renderSweep(
   const metersPerPixel = (maxRangeMeters * 2) / SIZE;
   const cx = SIZE / 2;
   const cy = SIZE / 2;
-  const momentKey = product === 'velocity' ? 'VEL' : 'REF';
+  const momentKey = momentForProduct(product);
 
   for (const radial of radials) {
     const azDeg = radial.azimuth ?? radial.azimuth_angle ?? 0;
@@ -144,19 +181,18 @@ function renderSweep(
 
     for (let i = 0; i < gates.length; i++) {
       const value = gates[i];
-      if (value == null || Number.isNaN(value)) continue;
-      if (product === 'reflectivity' && value < -32) continue;
-      if (product === 'velocity' && Math.abs(value) > 100) continue;
+      if (shouldDropGate(product, value)) continue;
 
       const rangeM = (i + 0.5) * gateSize;
       const px = cx + (rangeM * Math.cos(azRad)) / metersPerPixel;
       const py = cy + (rangeM * Math.sin(azRad)) / metersPerPixel;
       if (px < 0 || px >= SIZE || py < 0 || py >= SIZE) continue;
 
-      const [r, g, b, a] =
-        product === 'velocity' ? velToColor(value) : dbzToColor(value);
+      const [r, g, b, a] = colorForProduct(product, value);
 
-      // Paint a 2×2 block to fill polar→cartesian gaps.
+      // 2×2 block fills the polar→cartesian gaps without smoothing —
+      // adjacent pixels stay fully saturated, preserving the
+      // RadarScope-style hard gate boundaries.
       for (let dy = 0; dy < 2; dy++) {
         for (let dx = 0; dx < 2; dx++) {
           const ipx = Math.floor(px) + dx;
@@ -179,16 +215,18 @@ function renderSweep(
 export default async function handler(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const siteRaw = searchParams.get('site');
-  const productRaw = (searchParams.get('product') ?? 'reflectivity') as
-    | 'reflectivity'
-    | 'velocity';
+  const productRaw = searchParams.get('product') ?? 'reflectivity';
 
   if (!siteRaw || !/^[A-Za-z]{4}$/.test(siteRaw)) {
     return new Response('invalid site', { status: 400 });
   }
   const site = siteRaw.toUpperCase();
-  const product: 'reflectivity' | 'velocity' =
-    productRaw === 'velocity' ? 'velocity' : 'reflectivity';
+  const product: L2Product =
+    productRaw === 'velocity'
+      ? 'velocity'
+      : productRaw === 'correlation'
+        ? 'correlation'
+        : 'reflectivity';
 
   const cacheKey = `l2/${site}/${product}/latest.png`;
   const TTL_MS = 5 * 60_000;
@@ -237,11 +275,14 @@ export default async function handler(req: Request): Promise<Response> {
   ) as {
     getHighresReflectivity?: () => L2Sweep[];
     getHighresVelocity?: () => L2Sweep[];
+    getHighresCorrelationCoefficient?: () => L2Sweep[];
   };
   const sweepData =
     product === 'velocity'
-      ? radar.getHighresVelocity?.() ?? []
-      : radar.getHighresReflectivity?.() ?? [];
+      ? (radar.getHighresVelocity?.() ?? [])
+      : product === 'correlation'
+        ? (radar.getHighresCorrelationCoefficient?.() ?? [])
+        : (radar.getHighresReflectivity?.() ?? []);
   if (!sweepData || sweepData.length === 0) {
     return new Response('no sweep data', { status: 404 });
   }

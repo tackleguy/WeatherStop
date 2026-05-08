@@ -13,6 +13,8 @@ export interface ActiveSourcePlan {
   siteId: string | null;
   siteName: string | null;
   siteState: string | null;
+  /** Set when the active product isn't available in the active region. */
+  unavailableReason: string | null;
 }
 
 // 13 frames × 5 minutes = 60 minute rolling window. Index FRAME_COUNT-1

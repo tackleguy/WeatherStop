@@ -282,3 +282,15 @@ body::before {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* RadarScope-style sharp pixels for legend swatches and any direct
+   <img> / <canvas> renderings of radar imagery. MapLibre raster layers
+   are handled at the paint level (raster-resampling: 'nearest'). */
+.pixelated,
+.radar-legend img,
+canvas.radar-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+}

@@ -99,8 +99,8 @@ export function useWmsSiteLayer({
         source: WMS_SOURCE_ID,
         paint: {
           'raster-opacity': opacity,
-          'raster-fade-duration': 400,
-          'raster-resampling': 'linear',
+          'raster-fade-duration': 0,
+          'raster-resampling': 'nearest',
         },
       });
     };

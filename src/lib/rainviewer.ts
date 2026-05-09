@@ -58,7 +58,9 @@ export async function fetchRainViewerCatalog(
 }
 
 export type RainViewerKind = 'radar' | 'satellite';
-export type RainViewerColor = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+// 0 = "no recoloring" (used for satellite IR grayscale); 1..8 are
+// RainViewer's named radar palettes.
+export type RainViewerColor = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 interface BuildOpts {
   catalog: RainViewerCatalog;
@@ -92,10 +94,36 @@ export function buildTileUrl(opts: BuildOpts): string {
     // 404 cleanly rather than break MapLibre's tile loader.
     return `${opts.catalog.host}/v2/coverage/0/256/{z}/{x}/{y}/2/1_1.png`;
   }
-  const color = opts.color ?? (opts.kind === 'radar' ? 2 : 0);
+  // RainViewer color codes are scoped to the *kind* — palette 7 is a
+  // radar-only palette (Rainbow @ SELEX-IS) and produces 404s when
+  // requested against a satellite tile path. Default radar to 7
+  // (sharp, NWS-ish) and satellite to 0 (no recoloring, IR grayscale).
+  const color = opts.color ?? (opts.kind === 'radar' ? 7 : 0);
   const smooth = opts.smooth ?? 1;
   const snow = opts.snow ?? 1;
   return `${opts.catalog.host}${frame.path}/256/{z}/{x}/{y}/${color}/${smooth}_${snow}.png`;
+}
+
+// Pick the frame whose timestamp is closest to `targetSec` (epoch seconds).
+// Used by the orchestrator so each source can independently align its
+// tile URL with the time-scrubber position.
+export function pickFrameIndex(
+  catalog: RainViewerCatalog,
+  kind: RainViewerKind,
+  targetSec: number,
+): number {
+  const list = getFrames(catalog, kind);
+  if (list.length === 0) return 0;
+  let bestIdx = list.length - 1;
+  let bestDiff = Infinity;
+  for (let i = 0; i < list.length; i++) {
+    const d = Math.abs(list[i].time - targetSec);
+    if (d < bestDiff) {
+      bestDiff = d;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
 }
 
 // Fallback URL for an empty catalog (boot-time, before the fetch lands).

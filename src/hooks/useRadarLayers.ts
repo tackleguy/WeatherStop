@@ -8,13 +8,19 @@
 //   • NWS RIDGE per-site  — WMS image (z 10–11)
 //   • NEXRAD Level 2      — server-rendered PNG (z 12+)
 //   • DWD                 — German precipitation WMS
-//   • RainViewer          — global radar / IR satellite XYZ tiles
+//   • RainViewer (radar)  — global radar XYZ tiles (color=7, smooth=0)
+//   • RainViewer (sat)    — global IR satellite XYZ tiles (color=0)
 //   • NOAA GOES           — visible / IR ImageServer
 //   • Open-Meteo grid     — server-rendered wind / temp tiles
 //
 // All raster layers use raster-resampling: 'nearest' and fade-duration
-// of 0 — that's the RadarScope-style sharp-pixel look. Smoothing is
-// applied at the source level (e.g. RainViewer color=7,smooth=0).
+// 0 — that's the RadarScope-style sharp-pixel look.
+//
+// Mount discipline: every addSource/addLayer is wrapped in a
+// `safeAdd` helper that (a) verifies the style is fully loaded and
+// (b) bails if the source / layer already exists. MapLibre throws on
+// duplicate adds, and StrictMode's double-invocation will trip it
+// every time without this guard.
 
 import maplibregl from 'maplibre-gl';
 import { useEffect, useMemo } from 'react';
@@ -22,6 +28,7 @@ import { fadeRasterTo } from '../lib/crossfade';
 import { type ProductId } from '../constants/products';
 import {
   buildTileUrl,
+  pickFrameIndex,
   placeholderTileUrl,
   type RainViewerCatalog,
 } from '../lib/rainviewer';
@@ -40,8 +47,14 @@ import {
 } from '../lib/sourceResolver';
 import { metersBboxFromLngLat } from '../lib/mercator';
 
-export const RAINVIEWER_SOURCE = 'rainviewer-tiles';
-export const RAINVIEWER_LAYER = 'rainviewer-layer';
+// Legacy radar layer ID — kept exported so any module that imports it
+// continues to compile, but unused at runtime.
+export const RAINVIEWER_SOURCE = 'rainviewer-radar';
+export const RAINVIEWER_LAYER = 'rainviewer-radar-layer';
+export const RAINVIEWER_RADAR_SOURCE = 'rainviewer-radar';
+export const RAINVIEWER_RADAR_LAYER = 'rainviewer-radar-layer';
+export const RAINVIEWER_SAT_SOURCE = 'rainviewer-satellite';
+export const RAINVIEWER_SAT_LAYER = 'rainviewer-satellite-layer';
 export const IOWA_SOURCE = 'iowa-tiles';
 export const IOWA_LAYER = 'iowa-layer';
 export const NWS_SOURCE = 'nws-overlay';
@@ -87,21 +100,53 @@ const PIXELATED_PAINT: maplibregl.RasterLayerSpecification['paint'] = {
   'raster-resampling': 'nearest',
 };
 
-function rainviewerTileUrl(
-  productId: ProductId,
+/** Style-aware idempotent addSource/addLayer helper. */
+function safeAdd(
+  map: maplibregl.Map,
+  styleLoaded: boolean,
+  fn: () => void,
+): void {
+  if (!styleLoaded) return;
+  if (typeof map.isStyleLoaded === 'function' && !map.isStyleLoaded()) {
+    map.once('idle', fn);
+    return;
+  }
+  fn();
+}
+
+function radarTileUrl(
   catalog: RainViewerCatalog | undefined,
-  frameIndex: number,
+  ts: number,
 ): string {
-  if (!catalog) return placeholderTileUrl();
-  const isSatellite =
-    productId === 'satellite-ir' || productId === 'satellite-vis';
+  if (!catalog || catalog.radarPast.length + catalog.radarNowcast.length === 0) {
+    return placeholderTileUrl();
+  }
+  const idx = pickFrameIndex(catalog, 'radar', ts);
   return buildTileUrl({
     catalog,
-    kind: isSatellite ? 'satellite' : 'radar',
-    frameIndex,
+    kind: 'radar',
+    frameIndex: idx,
     color: 7,
     smooth: 0,
     snow: 1,
+  });
+}
+
+function satelliteTileUrl(
+  catalog: RainViewerCatalog | undefined,
+  ts: number,
+): string {
+  if (!catalog || catalog.satelliteInfrared.length === 0) {
+    return placeholderTileUrl();
+  }
+  const idx = pickFrameIndex(catalog, 'satellite', ts);
+  return buildTileUrl({
+    catalog,
+    kind: 'satellite',
+    frameIndex: idx,
+    color: 0,
+    smooth: 0,
+    snow: 0,
   });
 }
 
@@ -189,7 +234,6 @@ export function useRadarLayers({
   styleLoaded,
   activeProduct,
   catalog,
-  frameIndex,
   ts,
   iowaTs,
   manualSite,
@@ -218,6 +262,9 @@ export function useRadarLayers({
     return manualSite ?? nearestNexradSite(lon, lat);
   }, [choice.kind, manualSite, lon, lat]);
 
+  const isSatelliteProduct =
+    activeProduct === 'satellite-ir' || activeProduct === 'satellite-vis';
+
   const plan = useMemo<SourcePlan>(() => {
     return {
       kind: choice.opacity === 0 ? 'unavailable' : choice.kind,
@@ -230,15 +277,12 @@ export function useRadarLayers({
   }, [choice, site, activeProduct, reason]);
 
   // ─────────────────────────────────────────────────────────────────
-  // RainViewer XYZ source — radar OR satellite tiles.
-  // The RainViewer endpoint also accepts a server-side resolved frame
-  // (kind=satellite|radar). We use the catalog-direct URL because it
-  // avoids an extra hop, but switch to /api/radar/rainviewer when we
-  // hit RainViewer rate limits.
+  // RainViewer radar XYZ source — global precipitation, sharp gates.
+  // Mounted once; setTiles swaps the URL when the time-scrubber moves.
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    const url = rainviewerTileUrl(activeProduct, catalog, frameIndex);
-    const existing = map.getSource(RAINVIEWER_SOURCE) as
+    const url = radarTileUrl(catalog, ts);
+    const existing = map.getSource(RAINVIEWER_RADAR_SOURCE) as
       | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
       | undefined;
     if (existing && typeof existing.setTiles === 'function') {
@@ -246,20 +290,54 @@ export function useRadarLayers({
       return;
     }
     if (existing) return;
-    map.addSource(RAINVIEWER_SOURCE, {
-      type: 'raster',
-      tiles: [url],
-      tileSize: 256,
-      minzoom: 0,
-      maxzoom: 12,
+    safeAdd(map, styleLoaded, () => {
+      if (map.getSource(RAINVIEWER_RADAR_SOURCE)) return;
+      map.addSource(RAINVIEWER_RADAR_SOURCE, {
+        type: 'raster',
+        tiles: [url],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 12,
+      });
+      map.addLayer({
+        id: RAINVIEWER_RADAR_LAYER,
+        type: 'raster',
+        source: RAINVIEWER_RADAR_SOURCE,
+        paint: PIXELATED_PAINT,
+      });
     });
-    map.addLayer({
-      id: RAINVIEWER_LAYER,
-      type: 'raster',
-      source: RAINVIEWER_SOURCE,
-      paint: PIXELATED_PAINT,
+  }, [map, styleLoaded, catalog, ts]);
+
+  // RainViewer satellite IR XYZ source — global cloud cover. Different
+  // upstream URL (color=0) and lower native maxzoom than radar.
+  useEffect(() => {
+    if (!map || !styleLoaded) return;
+    const url = satelliteTileUrl(catalog, ts);
+    const existing = map.getSource(RAINVIEWER_SAT_SOURCE) as
+      | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
+      | undefined;
+    if (existing && typeof existing.setTiles === 'function') {
+      existing.setTiles([url]);
+      return;
+    }
+    if (existing) return;
+    safeAdd(map, styleLoaded, () => {
+      if (map.getSource(RAINVIEWER_SAT_SOURCE)) return;
+      map.addSource(RAINVIEWER_SAT_SOURCE, {
+        type: 'raster',
+        tiles: [url],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 9,
+      });
+      map.addLayer({
+        id: RAINVIEWER_SAT_LAYER,
+        type: 'raster',
+        source: RAINVIEWER_SAT_SOURCE,
+        paint: PIXELATED_PAINT,
+      });
     });
-  }, [map, styleLoaded, activeProduct, catalog, frameIndex]);
+  }, [map, styleLoaded, catalog, ts]);
 
   // Iowa State XYZ — historical or live.
   useEffect(() => {
@@ -276,18 +354,21 @@ export function useRadarLayers({
       return;
     }
     if (existing) return;
-    map.addSource(IOWA_SOURCE, {
-      type: 'raster',
-      tiles: [tilesUrl],
-      tileSize: 256,
-      minzoom: 0,
-      maxzoom: 11,
-    });
-    map.addLayer({
-      id: IOWA_LAYER,
-      type: 'raster',
-      source: IOWA_SOURCE,
-      paint: PIXELATED_PAINT,
+    safeAdd(map, styleLoaded, () => {
+      if (map.getSource(IOWA_SOURCE)) return;
+      map.addSource(IOWA_SOURCE, {
+        type: 'raster',
+        tiles: [tilesUrl],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 11,
+      });
+      map.addLayer({
+        id: IOWA_LAYER,
+        type: 'raster',
+        source: IOWA_SOURCE,
+        paint: PIXELATED_PAINT,
+      });
     });
   }, [map, styleLoaded, iowaTs]);
 
@@ -305,22 +386,26 @@ export function useRadarLayers({
       return;
     }
     if (existing) return;
-    map.addSource(GRID_SOURCE, {
-      type: 'raster',
-      tiles: [url],
-      tileSize: 256,
-      minzoom: 2,
-      maxzoom: 12,
-    });
-    map.addLayer({
-      id: GRID_LAYER,
-      type: 'raster',
-      source: GRID_SOURCE,
-      paint: PIXELATED_PAINT,
+    safeAdd(map, styleLoaded, () => {
+      if (map.getSource(GRID_SOURCE)) return;
+      map.addSource(GRID_SOURCE, {
+        type: 'raster',
+        tiles: [url],
+        tileSize: 256,
+        minzoom: 2,
+        maxzoom: 12,
+      });
+      map.addLayer({
+        id: GRID_LAYER,
+        type: 'raster',
+        source: GRID_SOURCE,
+        paint: PIXELATED_PAINT,
+      });
     });
   }, [map, styleLoaded, choice.kind, choice.product]);
 
   // DWD WMS — German radar. Image source updated per viewport.
+  // 300ms debounce prevents thrashing the DWD GeoServer during pans.
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (choice.kind !== 'dwd') {
@@ -328,6 +413,8 @@ export function useRadarLayers({
       if (map.getSource(DWD_SOURCE)) map.removeSource(DWD_SOURCE);
       return;
     }
+
+    let timer: number | undefined;
 
     const refresh = () => {
       const { bbox3857, coords } = bboxFromMap(map);
@@ -341,20 +428,28 @@ export function useRadarLayers({
         src.updateImage({ url, coordinates: coords });
         return;
       }
-      map.addSource(DWD_SOURCE, { type: 'image', url, coordinates: coords });
-      map.addLayer({
-        id: DWD_LAYER,
-        type: 'raster',
-        source: DWD_SOURCE,
-        paint: PIXELATED_PAINT,
+      safeAdd(map, styleLoaded, () => {
+        if (map.getSource(DWD_SOURCE)) return;
+        map.addSource(DWD_SOURCE, { type: 'image', url, coordinates: coords });
+        map.addLayer({
+          id: DWD_LAYER,
+          type: 'raster',
+          source: DWD_SOURCE,
+          paint: PIXELATED_PAINT,
+        });
       });
     };
 
+    const debounced = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, 300);
+    };
+
     refresh();
-    const handler = () => refresh();
-    map.on('moveend', handler);
+    map.on('moveend', debounced);
     return () => {
-      map.off('moveend', handler);
+      if (timer !== undefined) window.clearTimeout(timer);
+      map.off('moveend', debounced);
     };
   }, [map, styleLoaded, choice.kind, ts]);
 
@@ -367,6 +462,7 @@ export function useRadarLayers({
       return;
     }
     const band = choice.product === 'band_2' ? '2' : '13';
+    let timer: number | undefined;
 
     const refresh = () => {
       const { bbox4326, coords } = bboxFromMap(map);
@@ -380,20 +476,28 @@ export function useRadarLayers({
         src.updateImage({ url, coordinates: coords });
         return;
       }
-      map.addSource(GOES_SOURCE, { type: 'image', url, coordinates: coords });
-      map.addLayer({
-        id: GOES_LAYER,
-        type: 'raster',
-        source: GOES_SOURCE,
-        paint: PIXELATED_PAINT,
+      safeAdd(map, styleLoaded, () => {
+        if (map.getSource(GOES_SOURCE)) return;
+        map.addSource(GOES_SOURCE, { type: 'image', url, coordinates: coords });
+        map.addLayer({
+          id: GOES_LAYER,
+          type: 'raster',
+          source: GOES_SOURCE,
+          paint: PIXELATED_PAINT,
+        });
       });
     };
 
+    const debounced = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, 300);
+    };
+
     refresh();
-    const handler = () => refresh();
-    map.on('moveend', handler);
+    map.on('moveend', debounced);
     return () => {
-      map.off('moveend', handler);
+      if (timer !== undefined) window.clearTimeout(timer);
+      map.off('moveend', debounced);
     };
   }, [map, styleLoaded, choice.kind, choice.product, ts]);
 
@@ -453,16 +557,19 @@ export function useRadarLayers({
           existing.updateImage({ url: data.url, coordinates: coords });
           return;
         }
-        map.addSource(L2_SOURCE, {
-          type: 'image',
-          url: data.url,
-          coordinates: coords,
-        });
-        map.addLayer({
-          id: L2_LAYER,
-          type: 'raster',
-          source: L2_SOURCE,
-          paint: PIXELATED_PAINT,
+        safeAdd(map, styleLoaded, () => {
+          if (map.getSource(L2_SOURCE)) return;
+          map.addSource(L2_SOURCE, {
+            type: 'image',
+            url: data.url,
+            coordinates: coords,
+          });
+          map.addLayer({
+            id: L2_LAYER,
+            type: 'raster',
+            source: L2_SOURCE,
+            paint: PIXELATED_PAINT,
+          });
         });
       } catch {
         // L2 failures are non-fatal — RIDGE is still available below.
@@ -479,21 +586,26 @@ export function useRadarLayers({
   }, [map, styleLoaded, choice.kind, choice.product, site?.id]);
 
   // Crossfade — set every layer's opacity each time the choice changes.
-  // Layers that aren't mounted (because we tear them down on kind
-  // changes) get a no-op fade thanks to fadeRasterTo's existence check.
+  // RainViewer radar shows when the resolver picked it AND the user
+  // isn't on a satellite product. Satellite layer flips on for both
+  // satellite-ir AND satellite-vis-outside-US (the resolver returns
+  // 'rainviewer' / 'satellite' as the IR fallback).
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const target = choice.opacity * overlay;
-    fadeRasterTo(map, RAINVIEWER_LAYER, choice.kind === 'rainviewer' ? target : 0);
+
+    const showRvRadar = choice.kind === 'rainviewer' && !isSatelliteProduct;
+    const showRvSat = choice.kind === 'rainviewer' && isSatelliteProduct;
+
+    fadeRasterTo(map, RAINVIEWER_RADAR_LAYER, showRvRadar ? target : 0);
+    fadeRasterTo(map, RAINVIEWER_SAT_LAYER, showRvSat ? target : 0);
     fadeRasterTo(map, IOWA_LAYER, choice.kind === 'iowa-state' ? target : 0);
     fadeRasterTo(map, L2_LAYER, choice.kind === 'level2' ? target : 0);
     fadeRasterTo(map, DWD_LAYER, choice.kind === 'dwd' ? target : 0);
     fadeRasterTo(map, GOES_LAYER, choice.kind === 'noaa-goes' ? target : 0);
     fadeRasterTo(map, GRID_LAYER, choice.kind === 'open-meteo-grid' ? target : 0);
-    // The deprecated nws-overlay layer ID is kept around for any
-    // bookmarked or cached map state pointing at it; force it off.
     fadeRasterTo(map, NWS_LAYER, 0);
-  }, [map, styleLoaded, choice, overlay]);
+  }, [map, styleLoaded, choice, overlay, isSatelliteProduct]);
 
   return plan;
 }

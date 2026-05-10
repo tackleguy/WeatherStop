@@ -23,7 +23,8 @@ export type SourceKind =
   | 'level2'
   | 'dwd'
   | 'windy'
-  | 'noaa-goes'
+  | 'gibs-ir'
+  | 'iowa-goes-vis'
   | 'open-meteo-grid';
 
 export interface SourceChoice {
@@ -102,14 +103,27 @@ export function resolveSource(
     return { kind: 'level2', product: 'correlation', opacity: 0.9 };
   }
 
+  // GOES IR via NASA GIBS — global coverage, WMTS, no key. We used to
+  // route this through RainViewer, but RainViewer's free manifest no
+  // longer publishes a satellite.infrared frame list (verified
+  // 2026-05-10). NOAA's old mapservices GOES animation was also pulled.
   if (product === 'satellite-ir') {
-    return { kind: 'rainviewer', product: 'satellite', opacity: 0.7 };
+    return { kind: 'gibs-ir', product: 'GOES-East_ABI_Band13_Clean_Infrared', opacity: 0.7 };
   }
   if (product === 'satellite-vis') {
     if (isUS(region)) {
-      return { kind: 'noaa-goes', product: 'band_2', opacity: 0.8 };
+      // Iowa State Mesonet GOES visible (1km, US-east coverage).
+      return {
+        kind: 'iowa-goes-vis',
+        product: 'goes-east-vis-1km-900913',
+        opacity: 0.85,
+        fallback: 'gibs-ir',
+      };
     }
-    return { kind: 'rainviewer', product: 'satellite', opacity: 0.7 };
+    // Outside CONUS: visible band isn't available globally without a
+    // paid GOES feed. Fall back to GIBS IR so the user still sees
+    // cloud structure.
+    return { kind: 'gibs-ir', product: 'GOES-East_ABI_Band13_Clean_Infrared', opacity: 0.7 };
   }
 
   if (product === 'wind') {

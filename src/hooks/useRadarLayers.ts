@@ -63,8 +63,10 @@ export const L2_SOURCE = 'level2-overlay';
 export const L2_LAYER = 'level2-layer';
 export const DWD_SOURCE = 'dwd-overlay';
 export const DWD_LAYER = 'dwd-overlay-layer';
-export const GOES_SOURCE = 'goes-overlay';
-export const GOES_LAYER = 'goes-overlay-layer';
+export const GIBS_IR_SOURCE = 'gibs-ir-tiles';
+export const GIBS_IR_LAYER = 'gibs-ir-layer';
+export const IOWA_GOES_VIS_SOURCE = 'iowa-goes-vis-tiles';
+export const IOWA_GOES_VIS_LAYER = 'iowa-goes-vis-layer';
 export const GRID_SOURCE = 'open-meteo-grid';
 export const GRID_LAYER = 'open-meteo-grid-layer';
 
@@ -186,8 +188,10 @@ function attributionFor(kind: SourceKind): string {
       return '© <a href="https://www.weather.gov" target="_blank" rel="noopener">NWS NEXRAD Level 2</a>';
     case 'dwd':
       return '© <a href="https://www.dwd.de" target="_blank" rel="noopener">DWD</a>';
-    case 'noaa-goes':
-      return '© <a href="https://www.weather.gov" target="_blank" rel="noopener">NOAA GOES</a>';
+    case 'gibs-ir':
+      return '© <a href="https://earthdata.nasa.gov/gibs" target="_blank" rel="noopener">NASA GIBS</a> · GOES-East ABI';
+    case 'iowa-goes-vis':
+      return '© <a href="https://mesonet.agron.iastate.edu" target="_blank" rel="noopener">Iowa State Mesonet</a> · GOES-East Visible';
     case 'open-meteo-grid':
       return '© <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>';
     case 'windy':
@@ -218,9 +222,8 @@ function labelFor(
     return `${site.id} · ${label}`;
   }
   if (kind === 'dwd') return 'DWD Niederschlagsradar';
-  if (kind === 'noaa-goes') {
-    return product === 'band_2' ? 'GOES Visible' : 'GOES Infrared';
-  }
+  if (kind === 'gibs-ir') return 'GOES-East · Infrared (NASA GIBS)';
+  if (kind === 'iowa-goes-vis') return 'GOES-East · Visible (Iowa State)';
   if (kind === 'open-meteo-grid') {
     return productId === 'wind'
       ? 'Wind (Open-Meteo, forecast)'
@@ -453,53 +456,70 @@ export function useRadarLayers({
     };
   }, [map, styleLoaded, choice.kind, ts]);
 
-  // NOAA GOES ImageServer — visible / IR over US.
+  // NASA GIBS GOES IR — global infrared cloud cover. WMTS endpoint
+  // serves a {z}/{y}/{x}.png path that we hand straight to MapLibre.
+  // GIBS publishes a "default" tile-matrix-set per layer that updates
+  // at the source's native cadence (~10 min for ABI Band 13).
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    if (choice.kind !== 'noaa-goes') {
-      if (map.getLayer(GOES_LAYER)) map.removeLayer(GOES_LAYER);
-      if (map.getSource(GOES_SOURCE)) map.removeSource(GOES_SOURCE);
+    const layerName = choice.product;
+    const url =
+      `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/` +
+      `${layerName}/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
+
+    const existing = map.getSource(GIBS_IR_SOURCE) as
+      | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
+      | undefined;
+    if (existing && typeof existing.setTiles === 'function') {
+      existing.setTiles([url]);
       return;
     }
-    const band = choice.product === 'band_2' ? '2' : '13';
-    let timer: number | undefined;
-
-    const refresh = () => {
-      const { bbox4326, coords } = bboxFromMap(map);
-      const url = `/api/satellite/noaa-goes?bbox=${encodeURIComponent(
-        bbox4326,
-      )}&band=${band}&width=1024&height=1024`;
-      const src = map.getSource(GOES_SOURCE) as
-        | maplibregl.ImageSource
-        | undefined;
-      if (src) {
-        src.updateImage({ url, coordinates: coords });
-        return;
-      }
-      safeAdd(map, styleLoaded, () => {
-        if (map.getSource(GOES_SOURCE)) return;
-        map.addSource(GOES_SOURCE, { type: 'image', url, coordinates: coords });
-        map.addLayer({
-          id: GOES_LAYER,
-          type: 'raster',
-          source: GOES_SOURCE,
-          paint: PIXELATED_PAINT,
-        });
+    if (existing) return;
+    safeAdd(map, styleLoaded, () => {
+      if (map.getSource(GIBS_IR_SOURCE)) return;
+      map.addSource(GIBS_IR_SOURCE, {
+        type: 'raster',
+        tiles: [url],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 6,
       });
-    };
+      map.addLayer({
+        id: GIBS_IR_LAYER,
+        type: 'raster',
+        source: GIBS_IR_SOURCE,
+        paint: PIXELATED_PAINT,
+      });
+    });
+  }, [map, styleLoaded, choice.product]);
 
-    const debounced = () => {
-      if (timer !== undefined) window.clearTimeout(timer);
-      timer = window.setTimeout(refresh, 300);
-    };
-
-    refresh();
-    map.on('moveend', debounced);
-    return () => {
-      if (timer !== undefined) window.clearTimeout(timer);
-      map.off('moveend', debounced);
-    };
-  }, [map, styleLoaded, choice.kind, choice.product, ts]);
+  // Iowa State Mesonet GOES visible (1km, US-east). XYZ tiles via the
+  // existing /api/radar/iowa-state proxy — `product` param already
+  // allow-lists `goes-east-vis-1km-900913`.
+  useEffect(() => {
+    if (!map || !styleLoaded) return;
+    const url = `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=goes-east-vis-1km-900913`;
+    const existing = map.getSource(IOWA_GOES_VIS_SOURCE) as
+      | maplibregl.RasterTileSource
+      | undefined;
+    if (existing) return;
+    safeAdd(map, styleLoaded, () => {
+      if (map.getSource(IOWA_GOES_VIS_SOURCE)) return;
+      map.addSource(IOWA_GOES_VIS_SOURCE, {
+        type: 'raster',
+        tiles: [url],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom: 10,
+      });
+      map.addLayer({
+        id: IOWA_GOES_VIS_LAYER,
+        type: 'raster',
+        source: IOWA_GOES_VIS_SOURCE,
+        paint: PIXELATED_PAINT,
+      });
+    });
+  }, [map, styleLoaded]);
 
   // Per-site WMS layer — handled by its own hook.
   useWmsSiteLayer({
@@ -586,23 +606,26 @@ export function useRadarLayers({
   }, [map, styleLoaded, choice.kind, choice.product, site?.id]);
 
   // Crossfade — set every layer's opacity each time the choice changes.
-  // RainViewer radar shows when the resolver picked it AND the user
-  // isn't on a satellite product. Satellite layer flips on for both
-  // satellite-ir AND satellite-vis-outside-US (the resolver returns
-  // 'rainviewer' / 'satellite' as the IR fallback).
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const target = choice.opacity * overlay;
 
     const showRvRadar = choice.kind === 'rainviewer' && !isSatelliteProduct;
-    const showRvSat = choice.kind === 'rainviewer' && isSatelliteProduct;
 
     fadeRasterTo(map, RAINVIEWER_RADAR_LAYER, showRvRadar ? target : 0);
-    fadeRasterTo(map, RAINVIEWER_SAT_LAYER, showRvSat ? target : 0);
+    // The rainviewer-satellite source is kept mounted but always hidden
+    // — RainViewer's free manifest no longer publishes satellite frames
+    // (verified 2026-05-10). Satellite IR now comes from GIBS.
+    fadeRasterTo(map, RAINVIEWER_SAT_LAYER, 0);
     fadeRasterTo(map, IOWA_LAYER, choice.kind === 'iowa-state' ? target : 0);
     fadeRasterTo(map, L2_LAYER, choice.kind === 'level2' ? target : 0);
     fadeRasterTo(map, DWD_LAYER, choice.kind === 'dwd' ? target : 0);
-    fadeRasterTo(map, GOES_LAYER, choice.kind === 'noaa-goes' ? target : 0);
+    fadeRasterTo(map, GIBS_IR_LAYER, choice.kind === 'gibs-ir' ? target : 0);
+    fadeRasterTo(
+      map,
+      IOWA_GOES_VIS_LAYER,
+      choice.kind === 'iowa-goes-vis' ? target : 0,
+    );
     fadeRasterTo(map, GRID_LAYER, choice.kind === 'open-meteo-grid' ? target : 0);
     fadeRasterTo(map, NWS_LAYER, 0);
   }, [map, styleLoaded, choice, overlay, isSatelliteProduct]);

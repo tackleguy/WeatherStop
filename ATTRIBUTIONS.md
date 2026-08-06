@@ -13,6 +13,7 @@ attribution chip and the map's `attributionControl`.
 | Source | Use | Terms |
 | --- | --- | --- |
 | **NOAA / NWS** — api.weather.gov | Forecasts, alerts, radar imagery | Public domain (US Government work, 17 U.S.C. § 105). Identify yourself with a `User-Agent`. |
+| **NOAA / SPC** — spc.noaa.gov / mapservices.weather.noaa.gov | Convective outlooks (Day 1–8) + fire weather outlooks | Public domain. Cite "NOAA / Storm Prediction Center". |
 | **NOAA / NWS RIDGE WMS** — opengeo.ncep.noaa.gov | Per-site reflectivity / velocity overlays | Public domain. Cite "NOAA / NWS". |
 | **NOAA NEXRAD Level 2** — `noaa-nexrad-level2` AWS Open Data bucket | Storm-scale radar (server-rendered) | Public domain. Bucket is part of the NOAA Big Data Program. |
 | **Open-Meteo** — api.open-meteo.com | Forecast data outside the US | CC BY 4.0 (`https://open-meteo.com/en/license`). Attribution shown in the home view. |

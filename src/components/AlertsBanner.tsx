@@ -230,7 +230,7 @@ export function AlertsBanner({ alerts }: Props) {
                 </p>
               ) : null}
               <Link
-                to="/radar"
+                to="/map"
                 className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-red-700 hover:bg-white/90"
               >
                 <ExternalLink className="h-3 w-3" strokeWidth={2.4} />

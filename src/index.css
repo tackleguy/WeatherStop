@@ -1,3 +1,5 @@
+/* Design tokens aligned to the WeatherStop UI board (blue glass). */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,61 +7,61 @@
 :root {
   color-scheme: dark;
 
-  /* ── Home view (Windy-dense weather chrome) ─────────────────────────── */
-  --bg-deep: #0a0d12;
-  --bg-panel: rgba(18, 22, 28, 0.78);
-  --bg-panel-solid: #14181f;
-  --bg-elevated: rgba(28, 33, 42, 0.85);
+  --bg-deep: #07090f;
+  --bg-panel: rgba(16, 22, 36, 0.72);
+  --bg-panel-solid: #121826;
+  --bg-elevated: rgba(28, 36, 56, 0.88);
+
+  --surface-0: #06080e;
+  --surface-1: #0a0e18;
+  --surface-2: #121a2c;
+  --surface-3: #1a243c;
+
+  --glass: rgba(12, 18, 34, 0.78);
+  --glass-hi: rgba(18, 26, 48, 0.9);
 
   --border-subtle: rgba(255, 255, 255, 0.06);
   --border-default: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.18);
+  --line-subtle: var(--border-subtle);
+  --line-default: var(--border-default);
+  --line-strong: var(--border-strong);
 
-  --text-primary: #e8eaed;
-  --text-secondary: rgba(232, 234, 237, 0.75);
-  --text-tertiary: rgba(232, 234, 237, 0.55);
-  --text-disabled: rgba(232, 234, 237, 0.35);
+  --text-primary: #eef2f8;
+  --text-secondary: rgba(238, 242, 248, 0.72);
+  --text-tertiary: rgba(238, 242, 248, 0.5);
+  --text-disabled: rgba(238, 242, 248, 0.32);
+  --ink-1: #f4f7fb;
+  --ink-2: rgba(244, 247, 251, 0.78);
+  --ink-3: rgba(244, 247, 251, 0.55);
+  --ink-4: rgba(244, 247, 251, 0.36);
 
-  /* Severity (shared between home alerts banner + radar map) */
   --sev-extreme: #d946ef;
   --sev-severe: #ef4444;
   --sev-moderate: #f59e0b;
   --sev-minor: #fbbf24;
   --sev-unknown: #94a3b8;
 
-  /* Blur presets */
   --blur-strong: blur(24px) saturate(140%);
   --blur-medium: blur(16px) saturate(120%);
-
-  /* ── Radar view (AccuWeather-tinted instrument chrome) ──────────────── */
-  --surface-0: #060912;
-  --surface-1: #0b1020;
-  --surface-2: #111830;
-  --surface-3: #1a2240;
-
-  --glass: rgba(11, 16, 32, 0.78);
-  --glass-hi: rgba(20, 28, 50, 0.86);
   --blur-xl: blur(28px) saturate(160%);
   --blur-md: blur(18px) saturate(140%);
 
-  --line-subtle: rgba(255, 255, 255, 0.06);
-  --line-default: rgba(255, 255, 255, 0.1);
-  --line-strong: rgba(255, 255, 255, 0.18);
-
-  --ink-1: #f4f6fb;
-  --ink-2: rgba(244, 246, 251, 0.78);
-  --ink-3: rgba(244, 246, 251, 0.56);
-  --ink-4: rgba(244, 246, 251, 0.36);
-
-  /* Accent — warm orange (radar) doubles as the global brand mark */
-  --accent: #ff8a3d;
-  --accent-2: #ffb066;
-  --accent-glow: rgba(255, 138, 61, 0.35);
+  /* Primary accent — electric blue from the UI board */
+  --accent: #3b9eff;
+  --accent-2: #6bb8ff;
+  --accent-glow: rgba(59, 158, 255, 0.4);
 
   --cool: #4dd9ff;
   --cool-glow: rgba(77, 217, 255, 0.3);
 
-  /* Motion */
+  /* Brand mark (Zap) keeps a warm spark */
+  --brand: #ff8a3d;
+  --brand-glow: rgba(255, 138, 61, 0.4);
+
+  --sidebar-w: 4.25rem;
+  --sidebar-w-expanded: 13.5rem;
+
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
@@ -91,15 +93,13 @@ body {
     env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Subtle film-grain on every view. Sits above page content but below
-   floating chrome (z-index sits between gradients and panels). */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.035;
+  opacity: 0.03;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
@@ -108,7 +108,6 @@ body::before {
   font-variant-numeric: tabular-nums;
 }
 
-/* MapLibre attribution control restyled to match the dark chrome. */
 .maplibregl-ctrl-attrib {
   background: rgba(11, 16, 32, 0.6) !important;
   color: rgba(244, 246, 251, 0.55) !important;
@@ -117,8 +116,6 @@ body::before {
 .maplibregl-ctrl-attrib a {
   color: rgba(244, 246, 251, 0.85) !important;
 }
-
-/* ── typography roles ──────────────────────────────────────────────────── */
 
 .hero-temp {
   font-size: clamp(96px, 18vw, 168px);
@@ -145,9 +142,9 @@ body::before {
 .card-label {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
 }
 
 .card-meta {
@@ -171,17 +168,15 @@ body::before {
   color: var(--text-tertiary);
 }
 
-/* ── card surface ──────────────────────────────────────────────────────── */
-
 .panel {
   background: var(--bg-panel);
   backdrop-filter: var(--blur-strong);
   -webkit-backdrop-filter: var(--blur-strong);
   border: 1px solid var(--border-default);
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow:
     inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
-    0 8px 32px -12px rgba(0, 0, 0, 0.4);
+    0 8px 32px -12px rgba(0, 0, 0, 0.45);
 }
 
 .panel-padded {
@@ -192,7 +187,6 @@ body::before {
   border-top: 1px solid var(--border-subtle);
 }
 
-/* Legacy alias used during migration. */
 .glass {
   background: var(--bg-panel);
   backdrop-filter: var(--blur-strong);
@@ -200,8 +194,6 @@ body::before {
   border: 1px solid var(--border-default);
   box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
 }
-
-/* ── utilities ─────────────────────────────────────────────────────────── */
 
 .no-scrollbar {
   scrollbar-width: none;
@@ -283,9 +275,6 @@ body::before {
   }
 }
 
-/* RadarScope-style sharp pixels for legend swatches and any direct
-   <img> / <canvas> renderings of radar imagery. MapLibre raster layers
-   are handled at the paint level (raster-resampling: 'nearest'). */
 .pixelated,
 .radar-legend img,
 canvas.radar-canvas {
@@ -293,4 +282,19 @@ canvas.radar-canvas {
   image-rendering: crisp-edges;
   image-rendering: -webkit-crisp-edges;
   -ms-interpolation-mode: nearest-neighbor;
+}
+
+/* App shell: content sits beside the left rail */
+.app-main {
+  position: absolute;
+  inset: 0;
+  left: var(--sidebar-w);
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .app-main {
+    left: 0;
+    bottom: 4.25rem;
+  }
 }

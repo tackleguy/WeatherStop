@@ -3,11 +3,9 @@
 
 import {
   AlertTriangle,
-  Globe,
   Home,
-  Layers,
   LineChart,
-  Radio,
+  Map,
   Zap,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -17,15 +15,24 @@ interface Tab {
   to: string;
   label: string;
   icon: LucideIcon;
+  /** Paths that should also mark this tab active. */
+  match?: (path: string) => boolean;
 }
 
 const TABS: Tab[] = [
   { to: '/', label: 'Home', icon: Home },
-  { to: '/radar', label: 'Radar', icon: Radio },
-  { to: '/composite', label: 'Composite', icon: Layers },
-  { to: '/satellite', label: 'Satellite', icon: Globe },
-  { to: '/models', label: 'Models', icon: LineChart },
+  {
+    to: '/map',
+    label: 'Map',
+    icon: Map,
+    match: (p) =>
+      p === '/map' ||
+      p === '/radar' ||
+      p === '/composite' ||
+      p === '/satellite',
+  },
   { to: '/outlooks', label: 'Outlooks', icon: AlertTriangle },
+  { to: '/models', label: 'Models', icon: LineChart },
 ];
 
 export function PillNav() {
@@ -37,7 +44,7 @@ export function PillNav() {
       aria-label="Primary"
       className="pointer-events-auto fixed left-1/2 top-4 z-40 flex h-12 -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 px-2 pl-3 backdrop-blur-[28px] sm:h-14 sm:gap-1.5 sm:px-3 sm:pl-4"
       style={{
-        background: 'rgba(11, 16, 32, 0.78)',
+        background: 'var(--glass)',
         boxShadow: '0 8px 32px -8px rgba(0,0,0,0.5)',
       }}
     >
@@ -49,8 +56,8 @@ export function PillNav() {
         <Zap
           className="h-4 w-4"
           style={{
-            color: '#ff8a3d',
-            filter: 'drop-shadow(0 0 6px rgba(255,138,61,0.45))',
+            color: 'var(--accent)',
+            filter: 'drop-shadow(0 0 6px var(--accent-glow))',
           }}
           strokeWidth={2.2}
         />
@@ -69,9 +76,11 @@ export function PillNav() {
                 end={t.to === '/'}
                 className={({ isActive }) => {
                   const active =
-                    isActive || (t.to === '/' && isHome);
+                    isActive ||
+                    (t.to === '/' && isHome) ||
+                    (t.match?.(loc.pathname) ?? false);
                   return [
-                    'flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium transition-all duration-150 sm:px-3.5 sm:py-2 sm:text-[13px]',
+                    'flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium transition-all duration-[var(--t-fast)] ease-[var(--ease)] sm:px-3.5 sm:py-2 sm:text-[13px]',
                     active
                       ? 'text-black shadow-[0_0_16px_rgba(255,138,61,0.5)]'
                       : 'text-white/70 hover:bg-white/5 hover:text-white',
@@ -79,8 +88,12 @@ export function PillNav() {
                 }}
                 style={({ isActive }) => {
                   const active =
-                    isActive || (t.to === '/' && isHome);
-                  return active ? { background: '#ff8a3d' } : undefined;
+                    isActive ||
+                    (t.to === '/' && isHome) ||
+                    (t.match?.(loc.pathname) ?? false);
+                  return active
+                    ? { background: 'var(--accent)' }
+                    : undefined;
                 }}
               >
                 <Icon className="h-3.5 w-3.5" strokeWidth={2} />

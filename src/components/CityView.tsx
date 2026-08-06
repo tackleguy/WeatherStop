@@ -94,7 +94,7 @@ export function CityView({ city, settings, onSnapshot }: Props) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="flex flex-col gap-3 px-4 pb-10 sm:px-6"
+      className="flex flex-col gap-3.5 px-4 pb-12 sm:gap-4 sm:px-6"
     >
       {data.alerts && data.alerts.length > 0 ? (
         <AlertsBanner alerts={data.alerts} />
@@ -106,7 +106,7 @@ export function CityView({ city, settings, onSnapshot }: Props) {
       <PrecipitationCard data={w} index={3} />
       <AirQualityCard data={data.airQuality} index={4} />
       <UVIndexCard data={w} index={5} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3.5 sm:gap-4">
         <SunCard data={w} index={6} />
         <WindCard data={w} settings={settings} index={7} />
       </div>

@@ -139,9 +139,8 @@ export function HomeView() {
     <div className="relative h-full overflow-y-auto">
       <DynamicBackground gradient={gradient} weatherCode={code} isDay={isDay} />
 
-      {/* Top spacer for the floating pill nav (h-12 mobile / h-14 desktop +
-          16px top + breathing). */}
-      <div className="h-20 sm:h-24" aria-hidden />
+      {/* Top breathing room beside the sidebar rail */}
+      <div className="h-4 sm:h-5" aria-hidden />
 
       <div className="flex">
         {/* Desktop sidebar */}

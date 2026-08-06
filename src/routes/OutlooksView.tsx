@@ -1,24 +1,76 @@
-// Placeholder for SPC convective outlooks (day-1 / day-2 / day-3
-// categorical and probabilistic). Wiring is a later session.
+// SPC convective + fire weather outlooks — Day 1–8 products on MapLibre.
 
-import { AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { OutlooksControls } from '../components/outlooks/OutlooksControls';
+import { OutlooksLegend } from '../components/outlooks/OutlooksLegend';
+import { OutlooksMap } from '../components/outlooks/OutlooksMap';
+import { OutlookInspectCard } from '../components/outlooks/OutlookInspectCard';
+import { useOutlooks } from '../hooks/useOutlooks';
+import {
+  legendKindFor,
+  type OutlookDay,
+  type OutlookDomain,
+  type OutlookFeatureProps,
+  type OutlookProduct,
+} from '../lib/spcOutlooks';
 
 export function OutlooksView() {
+  const [domain, setDomain] = useState<OutlookDomain>('convective');
+  const [day, setDay] = useState<OutlookDay>(1);
+  const [product, setProduct] = useState<OutlookProduct>('cat');
+  const [inspect, setInspect] = useState<OutlookFeatureProps | null>(null);
+  const { geojson, loading, error } = useOutlooks(day, product);
+  const legendKind = legendKindFor(domain, day, product);
+
   return (
-    <div className="flex h-[100dvh] flex-col items-center justify-center px-6 pt-20 text-center">
-      <div className="rounded-2xl border border-white/10 bg-[var(--glass-hi,rgba(20,28,50,0.86))] px-8 py-10 backdrop-blur-md">
-        <AlertTriangle
-          className="mx-auto mb-4 h-10 w-10"
-          strokeWidth={1.4}
-          style={{ color: 'var(--accent, #ff8a3d)' }}
+    <div
+      className="absolute inset-0 flex flex-col"
+      style={{ background: 'var(--surface-0)' }}
+    >
+      <div className="h-3 shrink-0" aria-hidden />
+
+      <div className="relative flex-1 overflow-hidden">
+        <OutlooksMap geojson={geojson} onFeatureClick={setInspect} />
+
+        <OutlooksControls
+          domain={domain}
+          day={day}
+          product={product}
+          onDomainChange={(d) => {
+            setDomain(d);
+            setInspect(null);
+          }}
+          onDayChange={(d) => {
+            setDay(d);
+            setInspect(null);
+          }}
+          onProductChange={(p) => {
+            setProduct(p);
+            setInspect(null);
+          }}
+          loading={loading}
         />
-        <h1 className="mb-2 text-2xl font-semibold text-white">
-          SPC Convective Outlooks
-        </h1>
-        <p className="max-w-md text-sm leading-relaxed text-white/65">
-          Day 1 / Day 2 / Day 3 categorical risk areas (Marginal → High) and
-          probabilistic tornado / hail / wind percentages. Coming soon.
-        </p>
+
+        <OutlooksLegend kind={legendKind} />
+        <OutlookInspectCard feature={inspect} onClose={() => setInspect(null)} />
+
+        {error ? (
+          <div
+            className="pointer-events-none absolute bottom-4 left-1/2 z-20 max-w-sm -translate-x-1/2 rounded-xl border border-[var(--line-default)] px-4 py-2 text-center text-[12px] text-[var(--ink-2)] backdrop-blur-[28px]"
+            style={{ background: 'var(--glass-hi)' }}
+          >
+            Couldn’t load SPC outlooks. Check your connection and try again.
+          </div>
+        ) : null}
+
+        {!loading && !error && geojson.features.length === 0 ? (
+          <div
+            className="pointer-events-none absolute left-1/2 top-1/2 z-10 max-w-xs -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--line-default)] px-4 py-3 text-center text-[13px] text-[var(--ink-3)] backdrop-blur-[28px]"
+            style={{ background: 'var(--glass-hi)' }}
+          >
+            No outlook polygons for this day / product right now.
+          </div>
+        ) : null}
       </div>
     </div>
   );

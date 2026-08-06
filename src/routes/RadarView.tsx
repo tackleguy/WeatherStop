@@ -1,5 +1,6 @@
-// Radar view. The pill nav and global chrome live in App.tsx; this
-// route just lays out the map + rail + scrubber + floating widgets.
+// Map view (unified Radar / Composite / Satellite shell). The pill nav
+// and global chrome live in App.tsx; this route lays out the map + rail
+// + scrubber + floating search/widgets.
 
 import maplibregl from 'maplibre-gl';
 import { useState } from 'react';
@@ -11,6 +12,7 @@ import { DistanceRuler } from '../components/radar/DistanceRuler';
 import { FocusedAlertChip } from '../components/radar/FocusedAlertChip';
 import { LayerInfoCard } from '../components/radar/LayerInfoCard';
 import { LayerOpacitySlider } from '../components/radar/LayerOpacitySlider';
+import { MapSearchChrome } from '../components/radar/MapSearchChrome';
 import { ProductRail } from '../components/radar/ProductRail';
 import { RadarLegend } from '../components/radar/RadarLegend';
 import { RadarMap } from '../components/radar/RadarMap';
@@ -27,9 +29,6 @@ export function RadarView() {
 
   return (
     <div className="absolute inset-0 flex flex-col" style={{ background: 'var(--surface-0)' }}>
-      {/* Top spacer for the floating pill nav */}
-      <div className="h-20 shrink-0 sm:h-24" aria-hidden />
-
       {isMobile ? <MobileProductStrip /> : null}
 
       <div className="relative flex flex-1 overflow-hidden">
@@ -41,6 +40,8 @@ export function RadarView() {
 
         <main className="relative flex-1 overflow-hidden">
           <RadarMap onMapReady={setMap} />
+
+          <MapSearchChrome map={map} />
 
           {!isMobile ? <AlertFilterChips /> : null}
           {!isMobile ? <LayerOpacitySlider /> : null}
@@ -74,7 +75,7 @@ function MobileProductStrip() {
       className="border-b border-[var(--line-subtle)] px-2 py-2"
       style={{ background: 'var(--glass)' }}
     >
-      <div className="flex gap-1 overflow-x-auto">
+      <div className="flex gap-1 overflow-x-auto no-scrollbar">
         {PRODUCTS.map((p) => {
           const Icon = p.icon;
           const disabled =

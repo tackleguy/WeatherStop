@@ -8,6 +8,7 @@ import {
   Atom,
   CloudRain,
   Cloudy,
+  Layers,
   Sun,
   Thermometer,
   Tornado,
@@ -26,6 +27,8 @@ export type ProductId =
   | 'temperature'
   | 'composite';
 
+export type ProductGroup = 'radar' | 'satellite' | 'surface';
+
 export type LegendKind =
   | 'dbz'
   | 'kts'
@@ -42,9 +45,16 @@ export interface Product {
   icon: LucideIcon;
   legend: LegendKind;
   description: string;
+  group: ProductGroup;
   /** Disabled below this map zoom level. */
   requiresZoom?: number;
 }
+
+export const PRODUCT_GROUP_LABELS: Record<ProductGroup, string> = {
+  radar: 'Radar',
+  satellite: 'Satellite',
+  surface: 'Surface',
+};
 
 export const PRODUCTS: Product[] = [
   {
@@ -54,6 +64,16 @@ export const PRODUCTS: Product[] = [
     icon: CloudRain,
     legend: 'dbz',
     description: 'Precipitation intensity',
+    group: 'radar',
+  },
+  {
+    id: 'composite',
+    label: 'Composite',
+    shortLabel: 'COMP',
+    icon: Layers,
+    legend: 'dbz',
+    description: 'CONUS mosaic reflectivity',
+    group: 'radar',
   },
   {
     id: 'velocity',
@@ -62,6 +82,7 @@ export const PRODUCTS: Product[] = [
     icon: Wind,
     legend: 'kts',
     description: 'Wind toward / away from radar (US only)',
+    group: 'radar',
   },
   {
     id: 'storm-rel-velocity',
@@ -70,6 +91,7 @@ export const PRODUCTS: Product[] = [
     icon: Tornado,
     legend: 'kts',
     description: 'Velocity relative to storm motion (US only)',
+    group: 'radar',
     requiresZoom: 6,
   },
   {
@@ -79,6 +101,7 @@ export const PRODUCTS: Product[] = [
     icon: Atom,
     legend: 'rho',
     description: 'Hail / debris detection (US, zoom 8+)',
+    group: 'radar',
     requiresZoom: 8,
   },
   {
@@ -88,6 +111,7 @@ export const PRODUCTS: Product[] = [
     icon: Cloudy,
     legend: 'satellite',
     description: 'Infrared cloud cover (global)',
+    group: 'satellite',
   },
   {
     id: 'satellite-vis',
@@ -96,6 +120,7 @@ export const PRODUCTS: Product[] = [
     icon: Sun,
     legend: 'satellite',
     description: 'Visible cloud cover (best US)',
+    group: 'satellite',
   },
   {
     id: 'wind',
@@ -104,6 +129,7 @@ export const PRODUCTS: Product[] = [
     icon: Wind,
     legend: 'wind',
     description: 'Surface wind speed (forecast)',
+    group: 'surface',
   },
   {
     id: 'temperature',
@@ -112,6 +138,7 @@ export const PRODUCTS: Product[] = [
     icon: Thermometer,
     legend: 'temp',
     description: 'Surface temperature (forecast)',
+    group: 'surface',
   },
 ];
 

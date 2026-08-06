@@ -18,7 +18,8 @@ import { Level2Radar } from 'nexrad-level-2-data';
 import { NEXRAD_SITES } from '../../src/lib/nexradSites';
 
 export const config = {
-  runtime: 'nodejs20.x',
+  // Vercel serverless — must be "nodejs" (not "nodejs20.x")
+  runtime: 'nodejs',
   maxDuration: 30,
 };
 

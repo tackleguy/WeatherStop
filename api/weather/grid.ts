@@ -16,7 +16,8 @@ import { createCanvas } from '@napi-rs/canvas';
 import { put, list } from '@vercel/blob';
 
 export const config = {
-  runtime: 'nodejs20.x',
+  // Vercel serverless — must be "nodejs" (not "nodejs20.x")
+  runtime: 'nodejs',
   maxDuration: 25,
 };
 

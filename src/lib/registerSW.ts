@@ -17,6 +17,8 @@ export function registerServiceWorker() {
       navigator.serviceWorker
         .register('/sw.js', { scope: '/' })
         .then((registration) => {
+          // Pick up a new sw.js as soon as the tab loads (not only hourly).
+          registration.update().catch(() => undefined);
           window.setInterval(
             () => {
               registration.update().catch(() => undefined);

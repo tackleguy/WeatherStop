@@ -115,7 +115,7 @@ function tempColor(f: number): Color {
 }
 
 export default async function handler(req: Request): Promise<Response> {
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url, 'https://x');
   const zRaw = searchParams.get('z');
   const xRaw = searchParams.get('x');
   const yRaw = searchParams.get('y');

@@ -210,7 +210,7 @@ function renderRadialPng(
 }
 
 export default async function handler(req: Request): Promise<Response> {
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url, 'https://x');
   const siteRaw = searchParams.get('site');
   const productRaw = (searchParams.get('product') ?? 'N0S').toUpperCase();
 

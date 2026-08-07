@@ -222,26 +222,29 @@ export default async function handler(req: Request): Promise<Response> {
 
   const cacheKey = `l2/${site}/${product}/latest.png`;
   const TTL_MS = 5 * 60_000;
+  const hasBlob = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 
   // Cache lookup — Blob list with prefix (5-min TTL).
-  try {
-    const existing = await list({ prefix: cacheKey, limit: 1 });
-    if (existing.blobs.length > 0) {
-      const blob = existing.blobs[0];
-      const age = Date.now() - new Date(blob.uploadedAt).getTime();
-      if (age < TTL_MS) {
-        return Response.json({
-          url: blob.url,
-          bbox: bboxForSite(site),
-          timestamp: blob.uploadedAt,
-          site,
-          product,
-          cached: true,
-        });
+  if (hasBlob) {
+    try {
+      const existing = await list({ prefix: cacheKey, limit: 1 });
+      if (existing.blobs.length > 0) {
+        const blob = existing.blobs[0];
+        const age = Date.now() - new Date(blob.uploadedAt).getTime();
+        if (age < TTL_MS) {
+          return Response.json({
+            url: blob.url,
+            bbox: bboxForSite(site),
+            timestamp: blob.uploadedAt,
+            site,
+            product,
+            cached: true,
+          });
+        }
       }
+    } catch {
+      // Cache miss / Blob unavailable → render fresh.
     }
-  } catch {
-    // Cache miss / Blob unavailable → render fresh.
   }
 
   // Find + download the latest L2 volume for the requested site.
@@ -282,37 +285,37 @@ export default async function handler(req: Request): Promise<Response> {
 
   const { png } = renderSweep(sweep, product);
 
-  let publicUrl: string | undefined;
-  try {
-    const blob = await put(cacheKey, png, {
-      access: 'public',
-      contentType: 'image/png',
-      cacheControlMaxAge: 300,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    publicUrl = blob.url;
-  } catch (err) {
-    // Blob misconfigured — return the PNG inline so the feature still
-    // works in dev / on a project that hasn't connected Vercel Blob.
-    return new Response(new Uint8Array(png), {
-      headers: {
-        'Content-Type': 'image/png',
-        'Cache-Control': 'public, max-age=300, s-maxage=300',
-        'X-Source': 'level2-direct',
-        'X-Site': site,
-        'X-Product': product,
-        'X-Note': 'blob unavailable — served inline',
-      },
-    });
+  if (hasBlob) {
+    try {
+      const blob = await put(cacheKey, png, {
+        access: 'public',
+        contentType: 'image/png',
+        cacheControlMaxAge: 300,
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      });
+      return Response.json({
+        url: blob.url,
+        bbox: bboxForSite(site),
+        timestamp: new Date().toISOString(),
+        site,
+        product,
+        cached: false,
+      });
+    } catch {
+      // fall through
+    }
   }
 
-  return Response.json({
-    url: publicUrl,
-    bbox: bboxForSite(site),
-    timestamp: new Date().toISOString(),
-    site,
-    product,
-    cached: false,
+  const [w, s, e, n] = bboxForSite(site);
+  return new Response(new Uint8Array(png), {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=300, s-maxage=300',
+      'X-Source': 'level2-direct',
+      'X-Site': site,
+      'X-Product': product,
+      'X-Bbox': `${w},${s},${e},${n}`,
+    },
   });
 }

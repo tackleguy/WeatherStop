@@ -141,14 +141,17 @@ export default async function handler(req: Request): Promise<Response> {
 
   const win = Math.floor(Date.now() / (30 * 60_000));
   const cacheKey = `grid/${layer}/${z}/${x}/${y}/${win}.png`;
+  const hasBlob = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 
-  try {
-    const existing = await list({ prefix: cacheKey, limit: 1 });
-    if (existing.blobs.length > 0) {
-      return Response.redirect(existing.blobs[0].url, 302);
+  if (hasBlob) {
+    try {
+      const existing = await list({ prefix: cacheKey, limit: 1 });
+      if (existing.blobs.length > 0) {
+        return Response.redirect(existing.blobs[0].url, 302);
+      }
+    } catch {
+      // Blob unavailable → fall through and render fresh.
     }
-  } catch {
-    // Blob unavailable → fall through and render fresh.
   }
 
   const { lonW, lonE, latN, latS } = tileBboxLngLat(z, x, y);
@@ -239,22 +242,26 @@ export default async function handler(req: Request): Promise<Response> {
   ctx.putImageData(img, 0, 0);
   const png = canvas.toBuffer('image/png');
 
-  try {
-    const blob = await put(cacheKey, png, {
-      access: 'public',
-      contentType: 'image/png',
-      cacheControlMaxAge: 1800,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    return Response.redirect(blob.url, 302);
-  } catch {
-    return new Response(new Uint8Array(png), {
-      headers: {
-        'Content-Type': 'image/png',
-        'Cache-Control': 'public, max-age=1800',
-        'X-Source': 'open-meteo-grid-direct',
-      },
-    });
+  if (hasBlob) {
+    try {
+      const blob = await put(cacheKey, png, {
+        access: 'public',
+        contentType: 'image/png',
+        cacheControlMaxAge: 1800,
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      });
+      return Response.redirect(blob.url, 302);
+    } catch {
+      // fall through
+    }
   }
+
+  return new Response(new Uint8Array(png), {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=1800',
+      'X-Source': 'open-meteo-grid-direct',
+    },
+  });
 }

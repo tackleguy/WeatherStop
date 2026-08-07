@@ -614,13 +614,35 @@ export function useRadarLayers({
           if (choice.fallback) setActiveKind(choice.fallback);
           return;
         }
-        const data = (await res.json()) as {
-          url: string;
-          bbox: [number, number, number, number];
-        };
+        const ct = res.headers.get('content-type') ?? '';
+        let url: string;
+        let bbox: [number, number, number, number];
+        if (ct.includes('application/json')) {
+          const data = (await res.json()) as {
+            url: string;
+            bbox: [number, number, number, number];
+          };
+          url = data.url;
+          bbox = data.bbox;
+        } else {
+          const blob = await res.blob();
+          url = URL.createObjectURL(blob);
+          const hdr = res.headers.get('X-Bbox');
+          if (hdr) {
+            const parts = hdr.split(',').map(Number);
+            bbox = [parts[0], parts[1], parts[2], parts[3]];
+          } else {
+            bbox = [
+              site.lon - 2.5,
+              site.lat - 2.5,
+              site.lon + 2.5,
+              site.lat + 2.5,
+            ];
+          }
+        }
         if (cancelled || !map) return;
 
-        const [w, s, e, n] = data.bbox;
+        const [w, s, e, n] = bbox;
         const coords: [
           [number, number],
           [number, number],
@@ -637,14 +659,14 @@ export function useRadarLayers({
           | maplibregl.ImageSource
           | undefined;
         if (existing) {
-          existing.updateImage({ url: data.url, coordinates: coords });
+          existing.updateImage({ url, coordinates: coords });
           return;
         }
         safeAdd(map, styleLoaded, () => {
           if (map.getSource(L2_SOURCE)) return;
           map.addSource(L2_SOURCE, {
             type: 'image',
-            url: data.url,
+            url,
             coordinates: coords,
           });
           map.addLayer({

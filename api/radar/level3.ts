@@ -240,25 +240,28 @@ export default async function handler(req: Request): Promise<Response> {
 
   const cacheKey = `l3/${site3}/${product}/latest.png`;
   const TTL_MS = 5 * 60_000;
+  const hasBlob = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 
-  try {
-    const existing = await list({ prefix: cacheKey, limit: 1 });
-    if (existing.blobs.length > 0) {
-      const blob = existing.blobs[0];
-      const age = Date.now() - new Date(blob.uploadedAt).getTime();
-      if (age < TTL_MS) {
-        return Response.json({
-          url: blob.url,
-          bbox: bboxForSite(siteIcao),
-          timestamp: blob.uploadedAt,
-          site: siteIcao,
-          product,
-          cached: true,
-        });
+  if (hasBlob) {
+    try {
+      const existing = await list({ prefix: cacheKey, limit: 1 });
+      if (existing.blobs.length > 0) {
+        const blob = existing.blobs[0];
+        const age = Date.now() - new Date(blob.uploadedAt).getTime();
+        if (age < TTL_MS) {
+          return Response.json({
+            url: blob.url,
+            bbox: bboxForSite(siteIcao),
+            timestamp: blob.uploadedAt,
+            site: siteIcao,
+            product,
+            cached: true,
+          });
+        }
       }
+    } catch {
+      // Blob miss → render fresh.
     }
-  } catch {
-    // Blob miss → render fresh.
   }
 
   const latestKey = await listLatestL3Key(site3, fetchCode);
@@ -298,24 +301,26 @@ export default async function handler(req: Request): Promise<Response> {
 
   // Prefer inline PNG — Blob upload adds cold-start latency and often
   // isn't configured. Client accepts both JSON {url,bbox} and raw PNG.
-  try {
-    const blob = await put(cacheKey, png, {
-      access: 'public',
-      contentType: 'image/png',
-      cacheControlMaxAge: 300,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    return Response.json({
-      url: blob.url,
-      bbox: bboxForSite(siteIcao),
-      timestamp: new Date().toISOString(),
-      site: siteIcao,
-      product,
-      cached: false,
-    });
-  } catch {
-    // fall through to inline
+  if (hasBlob) {
+    try {
+      const blob = await put(cacheKey, png, {
+        access: 'public',
+        contentType: 'image/png',
+        cacheControlMaxAge: 300,
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      });
+      return Response.json({
+        url: blob.url,
+        bbox: bboxForSite(siteIcao),
+        timestamp: new Date().toISOString(),
+        site: siteIcao,
+        product,
+        cached: false,
+      });
+    } catch {
+      // fall through to inline
+    }
   }
 
   const [w, s, e, n] = bboxForSite(siteIcao);

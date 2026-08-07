@@ -11,7 +11,7 @@
 import { put, list } from '@vercel/blob';
 import { createCanvas, type ImageData } from '@napi-rs/canvas';
 import { createRequire } from 'node:module';
-import { NEXRAD_SITES } from '../../src/lib/nexradSites';
+import { NEXRAD_SITES } from '../_lib/nexradSites';
 
 const require = createRequire(import.meta.url);
 const parseLevel3 = require('nexrad-level-3-data') as (
@@ -302,7 +302,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
     publicUrl = blob.url;
   } catch {
-    return new Response(png, {
+    return new Response(new Uint8Array(png), {
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=300, s-maxage=300',

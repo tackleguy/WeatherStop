@@ -15,7 +15,7 @@
 import { put, list } from '@vercel/blob';
 import { createCanvas, type ImageData } from '@napi-rs/canvas';
 import { Level2Radar } from 'nexrad-level-2-data';
-import { NEXRAD_SITES } from '../../src/lib/nexradSites';
+import { NEXRAD_SITES } from '../_lib/nexradSites';
 
 export const config = {
   // Vercel serverless — must be "nodejs" (not "nodejs20.x")
@@ -304,7 +304,7 @@ export default async function handler(req: Request): Promise<Response> {
   } catch (err) {
     // Blob misconfigured — return the PNG inline so the feature still
     // works in dev / on a project that hasn't connected Vercel Blob.
-    return new Response(png, {
+    return new Response(new Uint8Array(png), {
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=300, s-maxage=300',

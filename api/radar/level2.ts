@@ -20,7 +20,7 @@ import { Level2Radar } from 'nexrad-level-2-data';
 export const config = {
   // Vercel serverless — must be "nodejs" (not "nodejs20.x")
   runtime: 'nodejs',
-  maxDuration: 30,
+  maxDuration: 60,
 };
 
 // NWS standard reflectivity palette (numeric color stops aren't
@@ -204,7 +204,9 @@ function renderSweep(
   return { png: canvas.toBuffer('image/png') };
 }
 
-export default async function handler(req: Request): Promise<Response> {
+// Named GET export required for Node.js runtime — a default export that
+// returns Response is treated as (req, res) and the Response is ignored.
+export async function GET(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url, 'https://x');
   const siteRaw = searchParams.get('site');
   const productRaw = searchParams.get('product') ?? 'reflectivity';

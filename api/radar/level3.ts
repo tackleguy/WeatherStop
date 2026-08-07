@@ -21,7 +21,7 @@ const parseLevel3 = require('nexrad-level-3-data') as (
 
 export const config = {
   runtime: 'nodejs',
-  maxDuration: 30,
+  maxDuration: 60,
 };
 
 type L3Product = 'N0S' | 'ROT';
@@ -222,7 +222,9 @@ function renderRadialPng(
   return canvas.toBuffer('image/png');
 }
 
-export default async function handler(req: Request): Promise<Response> {
+// Named GET export required for Node.js runtime — a default export that
+// returns Response is treated as (req, res) and the Response is ignored.
+export async function GET(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url, 'https://x');
   const siteRaw = searchParams.get('site');
   const productRaw = (searchParams.get('product') ?? 'N0S').toUpperCase();

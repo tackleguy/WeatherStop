@@ -18,7 +18,7 @@ import { put, list } from '@vercel/blob';
 export const config = {
   // Vercel serverless — must be "nodejs" (not "nodejs20.x")
   runtime: 'nodejs',
-  maxDuration: 25,
+  maxDuration: 30,
 };
 
 interface OpenMeteoCurrent {
@@ -114,7 +114,9 @@ function tempColor(f: number): Color {
   return [0, 0, 0, 0];
 }
 
-export default async function handler(req: Request): Promise<Response> {
+// Named GET export required for Node.js runtime — a default export that
+// returns Response is treated as (req, res) and the Response is ignored.
+export async function GET(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url, 'https://x');
   const zRaw = searchParams.get('z');
   const xRaw = searchParams.get('x');

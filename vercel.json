@@ -1,5 +1,10 @@
 {
   "rewrites": [
     { "source": "/((?!api/.*).*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/radar/level2.ts": { "maxDuration": 60, "memory": 1024 },
+    "api/radar/level3.ts": { "maxDuration": 60, "memory": 1024 },
+    "api/weather/grid.ts": { "maxDuration": 30, "memory": 1024 }
+  }
 }

@@ -60,14 +60,26 @@ async function listLatestL3Key(
   code: string,
 ): Promise<string | null> {
   const now = new Date();
-  // Prefer today, then yesterday (UTC).
-  for (let dayOffset = 0; dayOffset < 2; dayOffset++) {
-    const d = new Date(now.getTime() - dayOffset * 86_400_000);
+  // Try the current and previous UTC hours first (small lists), then the day.
+  const attempts: string[] = [];
+  for (let h = 0; h < 3; h++) {
+    const d = new Date(now.getTime() - h * 3_600_000);
     const y = d.getUTCFullYear();
     const m = String(d.getUTCMonth() + 1).padStart(2, '0');
     const day = String(d.getUTCDate()).padStart(2, '0');
-    const prefix = `${site3}_${code}_${y}_${m}_${day}_`;
-    const url = `https://unidata-nexrad-level3.s3.amazonaws.com/?list-type=2&prefix=${prefix}&max-keys=1000`;
+    const hour = String(d.getUTCHours()).padStart(2, '0');
+    attempts.push(`${site3}_${code}_${y}_${m}_${day}_${hour}_`);
+  }
+  {
+    const d = now;
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    attempts.push(`${site3}_${code}_${y}_${m}_${day}_`);
+  }
+
+  for (const prefix of attempts) {
+    const url = `https://unidata-nexrad-level3.s3.amazonaws.com/?list-type=2&prefix=${prefix}&max-keys=200`;
     const res = await fetch(url);
     if (!res.ok) continue;
     const xml = await res.text();
@@ -148,7 +160,7 @@ function renderRadialPng(
   maxPos: number,
   mode: 'velocity' | 'shear',
 ): Buffer {
-  const SIZE = 1024;
+  const SIZE = 512;
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, SIZE, SIZE);
@@ -157,19 +169,22 @@ function renderRadialPng(
 
   const { angles, field } = buildVelocityField(packet, maxNeg, maxPos);
   const n = field.length;
-  const gateMeters = 1000 * (packet.rangeScale || 1); // ~1 km gates typical
+  const gateMeters = 1000 * (packet.rangeScale || 1);
   const maxRangeMeters = packet.numberBins * gateMeters;
   const metersPerPixel = (maxRangeMeters * 2) / SIZE;
   const cx = SIZE / 2;
   const cy = SIZE / 2;
+  // Skip every other radial/gate to stay under serverless time limits.
+  const rStep = n > 180 ? 2 : 1;
+  const gStep = packet.numberBins > 120 ? 2 : 1;
 
-  for (let ri = 0; ri < n; ri++) {
+  for (let ri = 0; ri < n; ri += rStep) {
     const azDeg = angles[ri];
     const azRad = ((azDeg - 90) * Math.PI) / 180;
-    const next = field[(ri + 1) % n];
+    const next = field[(ri + rStep) % n];
     const cur = field[ri];
 
-    for (let gi = 0; gi < packet.numberBins; gi++) {
+    for (let gi = 0; gi < packet.numberBins; gi += gStep) {
       let rgba: [number, number, number, number] | null = null;
       if (mode === 'velocity') {
         const v = cur[gi];
@@ -179,9 +194,7 @@ function renderRadialPng(
         const v0 = cur[gi];
         const v1 = next[gi];
         if (v0 == null || v1 == null) continue;
-        // ΔV across ~1° azimuth ≈ shear proxy (kts/deg).
-        const shear = v1 - v0;
-        rgba = shearToColor(shear);
+        rgba = shearToColor(v1 - v0);
       }
 
       const rangeM = (gi + 0.5) * gateMeters + packet.firstBin * gateMeters;
@@ -283,7 +296,8 @@ export default async function handler(req: Request): Promise<Response> {
     product === 'ROT' ? 'shear' : 'velocity',
   );
 
-  let publicUrl: string | undefined;
+  // Prefer inline PNG — Blob upload adds cold-start latency and often
+  // isn't configured. Client accepts both JSON {url,bbox} and raw PNG.
   try {
     const blob = await put(cacheKey, png, {
       access: 'public',
@@ -292,25 +306,27 @@ export default async function handler(req: Request): Promise<Response> {
       addRandomSuffix: false,
       allowOverwrite: true,
     });
-    publicUrl = blob.url;
-  } catch {
-    return new Response(new Uint8Array(png), {
-      headers: {
-        'Content-Type': 'image/png',
-        'Cache-Control': 'public, max-age=300, s-maxage=300',
-        'X-Source': 'level3-direct',
-        'X-Site': siteIcao,
-        'X-Product': product,
-      },
+    return Response.json({
+      url: blob.url,
+      bbox: bboxForSite(siteIcao),
+      timestamp: new Date().toISOString(),
+      site: siteIcao,
+      product,
+      cached: false,
     });
+  } catch {
+    // fall through to inline
   }
 
-  return Response.json({
-    url: publicUrl,
-    bbox: bboxForSite(siteIcao),
-    timestamp: new Date().toISOString(),
-    site: siteIcao,
-    product,
-    cached: false,
+  const [w, s, e, n] = bboxForSite(siteIcao);
+  return new Response(new Uint8Array(png), {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=300, s-maxage=300',
+      'X-Source': 'level3-direct',
+      'X-Site': siteIcao,
+      'X-Product': product,
+      'X-Bbox': `${w},${s},${e},${n}`,
+    },
   });
 }

@@ -706,15 +706,20 @@ export function useRadarLayers({
           url = data.url;
           bbox = data.bbox;
         } else {
-          // Inline PNG
           const blob = await res.blob();
           url = URL.createObjectURL(blob);
-          bbox = [
-            site.lon - 2.5,
-            site.lat - 2.5,
-            site.lon + 2.5,
-            site.lat + 2.5,
-          ];
+          const hdr = res.headers.get('X-Bbox');
+          if (hdr) {
+            const parts = hdr.split(',').map(Number);
+            bbox = [parts[0], parts[1], parts[2], parts[3]];
+          } else {
+            bbox = [
+              site.lon - 2.5,
+              site.lat - 2.5,
+              site.lon + 2.5,
+              site.lat + 2.5,
+            ];
+          }
         }
         if (cancelled || !map) return;
 

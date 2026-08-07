@@ -11,7 +11,7 @@
 import { put, list } from '@vercel/blob';
 import { createCanvas, type ImageData } from '@napi-rs/canvas';
 import { createRequire } from 'node:module';
-import { NEXRAD_SITES } from '../_lib/nexradSites';
+import { bboxForSite } from '../_lib/nexradSites.js';
 
 const require = createRequire(import.meta.url);
 const parseLevel3 = require('nexrad-level-3-data') as (
@@ -53,14 +53,6 @@ interface Level3Data {
 function siteCode(icao: string): string {
   const u = icao.toUpperCase();
   return u.startsWith('K') && u.length === 4 ? u.slice(1) : u;
-}
-
-function bboxForSite(siteId: string): [number, number, number, number] {
-  const s = NEXRAD_SITES.find((x) => x.id === siteId);
-  if (!s) throw new Error(`unknown site ${siteId}`);
-  const dLat = 230 / 111;
-  const dLon = 230 / (111 * Math.cos((s.lat * Math.PI) / 180));
-  return [s.lon - dLon, s.lat - dLat, s.lon + dLon, s.lat + dLat];
 }
 
 async function listLatestL3Key(

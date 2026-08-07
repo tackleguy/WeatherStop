@@ -249,7 +249,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
     return Response.redirect(blob.url, 302);
   } catch {
-    return new Response(png, {
+    return new Response(new Uint8Array(png), {
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=1800',

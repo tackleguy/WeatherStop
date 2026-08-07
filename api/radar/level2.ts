@@ -12,10 +12,10 @@
 // canvas operations. maxDuration: 30 leaves headroom for the parse
 // + render (typical: 1-3s on warm functions).
 
+import { bboxForSite } from '../_lib/nexradSites.js';
 import { put, list } from '@vercel/blob';
 import { createCanvas, type ImageData } from '@napi-rs/canvas';
 import { Level2Radar } from 'nexrad-level-2-data';
-import { NEXRAD_SITES } from '../_lib/nexradSites';
 
 export const config = {
   // Vercel serverless — must be "nodejs" (not "nodejs20.x")
@@ -127,15 +127,6 @@ function shouldDropGate(p: L2Product, v: number): boolean {
   if (p === 'velocity' && Math.abs(v) > 100) return true;
   if (p === 'correlation' && (v < 0.3 || v > 1.05)) return true;
   return false;
-}
-
-function bboxForSite(siteId: string): [number, number, number, number] {
-  const s = NEXRAD_SITES.find((x) => x.id === siteId);
-  if (!s) throw new Error(`unknown site ${siteId}`);
-  // 230km radius converted to ~2.07° lat. Adjust longitude for cosine.
-  const dLat = 230 / 111;
-  const dLon = 230 / (111 * Math.cos((s.lat * Math.PI) / 180));
-  return [s.lon - dLon, s.lat - dLat, s.lon + dLon, s.lat + dLat];
 }
 
 async function listLatestL2Key(site: string): Promise<string | null> {

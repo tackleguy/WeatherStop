@@ -24,6 +24,7 @@ export const config = {
 interface OpenMeteoCurrent {
   wind_speed_10m?: number;
   wind_direction_10m?: number;
+  wind_gusts_10m?: number;
   temperature_2m?: number;
 }
 interface OpenMeteoResponse {
@@ -123,7 +124,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (!zRaw || !xRaw || !yRaw) {
     return new Response('missing z/x/y', { status: 400 });
   }
-  if (layer !== 'wind' && layer !== 'temperature') {
+  if (layer !== 'wind' && layer !== 'temperature' && layer !== 'gust') {
     return new Response('invalid layer', { status: 400 });
   }
   const z = Number(zRaw);
@@ -166,7 +167,9 @@ export default async function handler(req: Request): Promise<Response> {
   const fields =
     layer === 'wind'
       ? 'wind_speed_10m,wind_direction_10m'
-      : 'temperature_2m';
+      : layer === 'gust'
+        ? 'wind_gusts_10m'
+        : 'temperature_2m';
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
     `&current=${fields}&temperature_unit=fahrenheit&wind_speed_unit=mph`;
@@ -197,6 +200,9 @@ export default async function handler(req: Request): Promise<Response> {
     if (layer === 'wind') {
       return typeof r.wind_speed_10m === 'number' ? r.wind_speed_10m : Number.NaN;
     }
+    if (layer === 'gust') {
+      return typeof r.wind_gusts_10m === 'number' ? r.wind_gusts_10m : Number.NaN;
+    }
     return typeof r.temperature_2m === 'number' ? r.temperature_2m : Number.NaN;
   };
 
@@ -222,7 +228,7 @@ export default async function handler(req: Request): Promise<Response> {
         v11 * fx * fy;
 
       const [r, g, b, a] =
-        layer === 'wind' ? windColor(value) : tempColor(value);
+        layer === 'temperature' ? tempColor(value) : windColor(value);
       const i = (py * SIZE + px) * 4;
       img.data[i] = r;
       img.data[i + 1] = g;

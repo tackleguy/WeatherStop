@@ -93,6 +93,11 @@ export function Meteogram({ data, settings, index }: Props) {
   const sunMarks = buildSunMarks(data, hourly);
   const tz = data.location.timezone;
   const narrative = describeNext24h(data, settings);
+  const maxGust = Math.max(...hourly.map((h) => h.windGust ?? h.windSpeed));
+  const gustNote =
+    maxGust >= 20
+      ? ` Gusts up to ${Math.round(maxGust)} mph.`
+      : '';
 
   return (
     <motion.div
@@ -115,9 +120,10 @@ export function Meteogram({ data, settings, index }: Props) {
         <span className="ml-auto card-meta">Next 24h</span>
       </header>
 
-      {narrative ? (
+      {narrative || gustNote ? (
         <p className="mb-3 text-[13px] leading-relaxed text-white/80">
           {narrative}
+          {gustNote}
         </p>
       ) : null}
 

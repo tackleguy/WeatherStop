@@ -26,6 +26,7 @@ const HOURLY_FIELDS = [
   'precipitation',
   'is_day',
   'wind_speed_10m',
+  'wind_gusts_10m',
 ].join(',');
 
 const DAILY_FIELDS = [
@@ -38,6 +39,7 @@ const DAILY_FIELDS = [
   'precipitation_sum',
   'precipitation_probability_max',
   'wind_speed_10m_max',
+  'wind_gusts_10m_max',
   'wind_direction_10m_dominant',
 ].join(',');
 

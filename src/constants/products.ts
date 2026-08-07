@@ -9,6 +9,7 @@ import {
   CloudRain,
   Cloudy,
   Layers,
+  RotateCw,
   Sun,
   Thermometer,
   Tornado,
@@ -20,6 +21,7 @@ export type ProductId =
   | 'reflectivity'
   | 'velocity'
   | 'storm-rel-velocity'
+  | 'rotation'
   | 'correlation'
   | 'satellite-ir'
   | 'satellite-vis'
@@ -33,6 +35,7 @@ export type LegendKind =
   | 'dbz'
   | 'kts'
   | 'rho'
+  | 'shear'
   | 'satellite'
   | 'wind'
   | 'temp'
@@ -91,6 +94,16 @@ export const PRODUCTS: Product[] = [
     icon: Tornado,
     legend: 'kts',
     description: 'Velocity relative to storm motion (US only)',
+    group: 'radar',
+    requiresZoom: 6,
+  },
+  {
+    id: 'rotation',
+    label: 'Rotation',
+    shortLabel: 'ROT',
+    icon: RotateCw,
+    legend: 'shear',
+    description: 'Azimuthal shear from storm-relative velocity (US only)',
     group: 'radar',
     requiresZoom: 6,
   },

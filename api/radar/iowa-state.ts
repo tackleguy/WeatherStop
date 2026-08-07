@@ -19,6 +19,9 @@ const ALLOWED = new Set([
   'nexrad-n0r-900913',
   'nexrad-n0r',
   'goes-east-vis-1km-900913',
+  'goes-west-vis-1km-900913',
+  'goes-east-ir-4km-900913',
+  'goes-west-ir-4km-900913',
 ]);
 
 const TS_PATTERN = /^\d{12}$/; // YYYYMMDDHHMM

@@ -119,15 +119,6 @@ export const WEATHER_MODELS: WeatherModel[] = [
     resolution: '25 km',
     horizon: '15d',
   },
-  {
-    id: 'ecmwf_aifs025',
-    label: 'ECMWF AIFS 0.25°',
-    short: 'AIFS·2',
-    group: 'ecmwf',
-    region: 'Global',
-    resolution: '25 km',
-    horizon: '15d',
-  },
   // DWD
   {
     id: 'icon_seamless',

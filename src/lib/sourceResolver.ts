@@ -21,10 +21,11 @@ export type SourceKind =
   | 'rainviewer'
   | 'ridge-wms'
   | 'level2'
+  | 'level3'
   | 'dwd'
   | 'windy'
-  | 'gibs-ir'
-  | 'iowa-goes-vis'
+  | 'gibs'
+  | 'iowa-goes'
   | 'open-meteo-grid';
 
 export interface SourceChoice {
@@ -40,18 +41,27 @@ export const UNAVAILABLE: SourceChoice = {
   opacity: 0,
 };
 
+/** Pick GOES-East vs West by longitude (~105°W divide). */
+export function goesSector(lon: number): 'east' | 'west' {
+  return lon < -105 ? 'west' : 'east';
+}
+
 export function resolveSource(
   product: ProductId,
   zoom: number,
   region: Region,
+  lon = -97,
 ): SourceChoice {
-  if (product === 'reflectivity' || product === 'composite') {
+  const sector = goesSector(lon);
+
+  if (product === 'reflectivity') {
     if (isUS(region)) {
       if (zoom <= 9) {
         return {
           kind: 'iowa-state',
           product: 'nexrad-n0q-900913',
           opacity: 0.85,
+          fallback: 'rainviewer',
         };
       }
       if (zoom <= 11) {
@@ -81,14 +91,43 @@ export function resolveSource(
       kind: 'rainviewer',
       product: 'radar',
       opacity: 0.8,
-      fallback: 'windy',
     };
   }
 
-  if (product === 'velocity' || product === 'storm-rel-velocity') {
+  // CONUS composite mosaic — distinct from single-tilt reflectivity.
+  if (product === 'composite') {
+    if (isUS(region)) {
+      if (zoom <= 8) {
+        return {
+          kind: 'iowa-state',
+          product: 'nexrad-n0q-900913',
+          opacity: 0.85,
+          fallback: 'rainviewer',
+        };
+      }
+      return {
+        kind: 'ridge-wms',
+        product: 'cref',
+        opacity: 0.9,
+        fallback: 'iowa-state',
+      };
+    }
+    return {
+      kind: 'rainviewer',
+      product: 'radar',
+      opacity: 0.8,
+    };
+  }
+
+  if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
     if (zoom <= 11) {
-      return { kind: 'ridge-wms', product: 'bvel', opacity: 0.9 };
+      return {
+        kind: 'ridge-wms',
+        product: 'bvel',
+        opacity: 0.9,
+        fallback: 'level2',
+      };
     }
     return {
       kind: 'level2',
@@ -98,32 +137,62 @@ export function resolveSource(
     };
   }
 
+  // True storm-relative via Unidata Level 3 N0S (not base velocity).
+  if (product === 'storm-rel-velocity') {
+    if (!isUS(region) || zoom < 6) return UNAVAILABLE;
+    return {
+      kind: 'level3',
+      product: 'N0S',
+      opacity: 0.9,
+    };
+  }
+
+  // Azimuthal shear derived from Level 3 N0S.
+  if (product === 'rotation') {
+    if (!isUS(region) || zoom < 6) return UNAVAILABLE;
+    return {
+      kind: 'level3',
+      product: 'ROT',
+      opacity: 0.9,
+    };
+  }
+
   if (product === 'correlation') {
     if (!isUS(region) || zoom < 8) return UNAVAILABLE;
     return { kind: 'level2', product: 'correlation', opacity: 0.9 };
   }
 
-  // GOES IR via NASA GIBS — global coverage, WMTS, no key. We used to
-  // route this through RainViewer, but RainViewer's free manifest no
-  // longer publishes a satellite.infrared frame list (verified
-  // 2026-05-10). NOAA's old mapservices GOES animation was also pulled.
   if (product === 'satellite-ir') {
-    return { kind: 'gibs-ir', product: 'GOES-East_ABI_Band13_Clean_Infrared', opacity: 0.7 };
+    const layer =
+      sector === 'west'
+        ? 'GOES-West_ABI_Band13_Clean_Infrared'
+        : 'GOES-East_ABI_Band13_Clean_Infrared';
+    return {
+      kind: 'gibs',
+      product: layer,
+      opacity: 0.7,
+      fallback: 'rainviewer',
+    };
   }
+
   if (product === 'satellite-vis') {
     if (isUS(region)) {
-      // Iowa State Mesonet GOES visible (1km, US-east coverage).
+      const iowa =
+        sector === 'west'
+          ? 'goes-west-vis-1km-900913'
+          : 'goes-east-vis-1km-900913';
       return {
-        kind: 'iowa-goes-vis',
-        product: 'goes-east-vis-1km-900913',
+        kind: 'iowa-goes',
+        product: iowa,
         opacity: 0.85,
-        fallback: 'gibs-ir',
+        fallback: 'gibs',
       };
     }
-    // Outside CONUS: visible band isn't available globally without a
-    // paid GOES feed. Fall back to GIBS IR so the user still sees
-    // cloud structure.
-    return { kind: 'gibs-ir', product: 'GOES-East_ABI_Band13_Clean_Infrared', opacity: 0.7 };
+    const layer =
+      sector === 'west'
+        ? 'GOES-West_ABI_Band2_Red_Visible_1km'
+        : 'GOES-East_ABI_Band2_Red_Visible_1km';
+    return { kind: 'gibs', product: layer, opacity: 0.7 };
   }
 
   if (product === 'wind') {
@@ -136,18 +205,24 @@ export function resolveSource(
   return UNAVAILABLE;
 }
 
-// Region-product compatibility — used by the LayerInfoCard banner so we
-// can name the limitation precisely instead of just "no data".
 export function unavailabilityReason(
   product: ProductId,
   zoom: number,
   region: Region,
 ): string | null {
   if (
-    (product === 'velocity' || product === 'storm-rel-velocity') &&
+    (product === 'velocity' ||
+      product === 'storm-rel-velocity' ||
+      product === 'rotation') &&
     !isUS(region)
   ) {
-    return 'Velocity unavailable in this region. US NEXRAD only.';
+    return 'Unavailable in this region. US NEXRAD only.';
+  }
+  if (
+    (product === 'storm-rel-velocity' || product === 'rotation') &&
+    zoom < 6
+  ) {
+    return 'Zoom in further (z6+) to load this product.';
   }
   if (product === 'correlation' && !isUS(region)) {
     return 'Correlation Coefficient unavailable in this region. US NEXRAD only.';

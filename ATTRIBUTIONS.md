@@ -16,6 +16,9 @@ attribution chip and the map's `attributionControl`.
 | **NOAA / SPC** — spc.noaa.gov / mapservices.weather.noaa.gov | Convective outlooks (Day 1–8) + fire weather outlooks | Public domain. Cite "NOAA / Storm Prediction Center". |
 | **NOAA / NWS RIDGE WMS** — opengeo.ncep.noaa.gov | Per-site reflectivity / velocity overlays | Public domain. Cite "NOAA / NWS". |
 | **NOAA NEXRAD Level 2** — `noaa-nexrad-level2` AWS Open Data bucket | Storm-scale radar (server-rendered) | Public domain. Bucket is part of the NOAA Big Data Program. |
+| **Unidata NEXRAD Level 3** — `unidata-nexrad-level3` AWS Open Data | Storm-relative velocity / rotation (server-rendered) | Public domain. Cite "NOAA / Unidata". |
+| **NASA GIBS** — gibs.earthdata.nasa.gov | GOES IR / visible satellite WMTS | Free public imagery; cite NASA GIBS / GOES. |
+| **NOAA / NHC** — mapservices.weather.noaa.gov tropical | Tropical cones, tracks, watches, GTWO | Public domain. Cite "NOAA / National Hurricane Center". |
 | **Open-Meteo** — api.open-meteo.com | Forecast data outside the US | CC BY 4.0 (`https://open-meteo.com/en/license`). Attribution shown in the home view. |
 | **RainViewer** — tilecache.rainviewer.com | Global radar / satellite raster tiles | Free for non-commercial use; attribution required (`https://www.rainviewer.com/api.html`). |
 | **Iowa State Mesonet** — mesonet.agron.iastate.edu | NEXRAD CONUS composite tiles | Free with attribution (`https://mesonet.agron.iastate.edu/`). |

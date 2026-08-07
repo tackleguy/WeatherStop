@@ -20,7 +20,7 @@ const ALLOWED_PRODUCTS: Record<string, string> = {
 // CONUS layers don't follow the per-site naming pattern.
 const CONUS_LAYERS: Record<string, string> = {
   bref: 'conus:conus_bref_qcd',
-  cref: 'conus:conus_cref_qcd', // composite (not used today, kept for future)
+  cref: 'conus:conus_cref_qcd', // composite reflectivity mosaic
 };
 
 export default async function handler(req: Request): Promise<Response> {

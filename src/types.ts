@@ -83,6 +83,7 @@ export interface WeatherData {
     isDay: boolean;
     precipProb: number; // 0-100
     windSpeed: number; // mph
+    windGust: number; // mph
   }>;
 
   daily: Array<{
@@ -93,6 +94,7 @@ export interface WeatherData {
     sunrise: string;
     sunset: string;
     precipProbMax: number;
+    windGustMax?: number; // mph
     summary: string;
   }>;
 
@@ -135,6 +137,7 @@ export interface OpenMeteoRaw {
     precipitation: number[];
     is_day: number[];
     wind_speed_10m: number[];
+    wind_gusts_10m?: number[];
   };
   daily: {
     time: string[];
@@ -147,6 +150,7 @@ export interface OpenMeteoRaw {
     precipitation_sum: number[];
     precipitation_probability_max: number[];
     wind_speed_10m_max: number[];
+    wind_gusts_10m_max?: number[];
     wind_direction_10m_dominant: number[];
   };
 }

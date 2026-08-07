@@ -18,7 +18,7 @@ interface Args {
   styleLoaded: boolean;
   enabled: boolean;
   site: string | null; // ICAO (any case) or 'conus'
-  product: 'bref' | 'bvel';
+  product: 'bref' | 'bvel' | 'cref';
   /** When true the layer is mounted with reduced opacity so the user can
    *  still see the underlying basemap. */
   opacity?: number;

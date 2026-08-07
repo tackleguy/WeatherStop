@@ -54,7 +54,19 @@ export async function fetchModelForecast(
 
   try {
     const res = await fetch(`${FORECAST_URL}?${params.toString()}`, { signal });
-    const data = (await res.json()) as OpenMeteoModelResponse;
+    const text = await res.text();
+    let data: OpenMeteoModelResponse;
+    try {
+      data = JSON.parse(text) as OpenMeteoModelResponse;
+    } catch {
+      return {
+        modelId,
+        time: [],
+        values: {},
+        units: {},
+        error: `Invalid response (HTTP ${res.status})`,
+      };
+    }
     if (!res.ok || data.error) {
       return {
         modelId,
@@ -75,6 +87,23 @@ export async function fetchModelForecast(
         values[key] = arr as (number | null)[];
       }
       if (data.hourly_units?.[key]) units[key] = data.hourly_units[key];
+    }
+
+    // All-null / empty series = out of model domain (Open-Meteo often
+    // returns HTTP 200 with null arrays instead of an error).
+    const primary = values.temperature_2m ?? values.wind_speed_10m;
+    const hasData =
+      time.length > 0 &&
+      primary != null &&
+      primary.some((v) => typeof v === 'number' && Number.isFinite(v));
+    if (!hasData) {
+      return {
+        modelId,
+        time: [],
+        values: {},
+        units: {},
+        error: 'No data at this location (outside model domain)',
+      };
     }
 
     return { modelId, time, values, units };

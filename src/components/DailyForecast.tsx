@@ -93,7 +93,7 @@ export function DailyForecast({ data, settings, index }: Props) {
           return (
             <div
               key={day.date}
-              className="grid grid-cols-[60px_24px_36px_1fr_36px] items-center gap-3 rounded-lg px-1 py-1.5 transition-colors duration-200 hover:bg-white/[0.05]"
+              className="grid grid-cols-[60px_24px_36px_1fr_36px_44px] items-center gap-2 rounded-lg px-1 py-1.5 transition-colors duration-200 hover:bg-white/[0.05]"
               style={{ minHeight: 32 }}
             >
               <span className="text-[14px] font-medium text-white">
@@ -115,6 +115,14 @@ export function DailyForecast({ data, settings, index }: Props) {
               />
               <span className="tabular text-right text-[13px] font-medium text-white">
                 {displayTemp(day.high, settings)}
+              </span>
+              <span
+                className="tabular text-right text-[11px] text-white/45"
+                title="Max wind gust"
+              >
+                {day.windGustMax != null
+                  ? `G ${Math.round(day.windGustMax)}`
+                  : ''}
               </span>
             </div>
           );

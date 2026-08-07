@@ -2,28 +2,9 @@
 // the right upstream service for the active product × zoom × region;
 // this hook mounts the corresponding MapLibre source on demand and
 // crossfades all the others to opacity 0.
-//
-// Sources, in resolver-priority order:
-//   • Iowa State Mesonet  — CONUS XYZ composite (z 0–9)
-//   • NWS RIDGE per-site  — WMS image (z 10–11)
-//   • NEXRAD Level 2      — server-rendered PNG (z 12+)
-//   • DWD                 — German precipitation WMS
-//   • RainViewer (radar)  — global radar XYZ tiles (color=7, smooth=0)
-//   • RainViewer (sat)    — global IR satellite XYZ tiles (color=0)
-//   • NOAA GOES           — visible / IR ImageServer
-//   • Open-Meteo grid     — server-rendered wind / temp tiles
-//
-// All raster layers use raster-resampling: 'nearest' and fade-duration
-// 0 — that's the RadarScope-style sharp-pixel look.
-//
-// Mount discipline: every addSource/addLayer is wrapped in a
-// `safeAdd` helper that (a) verifies the style is fully loaded and
-// (b) bails if the source / layer already exists. MapLibre throws on
-// duplicate adds, and StrictMode's double-invocation will trip it
-// every time without this guard.
 
 import maplibregl from 'maplibre-gl';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fadeRasterTo } from '../lib/crossfade';
 import { type ProductId } from '../constants/products';
 import {
@@ -47,8 +28,6 @@ import {
 } from '../lib/sourceResolver';
 import { metersBboxFromLngLat } from '../lib/mercator';
 
-// Legacy radar layer ID — kept exported so any module that imports it
-// continues to compile, but unused at runtime.
 export const RAINVIEWER_SOURCE = 'rainviewer-radar';
 export const RAINVIEWER_LAYER = 'rainviewer-radar-layer';
 export const RAINVIEWER_RADAR_SOURCE = 'rainviewer-radar';
@@ -61,25 +40,29 @@ export const NWS_SOURCE = 'nws-overlay';
 export const NWS_LAYER = 'nws-overlay-layer';
 export const L2_SOURCE = 'level2-overlay';
 export const L2_LAYER = 'level2-layer';
+export const L3_SOURCE = 'level3-overlay';
+export const L3_LAYER = 'level3-layer';
 export const DWD_SOURCE = 'dwd-overlay';
 export const DWD_LAYER = 'dwd-overlay-layer';
-export const GIBS_IR_SOURCE = 'gibs-ir-tiles';
-export const GIBS_IR_LAYER = 'gibs-ir-layer';
-export const IOWA_GOES_VIS_SOURCE = 'iowa-goes-vis-tiles';
-export const IOWA_GOES_VIS_LAYER = 'iowa-goes-vis-layer';
+export const GIBS_SOURCE = 'gibs-tiles';
+export const GIBS_LAYER = 'gibs-layer';
+export const IOWA_GOES_SOURCE = 'iowa-goes-tiles';
+export const IOWA_GOES_LAYER = 'iowa-goes-layer';
 export const GRID_SOURCE = 'open-meteo-grid';
 export const GRID_LAYER = 'open-meteo-grid-layer';
 
-// Mirrored back to the store / LayerInfoCard so the chip can show what
-// the user is actually looking at.
+/** @deprecated Alias kept for imports that still use the old name. */
+export const GIBS_IR_SOURCE = GIBS_SOURCE;
+export const GIBS_IR_LAYER = GIBS_LAYER;
+export const IOWA_GOES_VIS_SOURCE = IOWA_GOES_SOURCE;
+export const IOWA_GOES_VIS_LAYER = IOWA_GOES_LAYER;
+
 export interface SourcePlan {
   kind: SourceKind | 'unavailable';
   label: string;
   attribution: string;
   opacity: number;
-  /** Set when the active source is keyed to a specific NEXRAD site. */
   site?: NexradSite;
-  /** Set when an upstream isn't available in the active region. */
   unavailableReason?: string | null;
 }
 
@@ -90,9 +73,7 @@ interface Args {
   catalog: RainViewerCatalog | undefined;
   frameIndex: number;
   ts: number;
-  /** YYYYMMDDHHMM string for Iowa State historical frame (omit for live). */
   iowaTs?: string | null;
-  /** Override the auto-picked station (user picked a different radar). */
   manualSite?: NexradSite | null;
 }
 
@@ -102,7 +83,6 @@ const PIXELATED_PAINT: maplibregl.RasterLayerSpecification['paint'] = {
   'raster-resampling': 'nearest',
 };
 
-/** Style-aware idempotent addSource/addLayer helper. */
 function safeAdd(
   map: maplibregl.Map,
   styleLoaded: boolean,
@@ -176,9 +156,24 @@ function bboxFromMap(map: maplibregl.Map) {
   };
 }
 
+/** GIBS REST WMTS — IR tops out at Level6; VIS at Level7. */
+function gibsTileUrl(layerName: string): string {
+  const day = new Date().toISOString().slice(0, 10);
+  const isVis = /Visible|Band2/i.test(layerName);
+  const ext = isVis ? 'jpg' : 'png';
+  const matrix = isVis
+    ? 'GoogleMapsCompatible_Level7'
+    : 'GoogleMapsCompatible_Level6';
+  return (
+    `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/` +
+    `${layerName}/default/${day}/${matrix}/{z}/{y}/{x}.${ext}`
+  );
+}
+
 function attributionFor(kind: SourceKind): string {
   switch (kind) {
     case 'iowa-state':
+    case 'iowa-goes':
       return '© <a href="https://mesonet.agron.iastate.edu" target="_blank" rel="noopener">Iowa State Mesonet</a>';
     case 'rainviewer':
       return '© <a href="https://rainviewer.com" target="_blank" rel="noopener">RainViewer</a>';
@@ -186,12 +181,12 @@ function attributionFor(kind: SourceKind): string {
       return '© <a href="https://www.weather.gov" target="_blank" rel="noopener">NWS</a>';
     case 'level2':
       return '© <a href="https://www.weather.gov" target="_blank" rel="noopener">NWS NEXRAD Level 2</a>';
+    case 'level3':
+      return '© <a href="https://www.weather.gov" target="_blank" rel="noopener">NWS NEXRAD Level 3</a> · Unidata';
     case 'dwd':
       return '© <a href="https://www.dwd.de" target="_blank" rel="noopener">DWD</a>';
-    case 'gibs-ir':
-      return '© <a href="https://earthdata.nasa.gov/gibs" target="_blank" rel="noopener">NASA GIBS</a> · GOES-East ABI';
-    case 'iowa-goes-vis':
-      return '© <a href="https://mesonet.agron.iastate.edu" target="_blank" rel="noopener">Iowa State Mesonet</a> · GOES-East Visible';
+    case 'gibs':
+      return '© <a href="https://earthdata.nasa.gov/gibs" target="_blank" rel="noopener">NASA GIBS</a> · GOES ABI';
     case 'open-meteo-grid':
       return '© <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>';
     case 'windy':
@@ -207,10 +202,16 @@ function labelFor(
 ): string {
   if (kind === 'iowa-state') return 'NEXRAD Composite (Iowa State)';
   if (kind === 'rainviewer') {
-    return product === 'satellite' ? 'Satellite (RainViewer)' : 'Reflectivity (RainViewer)';
+    return product === 'satellite' || productId.startsWith('satellite')
+      ? 'Satellite (RainViewer)'
+      : 'Reflectivity (RainViewer)';
   }
-  if (kind === 'ridge-wms' && site) {
-    return `${site.id} · ${product === 'bvel' ? 'Base Velocity' : 'Reflectivity'}`;
+  if (kind === 'ridge-wms') {
+    if (product === 'cref') return 'CONUS Composite (NWS)';
+    if (site) {
+      return `${site.id} · ${product === 'bvel' ? 'Base Velocity' : 'Reflectivity'}`;
+    }
+    return 'NWS Radar';
   }
   if (kind === 'level2' && site) {
     const label =
@@ -221,9 +222,22 @@ function labelFor(
           : 'Reflectivity (L2)';
     return `${site.id} · ${label}`;
   }
+  if (kind === 'level3' && site) {
+    return product === 'ROT'
+      ? `${site.id} · Rotation (L3)`
+      : `${site.id} · Storm-Rel Vel (L3)`;
+  }
   if (kind === 'dwd') return 'DWD Niederschlagsradar';
-  if (kind === 'gibs-ir') return 'GOES-East · Infrared (NASA GIBS)';
-  if (kind === 'iowa-goes-vis') return 'GOES-East · Visible (Iowa State)';
+  if (kind === 'gibs') {
+    return /West/i.test(product)
+      ? 'GOES-West · GIBS'
+      : 'GOES-East · GIBS';
+  }
+  if (kind === 'iowa-goes') {
+    return /west/i.test(product)
+      ? 'GOES-West · Visible (Iowa)'
+      : 'GOES-East · Visible (Iowa)';
+  }
   if (kind === 'open-meteo-grid') {
     return productId === 'wind'
       ? 'Wind (Open-Meteo, forecast)'
@@ -246,42 +260,70 @@ export function useRadarLayers({
   const mapCenter = useRadarStore((s) => s.mapCenter);
   const lon = mapCenter?.[0] ?? -97;
   const lat = mapCenter?.[1] ?? 39;
+  const [activeKind, setActiveKind] = useState<SourceKind | null>(null);
 
   const region = useMemo(() => detectRegion(lon, lat), [lon, lat]);
 
   const choice: SourceChoice = useMemo(
-    () => resolveSource(activeProduct, mapZoom, region),
-    [activeProduct, mapZoom, region],
+    () => resolveSource(activeProduct, mapZoom, region, lon),
+    [activeProduct, mapZoom, region, lon],
   );
+
+  // Apply fallback when primary reports failure via activeKind override.
+  const effectiveChoice = useMemo<SourceChoice>(() => {
+    if (
+      activeKind &&
+      choice.fallback &&
+      activeKind === choice.fallback &&
+      choice.kind !== activeKind
+    ) {
+      return { ...choice, kind: choice.fallback, fallback: undefined };
+    }
+    return choice;
+  }, [choice, activeKind]);
+
+  useEffect(() => {
+    setActiveKind(null);
+  }, [choice.kind, choice.product, activeProduct]);
 
   const reason = useMemo(
     () => unavailabilityReason(activeProduct, mapZoom, region),
     [activeProduct, mapZoom, region],
   );
 
-  // Pick the radar site for site-keyed sources (ridge-wms / level2).
   const site = useMemo<NexradSite | undefined>(() => {
-    if (choice.kind !== 'ridge-wms' && choice.kind !== 'level2') return undefined;
+    if (
+      effectiveChoice.kind !== 'ridge-wms' &&
+      effectiveChoice.kind !== 'level2' &&
+      effectiveChoice.kind !== 'level3'
+    ) {
+      return undefined;
+    }
+    if (effectiveChoice.product === 'cref') return undefined;
     return manualSite ?? nearestNexradSite(lon, lat);
-  }, [choice.kind, manualSite, lon, lat]);
+  }, [effectiveChoice.kind, effectiveChoice.product, manualSite, lon, lat]);
 
   const isSatelliteProduct =
     activeProduct === 'satellite-ir' || activeProduct === 'satellite-vis';
+  const hasRainviewerSat = (catalog?.satelliteInfrared.length ?? 0) > 0;
 
   const plan = useMemo<SourcePlan>(() => {
     return {
-      kind: choice.opacity === 0 ? 'unavailable' : choice.kind,
-      label: labelFor(choice.kind, choice.product, activeProduct, site),
-      attribution: attributionFor(choice.kind),
-      opacity: choice.opacity,
+      kind: effectiveChoice.opacity === 0 ? 'unavailable' : effectiveChoice.kind,
+      label: labelFor(
+        effectiveChoice.kind,
+        effectiveChoice.product,
+        activeProduct,
+        site,
+      ),
+      attribution: attributionFor(effectiveChoice.kind),
+      opacity: effectiveChoice.opacity,
       site,
       unavailableReason: reason,
     };
-  }, [choice, site, activeProduct, reason]);
+  }, [effectiveChoice, site, activeProduct, reason]);
 
-  // ─────────────────────────────────────────────────────────────────
-  // RainViewer radar XYZ source — global precipitation, sharp gates.
-  // Mounted once; setTiles swaps the URL when the time-scrubber moves.
+  // RainViewer radar
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const url = radarTileUrl(catalog, ts);
@@ -311,8 +353,7 @@ export function useRadarLayers({
     });
   }, [map, styleLoaded, catalog, ts]);
 
-  // RainViewer satellite IR XYZ source — global cloud cover. Different
-  // upstream URL (color=0) and lower native maxzoom than radar.
+  // RainViewer satellite IR
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const url = satelliteTileUrl(catalog, ts);
@@ -342,12 +383,16 @@ export function useRadarLayers({
     });
   }, [map, styleLoaded, catalog, ts]);
 
-  // Iowa State XYZ — historical or live.
+  // Iowa State XYZ
   useEffect(() => {
     if (!map || !styleLoaded) return;
+    const product =
+      effectiveChoice.kind === 'iowa-state'
+        ? effectiveChoice.product
+        : 'nexrad-n0q-900913';
     const tilesUrl = iowaTs
-      ? `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=nexrad-n0q-900913&ts=${iowaTs}`
-      : `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=nexrad-n0q-900913`;
+      ? `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}&ts=${iowaTs}`
+      : `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}`;
 
     const existing = map.getSource(IOWA_SOURCE) as
       | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
@@ -373,13 +418,13 @@ export function useRadarLayers({
         paint: PIXELATED_PAINT,
       });
     });
-  }, [map, styleLoaded, iowaTs]);
+  }, [map, styleLoaded, iowaTs, effectiveChoice.kind, effectiveChoice.product]);
 
-  // Open-Meteo wind / temp grid — XYZ tiles, layer-keyed.
+  // Open-Meteo grid
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    if (choice.kind !== 'open-meteo-grid') return;
-    const url = `/api/weather/grid?z={z}&x={x}&y={y}&layer=${choice.product}`;
+    if (effectiveChoice.kind !== 'open-meteo-grid') return;
+    const url = `/api/weather/grid?z={z}&x={x}&y={y}&layer=${effectiveChoice.product}`;
 
     const existing = map.getSource(GRID_SOURCE) as
       | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
@@ -405,13 +450,12 @@ export function useRadarLayers({
         paint: PIXELATED_PAINT,
       });
     });
-  }, [map, styleLoaded, choice.kind, choice.product]);
+  }, [map, styleLoaded, effectiveChoice.kind, effectiveChoice.product]);
 
-  // DWD WMS — German radar. Image source updated per viewport.
-  // 300ms debounce prevents thrashing the DWD GeoServer during pans.
+  // DWD
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    if (choice.kind !== 'dwd') {
+    if (effectiveChoice.kind !== 'dwd') {
       if (map.getLayer(DWD_LAYER)) map.removeLayer(DWD_LAYER);
       if (map.getSource(DWD_SOURCE)) map.removeSource(DWD_SOURCE);
       return;
@@ -454,20 +498,51 @@ export function useRadarLayers({
       if (timer !== undefined) window.clearTimeout(timer);
       map.off('moveend', debounced);
     };
-  }, [map, styleLoaded, choice.kind, ts]);
+  }, [map, styleLoaded, effectiveChoice.kind, ts]);
 
-  // NASA GIBS GOES IR — global infrared cloud cover. WMTS endpoint
-  // serves a {z}/{y}/{x}.png path that we hand straight to MapLibre.
-  // GIBS publishes a "default" tile-matrix-set per layer that updates
-  // at the source's native cadence (~10 min for ABI Band 13).
+  // NASA GIBS
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    const layerName = choice.product;
-    const url =
-      `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/` +
-      `${layerName}/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
+    if (effectiveChoice.kind !== 'gibs') {
+      if (map.getLayer(GIBS_LAYER)) map.removeLayer(GIBS_LAYER);
+      if (map.getSource(GIBS_SOURCE)) map.removeSource(GIBS_SOURCE);
+      return;
+    }
+    const url = gibsTileUrl(effectiveChoice.product);
+    const isVis = /Visible|Band2/i.test(effectiveChoice.product);
+    const maxzoom = isVis ? 7 : 6;
 
-    const existing = map.getSource(GIBS_IR_SOURCE) as
+    // Remount when IR↔VIS changes (different matrix set / maxzoom).
+    if (map.getLayer(GIBS_LAYER)) map.removeLayer(GIBS_LAYER);
+    if (map.getSource(GIBS_SOURCE)) map.removeSource(GIBS_SOURCE);
+
+    safeAdd(map, styleLoaded, () => {
+      if (map.getSource(GIBS_SOURCE)) return;
+      map.addSource(GIBS_SOURCE, {
+        type: 'raster',
+        tiles: [url],
+        tileSize: 256,
+        minzoom: 0,
+        maxzoom,
+      });
+      map.addLayer({
+        id: GIBS_LAYER,
+        type: 'raster',
+        source: GIBS_SOURCE,
+        paint: PIXELATED_PAINT,
+      });
+    });
+  }, [map, styleLoaded, effectiveChoice.kind, effectiveChoice.product]);
+
+  // Iowa GOES (vis / ir)
+  useEffect(() => {
+    if (!map || !styleLoaded) return;
+    const product =
+      effectiveChoice.kind === 'iowa-goes'
+        ? effectiveChoice.product
+        : 'goes-east-vis-1km-900913';
+    const url = `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}`;
+    const existing = map.getSource(IOWA_GOES_SOURCE) as
       | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
       | undefined;
     if (existing && typeof existing.setTiles === 'function') {
@@ -476,36 +551,8 @@ export function useRadarLayers({
     }
     if (existing) return;
     safeAdd(map, styleLoaded, () => {
-      if (map.getSource(GIBS_IR_SOURCE)) return;
-      map.addSource(GIBS_IR_SOURCE, {
-        type: 'raster',
-        tiles: [url],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 6,
-      });
-      map.addLayer({
-        id: GIBS_IR_LAYER,
-        type: 'raster',
-        source: GIBS_IR_SOURCE,
-        paint: PIXELATED_PAINT,
-      });
-    });
-  }, [map, styleLoaded, choice.product]);
-
-  // Iowa State Mesonet GOES visible (1km, US-east). XYZ tiles via the
-  // existing /api/radar/iowa-state proxy — `product` param already
-  // allow-lists `goes-east-vis-1km-900913`.
-  useEffect(() => {
-    if (!map || !styleLoaded) return;
-    const url = `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=goes-east-vis-1km-900913`;
-    const existing = map.getSource(IOWA_GOES_VIS_SOURCE) as
-      | maplibregl.RasterTileSource
-      | undefined;
-    if (existing) return;
-    safeAdd(map, styleLoaded, () => {
-      if (map.getSource(IOWA_GOES_VIS_SOURCE)) return;
-      map.addSource(IOWA_GOES_VIS_SOURCE, {
+      if (map.getSource(IOWA_GOES_SOURCE)) return;
+      map.addSource(IOWA_GOES_SOURCE, {
         type: 'raster',
         tiles: [url],
         tileSize: 256,
@@ -513,35 +560,48 @@ export function useRadarLayers({
         maxzoom: 10,
       });
       map.addLayer({
-        id: IOWA_GOES_VIS_LAYER,
+        id: IOWA_GOES_LAYER,
         type: 'raster',
-        source: IOWA_GOES_VIS_SOURCE,
+        source: IOWA_GOES_SOURCE,
         paint: PIXELATED_PAINT,
       });
     });
-  }, [map, styleLoaded]);
+  }, [map, styleLoaded, effectiveChoice.kind, effectiveChoice.product]);
 
-  // Per-site WMS layer — handled by its own hook.
+  // Per-site / CONUS WMS
+  const wmsProduct =
+    effectiveChoice.product === 'bvel'
+      ? 'bvel'
+      : effectiveChoice.product === 'cref'
+        ? 'cref'
+        : 'bref';
+  const wmsSite =
+    effectiveChoice.product === 'cref'
+      ? 'conus'
+      : site
+        ? site.id.toLowerCase()
+        : null;
+
   useWmsSiteLayer({
     map,
     styleLoaded,
-    enabled: choice.kind === 'ridge-wms',
-    site: site ? site.id.toLowerCase() : null,
-    product: choice.product === 'bvel' ? 'bvel' : 'bref',
-    opacity: choice.opacity * overlay,
+    enabled: effectiveChoice.kind === 'ridge-wms',
+    site: wmsSite,
+    product: wmsProduct,
+    opacity: effectiveChoice.opacity * overlay,
   });
 
-  // NEXRAD Level 2 image source.
+  // Level 2
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    if (choice.kind !== 'level2' || !site) {
+    if (effectiveChoice.kind !== 'level2' || !site) {
       if (map.getLayer(L2_LAYER)) map.removeLayer(L2_LAYER);
       if (map.getSource(L2_SOURCE)) map.removeSource(L2_SOURCE);
       return;
     }
 
     const siteId = site.id;
-    const product = choice.product;
+    const product = effectiveChoice.product;
     let cancelled = false;
     let interval: number | undefined;
 
@@ -550,7 +610,10 @@ export function useRadarLayers({
         const res = await fetch(
           `/api/radar/level2?site=${siteId}&product=${product}`,
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (choice.fallback) setActiveKind(choice.fallback);
+          return;
+        }
         const data = (await res.json()) as {
           url: string;
           bbox: [number, number, number, number];
@@ -592,7 +655,7 @@ export function useRadarLayers({
           });
         });
       } catch {
-        // L2 failures are non-fatal — RIDGE is still available below.
+        if (choice.fallback) setActiveKind(choice.fallback);
       }
     };
 
@@ -603,32 +666,142 @@ export function useRadarLayers({
       cancelled = true;
       if (interval !== undefined) window.clearInterval(interval);
     };
-  }, [map, styleLoaded, choice.kind, choice.product, site?.id]);
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
+    effectiveChoice.product,
+    site?.id,
+    choice.fallback,
+  ]);
 
-  // Crossfade — set every layer's opacity each time the choice changes.
+  // Level 3 (N0S / ROT)
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    const target = choice.opacity * overlay;
+    if (effectiveChoice.kind !== 'level3' || !site) {
+      if (map.getLayer(L3_LAYER)) map.removeLayer(L3_LAYER);
+      if (map.getSource(L3_SOURCE)) map.removeSource(L3_SOURCE);
+      return;
+    }
 
-    const showRvRadar = choice.kind === 'rainviewer' && !isSatelliteProduct;
+    const siteId = site.id;
+    const product = effectiveChoice.product;
+    let cancelled = false;
+    let interval: number | undefined;
+
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `/api/radar/level3?site=${siteId}&product=${product}`,
+        );
+        if (!res.ok) return;
+        const ct = res.headers.get('content-type') ?? '';
+        let url: string;
+        let bbox: [number, number, number, number];
+        if (ct.includes('application/json')) {
+          const data = (await res.json()) as {
+            url: string;
+            bbox: [number, number, number, number];
+          };
+          url = data.url;
+          bbox = data.bbox;
+        } else {
+          // Inline PNG
+          const blob = await res.blob();
+          url = URL.createObjectURL(blob);
+          bbox = [
+            site.lon - 2.5,
+            site.lat - 2.5,
+            site.lon + 2.5,
+            site.lat + 2.5,
+          ];
+        }
+        if (cancelled || !map) return;
+
+        const [w, s, e, n] = bbox;
+        const coords: [
+          [number, number],
+          [number, number],
+          [number, number],
+          [number, number],
+        ] = [
+          [w, n],
+          [e, n],
+          [e, s],
+          [w, s],
+        ];
+
+        const existing = map.getSource(L3_SOURCE) as
+          | maplibregl.ImageSource
+          | undefined;
+        if (existing) {
+          existing.updateImage({ url, coordinates: coords });
+          return;
+        }
+        safeAdd(map, styleLoaded, () => {
+          if (map.getSource(L3_SOURCE)) return;
+          map.addSource(L3_SOURCE, {
+            type: 'image',
+            url,
+            coordinates: coords,
+          });
+          map.addLayer({
+            id: L3_LAYER,
+            type: 'raster',
+            source: L3_SOURCE,
+            paint: PIXELATED_PAINT,
+          });
+        });
+      } catch {
+        // Non-fatal — banner still shows US-only context.
+      }
+    };
+
+    load();
+    interval = window.setInterval(load, 5 * 60_000);
+
+    return () => {
+      cancelled = true;
+      if (interval !== undefined) window.clearInterval(interval);
+    };
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
+    effectiveChoice.product,
+    site?.id,
+    site?.lat,
+    site?.lon,
+  ]);
+
+  // Crossfade
+  useEffect(() => {
+    if (!map || !styleLoaded) return;
+    const target = effectiveChoice.opacity * overlay;
+    const kind = effectiveChoice.kind;
+
+    const showRvRadar = kind === 'rainviewer' && !isSatelliteProduct;
+    const showRvSat =
+      kind === 'rainviewer' && isSatelliteProduct && hasRainviewerSat;
 
     fadeRasterTo(map, RAINVIEWER_RADAR_LAYER, showRvRadar ? target : 0);
-    // The rainviewer-satellite source is kept mounted but always hidden
-    // — RainViewer's free manifest no longer publishes satellite frames
-    // (verified 2026-05-10). Satellite IR now comes from GIBS.
-    fadeRasterTo(map, RAINVIEWER_SAT_LAYER, 0);
-    fadeRasterTo(map, IOWA_LAYER, choice.kind === 'iowa-state' ? target : 0);
-    fadeRasterTo(map, L2_LAYER, choice.kind === 'level2' ? target : 0);
-    fadeRasterTo(map, DWD_LAYER, choice.kind === 'dwd' ? target : 0);
-    fadeRasterTo(map, GIBS_IR_LAYER, choice.kind === 'gibs-ir' ? target : 0);
-    fadeRasterTo(
-      map,
-      IOWA_GOES_VIS_LAYER,
-      choice.kind === 'iowa-goes-vis' ? target : 0,
-    );
-    fadeRasterTo(map, GRID_LAYER, choice.kind === 'open-meteo-grid' ? target : 0);
+    fadeRasterTo(map, RAINVIEWER_SAT_LAYER, showRvSat ? target : 0);
+    fadeRasterTo(map, IOWA_LAYER, kind === 'iowa-state' ? target : 0);
+    fadeRasterTo(map, L2_LAYER, kind === 'level2' ? target : 0);
+    fadeRasterTo(map, L3_LAYER, kind === 'level3' ? target : 0);
+    fadeRasterTo(map, DWD_LAYER, kind === 'dwd' ? target : 0);
+    fadeRasterTo(map, GIBS_LAYER, kind === 'gibs' ? target : 0);
+    fadeRasterTo(map, IOWA_GOES_LAYER, kind === 'iowa-goes' ? target : 0);
+    fadeRasterTo(map, GRID_LAYER, kind === 'open-meteo-grid' ? target : 0);
     fadeRasterTo(map, NWS_LAYER, 0);
-  }, [map, styleLoaded, choice, overlay, isSatelliteProduct]);
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice,
+    overlay,
+    isSatelliteProduct,
+    hasRainviewerSat,
+  ]);
 
   return plan;
 }

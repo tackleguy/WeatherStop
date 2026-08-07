@@ -71,6 +71,20 @@ export const RHO_STOPS: RhoStop[] = [
   { rho: 1.0, color: '#50c850', label: 'Pure rain' },
 ];
 
+/** Azimuthal shear proxy (ΔV kts across adjacent radials). */
+export interface ShearStop {
+  value: number;
+  color: string;
+  label: string;
+}
+export const SHEAR_STOPS: ShearStop[] = [
+  { value: -20, color: '#28b4ff', label: 'Anti' },
+  { value: -8, color: '#50c8ff', label: '' },
+  { value: 0, color: '#404040', label: '0' },
+  { value: 8, color: '#ffdc00', label: '' },
+  { value: 20, color: '#ff0050', label: 'Cyclonic' },
+];
+
 // Surface wind palette (mph). Mirrors `windColor` in api/weather/grid.ts.
 export interface ScalarStop {
   value: number;

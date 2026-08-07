@@ -101,26 +101,46 @@ export function normalizeFromOpenMeteo(om: OpenMeteoRaw, city: City): WeatherDat
   // Hourly (24-72h)
   const hourly = om.hourly.time
     .slice(0, 72)
-    .map((time, i) => ({
-      time: localToISO(time, offset),
-      temp: om.hourly.temperature_2m[i],
-      code: om.hourly.weather_code[i],
-      isDay: om.hourly.is_day[i] === 1,
-      precipProb: om.hourly.precipitation_probability?.[i] ?? 0,
-      windSpeed: om.hourly.wind_speed_10m?.[i] ?? c.wind_speed_10m,
-    }));
+    .map((time, i) => {
+      const windSpeed = om.hourly.wind_speed_10m?.[i] ?? c.wind_speed_10m;
+      const gustRaw = om.hourly.wind_gusts_10m?.[i];
+      const windGust = Math.max(
+        typeof gustRaw === 'number' && Number.isFinite(gustRaw)
+          ? gustRaw
+          : windSpeed,
+        windSpeed,
+      );
+      return {
+        time: localToISO(time, offset),
+        temp: om.hourly.temperature_2m[i],
+        code: om.hourly.weather_code[i],
+        isDay: om.hourly.is_day[i] === 1,
+        precipProb: om.hourly.precipitation_probability?.[i] ?? 0,
+        windSpeed,
+        windGust,
+      };
+    });
 
   // Daily
-  const daily = om.daily.time.map((date, i) => ({
-    date,
-    high: om.daily.temperature_2m_max[i],
-    low: om.daily.temperature_2m_min[i],
-    code: om.daily.weather_code[i],
-    sunrise: localToISO(om.daily.sunrise[i] ?? '', offset),
-    sunset: localToISO(om.daily.sunset[i] ?? '', offset),
-    precipProbMax: om.daily.precipitation_probability_max?.[i] ?? 0,
-    summary: describe(om.daily.weather_code[i]).label,
-  }));
+  const daily = om.daily.time.map((date, i) => {
+    const windMax = om.daily.wind_speed_10m_max?.[i] ?? 0;
+    const gustMaxRaw = om.daily.wind_gusts_10m_max?.[i];
+    const windGustMax =
+      typeof gustMaxRaw === 'number' && Number.isFinite(gustMaxRaw)
+        ? Math.max(gustMaxRaw, windMax)
+        : undefined;
+    return {
+      date,
+      high: om.daily.temperature_2m_max[i],
+      low: om.daily.temperature_2m_min[i],
+      code: om.daily.weather_code[i],
+      sunrise: localToISO(om.daily.sunrise[i] ?? '', offset),
+      sunset: localToISO(om.daily.sunset[i] ?? '', offset),
+      precipProbMax: om.daily.precipitation_probability_max?.[i] ?? 0,
+      windGustMax,
+      summary: describe(om.daily.weather_code[i]).label,
+    };
+  });
 
   // Humidity from OM is the gold standard whenever NWS is missing.
   const humidity = Math.round(c.relative_humidity_2m);

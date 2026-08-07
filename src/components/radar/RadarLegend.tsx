@@ -4,6 +4,7 @@ import {
   DBZ_STOPS,
   KTS_STOPS,
   RHO_STOPS,
+  SHEAR_STOPS,
   WIND_STOPS,
   TEMP_STOPS,
 } from '../../lib/colorTables';
@@ -37,6 +38,14 @@ export function RadarLegend() {
           label: `${s.rho.toFixed(2)} · ${s.label}`,
         }));
     }
+    if (product.legend === 'shear') {
+      return SHEAR_STOPS.slice()
+        .reverse()
+        .map((s) => ({
+          color: s.color,
+          label: s.label || `${s.value}`,
+        }));
+    }
     if (product.legend === 'wind') {
       return WIND_STOPS.slice()
         .reverse()
@@ -57,13 +66,15 @@ export function RadarLegend() {
         ? 'Velocity (kts)'
         : product.legend === 'rho'
           ? 'Correlation (ρ)'
-          : product.legend === 'wind'
-            ? 'Wind (mph)'
-            : product.legend === 'temp'
-              ? 'Temperature (°F)'
-              : product.legend === 'satellite'
-                ? 'Satellite'
-                : product.label;
+          : product.legend === 'shear'
+            ? 'Rotation (ΔV)'
+            : product.legend === 'wind'
+              ? 'Wind (mph)'
+              : product.legend === 'temp'
+                ? 'Temperature (°F)'
+                : product.legend === 'satellite'
+                  ? 'Satellite'
+                  : product.label;
 
   return (
     <div

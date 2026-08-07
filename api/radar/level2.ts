@@ -75,41 +75,23 @@ function ccColor(rho: number): [number, number, number, number] {
   return [80, 200, 80, 180]; // green — uniform rain
 }
 
-interface L2RadialMomentSamples {
-  data?: number[];
-  values?: number[];
-}
-interface L2Radial {
-  azimuth?: number;
-  azimuth_angle?: number;
-  moments?: Record<string, L2RadialMomentSamples>;
-  gates?: number[];
-}
-interface L2Sweep {
-  record?: { radials?: L2Radial[] };
-  radials?: L2Radial[];
-  gateSize?: number;
-}
-
-function readSweepRadials(sweep: L2Sweep): L2Radial[] {
-  return sweep.record?.radials ?? sweep.radials ?? [];
-}
-type MomentKey = 'REF' | 'VEL' | 'RHO';
-
-function readGates(radial: L2Radial, momentKey: MomentKey): number[] {
-  const m = radial.moments?.[momentKey];
-  if (m?.data) return m.data;
-  if (m?.values) return m.values;
-  if (radial.gates) return radial.gates;
-  return [];
-}
-
 type L2Product = 'reflectivity' | 'velocity' | 'correlation';
 
-function momentForProduct(p: L2Product): MomentKey {
-  if (p === 'velocity') return 'VEL';
-  if (p === 'correlation') return 'RHO';
-  return 'REF';
+interface L2Moment {
+  gate_count?: number;
+  first_gate?: number; // km
+  gate_size?: number; // km
+  moment_data?: Array<number | null>;
+}
+
+interface Level2RadarLike {
+  listElevations: () => number[];
+  setElevation: (elev: number) => void;
+  getAzimuth: (scan: number) => number;
+  getHighresReflectivity: (scan?: number) => L2Moment | L2Moment[];
+  getHighresVelocity: (scan?: number) => L2Moment | L2Moment[];
+  getHighresCorrelationCoefficient: (scan?: number) => L2Moment | L2Moment[];
+  data: Record<number, Array<{ record?: Record<string, unknown> }>>;
 }
 
 function colorForProduct(
@@ -121,7 +103,7 @@ function colorForProduct(
   return dbzToColor(v);
 }
 
-function shouldDropGate(p: L2Product, v: number): boolean {
+function shouldDropGate(p: L2Product, v: number | null | undefined): boolean {
   if (v == null || Number.isNaN(v)) return true;
   if (p === 'reflectivity' && v < -32) return true;
   if (p === 'velocity' && Math.abs(v) > 100) return true;
@@ -129,62 +111,105 @@ function shouldDropGate(p: L2Product, v: number): boolean {
   return false;
 }
 
+const L2_BUCKET = 'https://unidata-nexrad-level2.s3.amazonaws.com';
+
+/** List latest Archive II volume. NOAA's public bucket denies anonymous
+ *  ListObjects; Unidata's mirror allows it. Layout: YYYY/MM/DD/SITE/. */
 async function listLatestL2Key(site: string): Promise<string | null> {
-  const today = new Date();
-  const prefix =
-    `${today.getUTCFullYear()}/` +
-    `${String(today.getUTCMonth() + 1).padStart(2, '0')}/` +
-    `${String(today.getUTCDate()).padStart(2, '0')}/${site}/`;
-  const url = `https://noaa-nexrad-level2.s3.amazonaws.com/?list-type=2&prefix=${prefix}&max-keys=20`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const xml = await res.text();
-  const keys = Array.from(xml.matchAll(/<Key>([^<]+)<\/Key>/g))
-    .map((m) => m[1])
-    .filter((k) => !k.endsWith('_MDM') && !k.endsWith('_FREE'));
-  if (keys.length === 0) return null;
-  return keys[keys.length - 1];
+  const days: Date[] = [new Date()];
+  days.push(new Date(Date.now() - 86_400_000)); // yesterday near UTC midnight
+
+  for (const day of days) {
+    const prefix =
+      `${day.getUTCFullYear()}/` +
+      `${String(day.getUTCMonth() + 1).padStart(2, '0')}/` +
+      `${String(day.getUTCDate()).padStart(2, '0')}/${site}/`;
+    const url = `${L2_BUCKET}/?list-type=2&prefix=${prefix}&max-keys=1000`;
+    const res = await fetch(url);
+    if (!res.ok) continue;
+    const xml = await res.text();
+    const keys = Array.from(xml.matchAll(/<Key>([^<]+)<\/Key>/g))
+      .map((m) => m[1])
+      .filter((k) => !k.endsWith('_MDM') && !k.endsWith('_FREE'));
+    if (keys.length > 0) return keys[keys.length - 1];
+  }
+  return null;
 }
 
-function renderSweep(
-  sweep: L2Sweep,
+function productField(product: L2Product): 'reflect' | 'velocity' | 'rho' {
+  if (product === 'velocity') return 'velocity';
+  if (product === 'correlation') return 'rho';
+  return 'reflect';
+}
+
+/** Pick the lowest elevation that carries the requested moment. */
+function pickElevation(radar: Level2RadarLike, product: L2Product): number | null {
+  const field = productField(product);
+  for (const elev of radar.listElevations()) {
+    const rec = radar.data[elev]?.[0]?.record;
+    if (rec && rec[field] != null) return elev;
+  }
+  return null;
+}
+
+function readMoment(
+  radar: Level2RadarLike,
   product: L2Product,
-): { png: Buffer; volumeStart?: string } {
-  const SIZE = 1024;
+  scan: number,
+): L2Moment | null {
+  try {
+    if (product === 'velocity') return radar.getHighresVelocity(scan) as L2Moment;
+    if (product === 'correlation') {
+      return radar.getHighresCorrelationCoefficient(scan) as L2Moment;
+    }
+    return radar.getHighresReflectivity(scan) as L2Moment;
+  } catch {
+    return null;
+  }
+}
+
+function renderProduct(radar: Level2RadarLike, product: L2Product): Buffer {
+  const elev = pickElevation(radar, product);
+  if (elev == null) throw new Error('no elevation for product');
+  radar.setElevation(elev);
+
+  const SIZE = 512;
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, SIZE, SIZE);
-
   const imageData = ctx.createImageData(SIZE, SIZE) as unknown as ImageData;
   const pixels = imageData.data;
 
-  const radials = readSweepRadials(sweep);
-  const gateSize = sweep.gateSize ?? 250;
   const maxRangeMeters = 230_000;
   const metersPerPixel = (maxRangeMeters * 2) / SIZE;
   const cx = SIZE / 2;
   const cy = SIZE / 2;
-  const momentKey = momentForProduct(product);
 
-  for (const radial of radials) {
-    const azDeg = radial.azimuth ?? radial.azimuth_angle ?? 0;
+  const scanCount = radar.data[elev]?.length ?? 0;
+  const rStep = scanCount > 360 ? 2 : 1;
+
+  for (let si = 0; si < scanCount; si += rStep) {
+    const moment = readMoment(radar, product, si);
+    const gates = moment?.moment_data;
+    if (!moment || !gates?.length) continue;
+
+    const azDeg = radar.getAzimuth(si);
     const azRad = ((azDeg - 90) * Math.PI) / 180;
-    const gates = readGates(radial, momentKey);
+    // gate_size / first_gate are kilometers in Archive II high-res moments
+    const gateSizeM = (moment.gate_size ?? 0.25) * 1000;
+    const firstGateM = (moment.first_gate ?? 0) * 1000;
+    const gStep = gates.length > 400 ? 2 : 1;
 
-    for (let i = 0; i < gates.length; i++) {
-      const value = gates[i];
+    for (let gi = 0; gi < gates.length; gi += gStep) {
+      const value = gates[gi];
       if (shouldDropGate(product, value)) continue;
 
-      const rangeM = (i + 0.5) * gateSize;
+      const rangeM = firstGateM + (gi + 0.5) * gateSizeM;
       const px = cx + (rangeM * Math.cos(azRad)) / metersPerPixel;
       const py = cy + (rangeM * Math.sin(azRad)) / metersPerPixel;
       if (px < 0 || px >= SIZE || py < 0 || py >= SIZE) continue;
 
-      const [r, g, b, a] = colorForProduct(product, value);
-
-      // 2×2 block fills the polar→cartesian gaps without smoothing —
-      // adjacent pixels stay fully saturated, preserving the
-      // RadarScope-style hard gate boundaries.
+      const [r, g, b, a] = colorForProduct(product, value as number);
       for (let dy = 0; dy < 2; dy++) {
         for (let dx = 0; dx < 2; dx++) {
           const ipx = Math.floor(px) + dx;
@@ -201,7 +226,7 @@ function renderSweep(
   }
 
   ctx.putImageData(imageData, 0, 0);
-  return { png: canvas.toBuffer('image/png') };
+  return canvas.toBuffer('image/png');
 }
 
 // Named GET export required for Node.js runtime — a default export that
@@ -260,32 +285,23 @@ export async function GET(req: Request): Promise<Response> {
     return new Response('no L2 data available', { status: 404 });
   }
 
-  const fileUrl = `https://noaa-nexrad-level2.s3.amazonaws.com/${latestKey}`;
+  const fileUrl = `${L2_BUCKET}/${latestKey}`;
   const fileRes = await fetch(fileUrl);
   if (!fileRes.ok) return new Response('L2 fetch failed', { status: 502 });
   const buffer = Buffer.from(await fileRes.arrayBuffer());
 
-  // Parse with the L2 lib. The library's API has shifted across versions
-  // — the cast below keeps us flexible while still type-checking.
-  const radar = new (Level2Radar as unknown as { new (b: Buffer): unknown })(
-    buffer,
-  ) as {
-    getHighresReflectivity?: () => L2Sweep[];
-    getHighresVelocity?: () => L2Sweep[];
-    getHighresCorrelationCoefficient?: () => L2Sweep[];
-  };
-  const sweepData =
-    product === 'velocity'
-      ? (radar.getHighresVelocity?.() ?? [])
-      : product === 'correlation'
-        ? (radar.getHighresCorrelationCoefficient?.() ?? [])
-        : (radar.getHighresReflectivity?.() ?? []);
-  if (!sweepData || sweepData.length === 0) {
-    return new Response('no sweep data', { status: 404 });
+  // Parse with the L2 lib. Elevation 1 is default; we pick the lowest
+  // cut that actually carries the requested moment (VEL/RHO alternate).
+  const radar = new Level2Radar(buffer) as unknown as Level2RadarLike;
+  let png: Buffer;
+  try {
+    png = renderProduct(radar, product);
+  } catch (err) {
+    return new Response(
+      `L2 render failed: ${err instanceof Error ? err.message : 'error'}`,
+      { status: 502 },
+    );
   }
-  const sweep = sweepData[0]; // lowest tilt
-
-  const { png } = renderSweep(sweep, product);
 
   if (hasBlob) {
     try {

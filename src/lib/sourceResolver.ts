@@ -121,6 +121,9 @@ export function resolveSource(
 
   if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
+    // Single-site velocity is useless at continental zoom — require
+    // close enough that the site disc fills a meaningful share of the map.
+    if (zoom < 7) return UNAVAILABLE;
     if (zoom <= 11) {
       return {
         kind: 'ridge-wms',
@@ -163,6 +166,20 @@ export function resolveSource(
   }
 
   if (product === 'satellite-ir') {
+    // Iowa GOES IR tiles are the most reliable free CONUS source.
+    // GIBS covers global / ocean when outside US (or as fallback).
+    if (isUS(region)) {
+      const iowa =
+        sector === 'west'
+          ? 'goes-west-ir-4km-900913'
+          : 'goes-east-ir-4km-900913';
+      return {
+        kind: 'iowa-goes',
+        product: iowa,
+        opacity: 0.75,
+        fallback: 'gibs',
+      };
+    }
     const layer =
       sector === 'west'
         ? 'GOES-West_ABI_Band13_Clean_Infrared'
@@ -217,6 +234,9 @@ export function unavailabilityReason(
     !isUS(region)
   ) {
     return 'Unavailable in this region. US NEXRAD only.';
+  }
+  if (product === 'velocity' && zoom < 7) {
+    return 'Zoom in further (z7+) to load Base Velocity for a nearby radar.';
   }
   if (
     (product === 'storm-rel-velocity' || product === 'rotation') &&

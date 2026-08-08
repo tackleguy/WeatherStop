@@ -149,7 +149,18 @@ export async function GET(req: Request): Promise<Response> {
     try {
       const existing = await list({ prefix: cacheKey, limit: 1 });
       if (existing.blobs.length > 0) {
-        return Response.redirect(existing.blobs[0].url, 302);
+        // Proxy the bytes instead of 302 — MapLibre tile loads break on
+        // cross-origin redirects to *.blob.vercel-storage.com.
+        const upstream = await fetch(existing.blobs[0].url);
+        if (upstream.ok) {
+          return new Response(upstream.body, {
+            headers: {
+              'Content-Type': 'image/png',
+              'Cache-Control': 'public, max-age=1800',
+              'X-Source': 'open-meteo-grid-blob',
+            },
+          });
+        }
       }
     } catch {
       // Blob unavailable → fall through and render fresh.
@@ -246,19 +257,20 @@ export async function GET(req: Request): Promise<Response> {
 
   if (hasBlob) {
     try {
-      const blob = await put(cacheKey, png, {
+      await put(cacheKey, png, {
         access: 'public',
         contentType: 'image/png',
         cacheControlMaxAge: 1800,
         addRandomSuffix: false,
         allowOverwrite: true,
       });
-      return Response.redirect(blob.url, 302);
     } catch {
-      // fall through
+      // Cache write is best-effort — still serve the PNG below.
     }
   }
 
+  // Always return the PNG body. MapLibre raster tiles often fail on
+  // cross-origin 302 redirects to blob storage.
   return new Response(new Uint8Array(png), {
     headers: {
       'Content-Type': 'image/png',

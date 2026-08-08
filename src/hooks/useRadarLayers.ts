@@ -156,7 +156,7 @@ function bboxFromMap(map: maplibregl.Map) {
   };
 }
 
-/** GIBS REST WMTS — IR tops out at Level6; VIS at Level7. */
+/** GIBS REST WMTS. IR max Level6; VIS max Level7. Prefer dated path. */
 function gibsTileUrl(layerName: string): string {
   const day = new Date().toISOString().slice(0, 10);
   const isVis = /Visible|Band2/i.test(layerName);
@@ -164,10 +164,70 @@ function gibsTileUrl(layerName: string): string {
   const matrix = isVis
     ? 'GoogleMapsCompatible_Level7'
     : 'GoogleMapsCompatible_Level6';
+  // Dated path; GIBS also accepts the literal "default" time for NRT.
   return (
     `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/` +
     `${layerName}/default/${day}/${matrix}/{z}/{y}/{x}.${ext}`
   );
+}
+
+function setRasterOpacity(
+  map: maplibregl.Map,
+  layerId: string,
+  opacity: number,
+): void {
+  if (!map.getLayer(layerId)) return;
+  map.setPaintProperty(
+    layerId,
+    'raster-opacity',
+    Math.max(0, Math.min(1, opacity)),
+  );
+}
+
+function ensureRasterSource(
+  map: maplibregl.Map,
+  styleLoaded: boolean,
+  sourceId: string,
+  layerId: string,
+  tilesUrl: string,
+  opts: { minzoom?: number; maxzoom?: number; opacity?: number } = {},
+): void {
+  const { minzoom = 0, maxzoom = 12, opacity = 0 } = opts;
+  const existing = map.getSource(sourceId) as
+    | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
+    | undefined;
+  if (existing && typeof existing.setTiles === 'function') {
+    existing.setTiles([tilesUrl]);
+    setRasterOpacity(map, layerId, opacity);
+    return;
+  }
+  if (existing) {
+    setRasterOpacity(map, layerId, opacity);
+    return;
+  }
+  safeAdd(map, styleLoaded, () => {
+    if (map.getSource(sourceId)) {
+      setRasterOpacity(map, layerId, opacity);
+      return;
+    }
+    map.addSource(sourceId, {
+      type: 'raster',
+      tiles: [tilesUrl],
+      tileSize: 256,
+      minzoom,
+      maxzoom,
+    });
+    map.addLayer({
+      id: layerId,
+      type: 'raster',
+      source: sourceId,
+      paint: {
+        'raster-opacity': opacity,
+        'raster-fade-duration': 0,
+        'raster-resampling': 'nearest',
+      },
+    });
+  });
 }
 
 function attributionFor(kind: SourceKind): string {
@@ -393,64 +453,50 @@ export function useRadarLayers({
     const tilesUrl = iowaTs
       ? `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}&ts=${iowaTs}`
       : `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}`;
-
-    const existing = map.getSource(IOWA_SOURCE) as
-      | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
-      | undefined;
-    if (existing && typeof existing.setTiles === 'function') {
-      existing.setTiles([tilesUrl]);
-      return;
-    }
-    if (existing) return;
-    safeAdd(map, styleLoaded, () => {
-      if (map.getSource(IOWA_SOURCE)) return;
-      map.addSource(IOWA_SOURCE, {
-        type: 'raster',
-        tiles: [tilesUrl],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 11,
-      });
-      map.addLayer({
-        id: IOWA_LAYER,
-        type: 'raster',
-        source: IOWA_SOURCE,
-        paint: PIXELATED_PAINT,
-      });
+    const opacity =
+      effectiveChoice.kind === 'iowa-state'
+        ? effectiveChoice.opacity * overlay
+        : 0;
+    ensureRasterSource(map, styleLoaded, IOWA_SOURCE, IOWA_LAYER, tilesUrl, {
+      minzoom: 0,
+      maxzoom: 11,
+      opacity,
     });
-  }, [map, styleLoaded, iowaTs, effectiveChoice.kind, effectiveChoice.product]);
+  }, [
+    map,
+    styleLoaded,
+    iowaTs,
+    effectiveChoice.kind,
+    effectiveChoice.product,
+    effectiveChoice.opacity,
+    overlay,
+  ]);
 
-  // Open-Meteo grid
+  // Open-Meteo wind / temp grid — keep source mounted; opacity via crossfade.
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    if (effectiveChoice.kind !== 'open-meteo-grid') return;
-    const url = `/api/weather/grid?z={z}&x={x}&y={y}&layer=${effectiveChoice.product}`;
-
-    const existing = map.getSource(GRID_SOURCE) as
-      | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
-      | undefined;
-    if (existing && typeof existing.setTiles === 'function') {
-      existing.setTiles([url]);
-      return;
-    }
-    if (existing) return;
-    safeAdd(map, styleLoaded, () => {
-      if (map.getSource(GRID_SOURCE)) return;
-      map.addSource(GRID_SOURCE, {
-        type: 'raster',
-        tiles: [url],
-        tileSize: 256,
-        minzoom: 2,
-        maxzoom: 12,
-      });
-      map.addLayer({
-        id: GRID_LAYER,
-        type: 'raster',
-        source: GRID_SOURCE,
-        paint: PIXELATED_PAINT,
-      });
+    const layer =
+      effectiveChoice.kind === 'open-meteo-grid'
+        ? effectiveChoice.product
+        : 'wind';
+    const url = `/api/weather/grid?z={z}&x={x}&y={y}&layer=${layer}`;
+    const opacity =
+      effectiveChoice.kind === 'open-meteo-grid'
+        ? effectiveChoice.opacity * overlay
+        : 0;
+    ensureRasterSource(map, styleLoaded, GRID_SOURCE, GRID_LAYER, url, {
+      minzoom: 2,
+      maxzoom: 12,
+      opacity,
     });
-  }, [map, styleLoaded, effectiveChoice.kind, effectiveChoice.product]);
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
+    effectiveChoice.product,
+    effectiveChoice.opacity,
+    overlay,
+  ]);
 
   // DWD
   useEffect(() => {
@@ -473,6 +519,7 @@ export function useRadarLayers({
         | undefined;
       if (src) {
         src.updateImage({ url, coordinates: coords });
+        setRasterOpacity(map, DWD_LAYER, effectiveChoice.opacity * overlay);
         return;
       }
       safeAdd(map, styleLoaded, () => {
@@ -482,7 +529,11 @@ export function useRadarLayers({
           id: DWD_LAYER,
           type: 'raster',
           source: DWD_SOURCE,
-          paint: PIXELATED_PAINT,
+          paint: {
+            'raster-opacity': effectiveChoice.opacity * overlay,
+            'raster-fade-duration': 0,
+            'raster-resampling': 'nearest',
+          },
         });
       });
     };
@@ -498,43 +549,43 @@ export function useRadarLayers({
       if (timer !== undefined) window.clearTimeout(timer);
       map.off('moveend', debounced);
     };
-  }, [map, styleLoaded, effectiveChoice.kind, ts]);
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
+    effectiveChoice.opacity,
+    overlay,
+    ts,
+  ]);
 
-  // NASA GIBS
+  // NASA GIBS — keep mounted; swap tiles when layer name changes.
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    if (effectiveChoice.kind !== 'gibs') {
-      if (map.getLayer(GIBS_LAYER)) map.removeLayer(GIBS_LAYER);
-      if (map.getSource(GIBS_SOURCE)) map.removeSource(GIBS_SOURCE);
-      return;
-    }
-    const url = gibsTileUrl(effectiveChoice.product);
-    const isVis = /Visible|Band2/i.test(effectiveChoice.product);
-    const maxzoom = isVis ? 7 : 6;
-
-    // Remount when IR↔VIS changes (different matrix set / maxzoom).
-    if (map.getLayer(GIBS_LAYER)) map.removeLayer(GIBS_LAYER);
-    if (map.getSource(GIBS_SOURCE)) map.removeSource(GIBS_SOURCE);
-
-    safeAdd(map, styleLoaded, () => {
-      if (map.getSource(GIBS_SOURCE)) return;
-      map.addSource(GIBS_SOURCE, {
-        type: 'raster',
-        tiles: [url],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom,
-      });
-      map.addLayer({
-        id: GIBS_LAYER,
-        type: 'raster',
-        source: GIBS_SOURCE,
-        paint: PIXELATED_PAINT,
-      });
+    const layerName =
+      effectiveChoice.kind === 'gibs'
+        ? effectiveChoice.product
+        : 'GOES-East_ABI_Band13_Clean_Infrared';
+    const url = gibsTileUrl(layerName);
+    const isVis = /Visible|Band2/i.test(layerName);
+    const opacity =
+      effectiveChoice.kind === 'gibs'
+        ? effectiveChoice.opacity * overlay
+        : 0;
+    ensureRasterSource(map, styleLoaded, GIBS_SOURCE, GIBS_LAYER, url, {
+      minzoom: 0,
+      maxzoom: isVis ? 7 : 6,
+      opacity,
     });
-  }, [map, styleLoaded, effectiveChoice.kind, effectiveChoice.product]);
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
+    effectiveChoice.product,
+    effectiveChoice.opacity,
+    overlay,
+  ]);
 
-  // Iowa GOES (vis / ir)
+  // Iowa GOES vis / IR
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const product =
@@ -542,31 +593,26 @@ export function useRadarLayers({
         ? effectiveChoice.product
         : 'goes-east-vis-1km-900913';
     const url = `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}`;
-    const existing = map.getSource(IOWA_GOES_SOURCE) as
-      | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
-      | undefined;
-    if (existing && typeof existing.setTiles === 'function') {
-      existing.setTiles([url]);
-      return;
-    }
-    if (existing) return;
-    safeAdd(map, styleLoaded, () => {
-      if (map.getSource(IOWA_GOES_SOURCE)) return;
-      map.addSource(IOWA_GOES_SOURCE, {
-        type: 'raster',
-        tiles: [url],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 10,
-      });
-      map.addLayer({
-        id: IOWA_GOES_LAYER,
-        type: 'raster',
-        source: IOWA_GOES_SOURCE,
-        paint: PIXELATED_PAINT,
-      });
-    });
-  }, [map, styleLoaded, effectiveChoice.kind, effectiveChoice.product]);
+    const opacity =
+      effectiveChoice.kind === 'iowa-goes'
+        ? effectiveChoice.opacity * overlay
+        : 0;
+    ensureRasterSource(
+      map,
+      styleLoaded,
+      IOWA_GOES_SOURCE,
+      IOWA_GOES_LAYER,
+      url,
+      { minzoom: 0, maxzoom: 10, opacity },
+    );
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
+    effectiveChoice.product,
+    effectiveChoice.opacity,
+    overlay,
+  ]);
 
   // Per-site / CONUS WMS
   const wmsProduct =
@@ -673,9 +719,14 @@ export function useRadarLayers({
             id: L2_LAYER,
             type: 'raster',
             source: L2_SOURCE,
-            paint: PIXELATED_PAINT,
+            paint: {
+              'raster-opacity': effectiveChoice.opacity * overlay,
+              'raster-fade-duration': 0,
+              'raster-resampling': 'nearest',
+            },
           });
         });
+        setRasterOpacity(map, L2_LAYER, effectiveChoice.opacity * overlay);
       } catch {
         if (choice.fallback) setActiveKind(choice.fallback);
       }
@@ -693,6 +744,8 @@ export function useRadarLayers({
     styleLoaded,
     effectiveChoice.kind,
     effectiveChoice.product,
+    effectiveChoice.opacity,
+    overlay,
     site?.id,
     choice.fallback,
   ]);
@@ -776,9 +829,14 @@ export function useRadarLayers({
             id: L3_LAYER,
             type: 'raster',
             source: L3_SOURCE,
-            paint: PIXELATED_PAINT,
+            paint: {
+              'raster-opacity': effectiveChoice.opacity * overlay,
+              'raster-fade-duration': 0,
+              'raster-resampling': 'nearest',
+            },
           });
         });
+        setRasterOpacity(map, L3_LAYER, effectiveChoice.opacity * overlay);
       } catch {
         // Non-fatal — banner still shows US-only context.
       }
@@ -796,6 +854,8 @@ export function useRadarLayers({
     styleLoaded,
     effectiveChoice.kind,
     effectiveChoice.product,
+    effectiveChoice.opacity,
+    overlay,
     site?.id,
     site?.lat,
     site?.lon,

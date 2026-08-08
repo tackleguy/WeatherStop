@@ -86,6 +86,7 @@ export const PRODUCTS: Product[] = [
     legend: 'kts',
     description: 'Wind toward / away from radar (US only)',
     group: 'radar',
+    requiresZoom: 7,
   },
   {
     id: 'storm-rel-velocity',

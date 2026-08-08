@@ -50,6 +50,8 @@ export const IOWA_GOES_SOURCE = 'iowa-goes-tiles';
 export const IOWA_GOES_LAYER = 'iowa-goes-layer';
 export const GRID_SOURCE = 'open-meteo-grid';
 export const GRID_LAYER = 'open-meteo-grid-layer';
+export const MOSAIC_SOURCE = 'radar-mosaic';
+export const MOSAIC_LAYER = 'radar-mosaic-layer';
 
 /** @deprecated Alias kept for imports that still use the old name. */
 export const GIBS_IR_SOURCE = GIBS_SOURCE;
@@ -243,6 +245,8 @@ function attributionFor(kind: SourceKind): string {
       return '© <a href="https://www.weather.gov" target="_blank" rel="noopener">NWS NEXRAD Level 2</a>';
     case 'level3':
       return '© <a href="https://www.weather.gov" target="_blank" rel="noopener">NWS NEXRAD Level 3</a> · Unidata';
+    case 'mosaic':
+      return '© <a href="https://www.weather.gov" target="_blank" rel="noopener">NWS NEXRAD</a> · multi-site mosaic';
     case 'dwd':
       return '© <a href="https://www.dwd.de" target="_blank" rel="noopener">DWD</a>';
     case 'gibs':
@@ -285,7 +289,16 @@ function labelFor(
   if (kind === 'level3' && site) {
     return product === 'ROT'
       ? `${site.id} · Rotation (L3)`
-      : `${site.id} · Storm-Rel Vel (L3)`;
+      : product === 'N0C'
+        ? `${site.id} · Correlation (L3)`
+        : `${site.id} · Storm-Rel Vel (L3)`;
+  }
+  if (kind === 'mosaic') {
+    if (product === 'bvel') return 'Base Velocity (CONUS mosaic)';
+    if (product === 'rot') return 'Rotation (CONUS mosaic)';
+    if (product === 'n0c') return 'Correlation (CONUS mosaic)';
+    if (product === 'n0s') return 'Storm-Rel Velocity (CONUS mosaic)';
+    return 'Radar mosaic';
   }
   if (kind === 'dwd') return 'DWD Niederschlagsradar';
   if (kind === 'gibs') {
@@ -459,7 +472,7 @@ export function useRadarLayers({
         : 0;
     ensureRasterSource(map, styleLoaded, IOWA_SOURCE, IOWA_LAYER, tilesUrl, {
       minzoom: 0,
-      maxzoom: 11,
+      maxzoom: 12,
       opacity,
     });
   }, [
@@ -612,6 +625,95 @@ export function useRadarLayers({
     effectiveChoice.product,
     effectiveChoice.opacity,
     overlay,
+  ]);
+
+  // Multi-site mosaic (velocity / rotation / CC / SRV at CONUS zoom)
+  useEffect(() => {
+    if (!map || !styleLoaded) return;
+    if (effectiveChoice.kind !== 'mosaic') {
+      if (map.getLayer(MOSAIC_LAYER)) map.removeLayer(MOSAIC_LAYER);
+      if (map.getSource(MOSAIC_SOURCE)) map.removeSource(MOSAIC_SOURCE);
+      return;
+    }
+
+    let timer: number | undefined;
+    let cancelled = false;
+
+    const refresh = () => {
+      if (cancelled || !map) return;
+      const { bbox3857, coords } = bboxFromMap(map);
+      const url =
+        `/api/radar/mosaic?product=${encodeURIComponent(effectiveChoice.product)}` +
+        `&bbox=${encodeURIComponent(bbox3857)}&width=1024&height=1024`;
+
+      void fetch(url)
+        .then(async (res) => {
+          if (!res.ok) {
+            if (choice.fallback) setActiveKind(choice.fallback);
+            return;
+          }
+          const blob = await res.blob();
+          if (cancelled || !map) return;
+          const objUrl = URL.createObjectURL(blob);
+          const src = map.getSource(MOSAIC_SOURCE) as
+            | maplibregl.ImageSource
+            | undefined;
+          if (src) {
+            src.updateImage({ url: objUrl, coordinates: coords });
+            setRasterOpacity(
+              map,
+              MOSAIC_LAYER,
+              effectiveChoice.opacity * overlay,
+            );
+            return;
+          }
+          safeAdd(map, styleLoaded, () => {
+            if (map.getSource(MOSAIC_SOURCE)) return;
+            map.addSource(MOSAIC_SOURCE, {
+              type: 'image',
+              url: objUrl,
+              coordinates: coords,
+            });
+            map.addLayer({
+              id: MOSAIC_LAYER,
+              type: 'raster',
+              source: MOSAIC_SOURCE,
+              paint: {
+                'raster-opacity': effectiveChoice.opacity * overlay,
+                'raster-fade-duration': 0,
+                'raster-resampling': 'nearest',
+              },
+            });
+          });
+        })
+        .catch(() => {
+          if (choice.fallback) setActiveKind(choice.fallback);
+        });
+    };
+
+    const debounced = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, 350);
+    };
+
+    refresh();
+    map.on('moveend', debounced);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      map.off('moveend', debounced);
+      if (map.getLayer(MOSAIC_LAYER)) map.removeLayer(MOSAIC_LAYER);
+      if (map.getSource(MOSAIC_SOURCE)) map.removeSource(MOSAIC_SOURCE);
+    };
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
+    effectiveChoice.product,
+    effectiveChoice.opacity,
+    overlay,
+    ts,
+    choice.fallback,
   ]);
 
   // Per-site / CONUS WMS
@@ -876,6 +978,7 @@ export function useRadarLayers({
     fadeRasterTo(map, IOWA_LAYER, kind === 'iowa-state' ? target : 0);
     fadeRasterTo(map, L2_LAYER, kind === 'level2' ? target : 0);
     fadeRasterTo(map, L3_LAYER, kind === 'level3' ? target : 0);
+    fadeRasterTo(map, MOSAIC_LAYER, kind === 'mosaic' ? target : 0);
     fadeRasterTo(map, DWD_LAYER, kind === 'dwd' ? target : 0);
     fadeRasterTo(map, GIBS_LAYER, kind === 'gibs' ? target : 0);
     fadeRasterTo(map, IOWA_GOES_LAYER, kind === 'iowa-goes' ? target : 0);

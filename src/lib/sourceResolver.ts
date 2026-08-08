@@ -22,6 +22,7 @@ export type SourceKind =
   | 'ridge-wms'
   | 'level2'
   | 'level3'
+  | 'mosaic'
   | 'dwd'
   | 'windy'
   | 'gibs'
@@ -56,7 +57,9 @@ export function resolveSource(
 
   if (product === 'reflectivity') {
     if (isUS(region)) {
-      if (zoom <= 9) {
+      // Keep the Iowa CONUS mosaic deeper so national/regional zooms
+      // stay filled before switching to single-site WMS / Level 2.
+      if (zoom <= 11) {
         return {
           kind: 'iowa-state',
           product: 'nexrad-n0q-900913',
@@ -64,7 +67,7 @@ export function resolveSource(
           fallback: 'rainviewer',
         };
       }
-      if (zoom <= 11) {
+      if (zoom <= 13) {
         return {
           kind: 'ridge-wms',
           product: 'bref',
@@ -97,7 +100,7 @@ export function resolveSource(
   // CONUS composite mosaic — distinct from single-tilt reflectivity.
   if (product === 'composite') {
     if (isUS(region)) {
-      if (zoom <= 8) {
+      if (zoom <= 10) {
         return {
           kind: 'iowa-state',
           product: 'nexrad-n0q-900913',
@@ -121,10 +124,16 @@ export function resolveSource(
 
   if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    // Single-site velocity is useless at continental zoom — require
-    // close enough that the site disc fills a meaningful share of the map.
-    if (zoom < 7) return UNAVAILABLE;
-    if (zoom <= 11) {
+    // Multi-site OpenGeo mosaic works from CONUS; refine to one site later.
+    if (zoom <= 9) {
+      return {
+        kind: 'mosaic',
+        product: 'bvel',
+        opacity: 0.9,
+        fallback: 'ridge-wms',
+      };
+    }
+    if (zoom <= 12) {
       return {
         kind: 'ridge-wms',
         product: 'bvel',
@@ -140,34 +149,37 @@ export function resolveSource(
     };
   }
 
-  // True storm-relative via Unidata Level 3 N0S (not base velocity).
   if (product === 'storm-rel-velocity') {
-    if (!isUS(region) || zoom < 6) return UNAVAILABLE;
-    return {
-      kind: 'level3',
-      product: 'N0S',
-      opacity: 0.9,
-    };
+    if (!isUS(region)) return UNAVAILABLE;
+    if (zoom <= 8) {
+      return { kind: 'mosaic', product: 'n0s', opacity: 0.9, fallback: 'level3' };
+    }
+    return { kind: 'level3', product: 'N0S', opacity: 0.9 };
   }
 
-  // Azimuthal shear derived from Level 3 N0S.
   if (product === 'rotation') {
-    if (!isUS(region) || zoom < 6) return UNAVAILABLE;
-    return {
-      kind: 'level3',
-      product: 'ROT',
-      opacity: 0.9,
-    };
+    if (!isUS(region)) return UNAVAILABLE;
+    if (zoom <= 8) {
+      return { kind: 'mosaic', product: 'rot', opacity: 0.9, fallback: 'level3' };
+    }
+    return { kind: 'level3', product: 'ROT', opacity: 0.9 };
   }
 
   if (product === 'correlation') {
-    if (!isUS(region) || zoom < 8) return UNAVAILABLE;
+    if (!isUS(region)) return UNAVAILABLE;
+    // L3 N0C mosaic at CONUS / regional; Level 2 when zoomed in.
+    if (zoom <= 9) {
+      return {
+        kind: 'mosaic',
+        product: 'n0c',
+        opacity: 0.9,
+        fallback: 'level3',
+      };
+    }
     return { kind: 'level2', product: 'correlation', opacity: 0.9 };
   }
 
   if (product === 'satellite-ir') {
-    // Iowa GOES IR tiles are the most reliable free CONUS source.
-    // GIBS covers global / ocean when outside US (or as fallback).
     if (isUS(region)) {
       const iowa =
         sector === 'west'
@@ -224,31 +236,17 @@ export function resolveSource(
 
 export function unavailabilityReason(
   product: ProductId,
-  zoom: number,
+  _zoom: number,
   region: Region,
 ): string | null {
   if (
     (product === 'velocity' ||
       product === 'storm-rel-velocity' ||
-      product === 'rotation') &&
+      product === 'rotation' ||
+      product === 'correlation') &&
     !isUS(region)
   ) {
     return 'Unavailable in this region. US NEXRAD only.';
-  }
-  if (product === 'velocity' && zoom < 7) {
-    return 'Zoom in further (z7+) to load Base Velocity for a nearby radar.';
-  }
-  if (
-    (product === 'storm-rel-velocity' || product === 'rotation') &&
-    zoom < 6
-  ) {
-    return 'Zoom in further (z6+) to load this product.';
-  }
-  if (product === 'correlation' && !isUS(region)) {
-    return 'Correlation Coefficient unavailable in this region. US NEXRAD only.';
-  }
-  if (product === 'correlation' && zoom < 8) {
-    return 'Zoom in further (z8+) to load Correlation Coefficient.';
   }
   return null;
 }

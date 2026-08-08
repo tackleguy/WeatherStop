@@ -86,7 +86,6 @@ export const PRODUCTS: Product[] = [
     legend: 'kts',
     description: 'Wind toward / away from radar (US only)',
     group: 'radar',
-    requiresZoom: 7,
   },
   {
     id: 'storm-rel-velocity',
@@ -96,7 +95,6 @@ export const PRODUCTS: Product[] = [
     legend: 'kts',
     description: 'Velocity relative to storm motion (US only)',
     group: 'radar',
-    requiresZoom: 6,
   },
   {
     id: 'rotation',
@@ -106,7 +104,6 @@ export const PRODUCTS: Product[] = [
     legend: 'shear',
     description: 'Azimuthal shear from storm-relative velocity (US only)',
     group: 'radar',
-    requiresZoom: 6,
   },
   {
     id: 'correlation',
@@ -114,9 +111,8 @@ export const PRODUCTS: Product[] = [
     shortLabel: 'CC',
     icon: Atom,
     legend: 'rho',
-    description: 'Hail / debris detection (US, zoom 8+)',
+    description: 'Hail / debris detection (US only)',
     group: 'radar',
-    requiresZoom: 8,
   },
   {
     id: 'satellite-ir',

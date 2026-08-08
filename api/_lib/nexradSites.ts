@@ -157,3 +157,49 @@ export function bboxForSite(siteId: string): [number, number, number, number] {
   const dLon = 230 / (111 * Math.cos((lat * Math.PI) / 180));
   return [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
 }
+
+function haversineKm(
+  aLat: number,
+  aLon: number,
+  bLat: number,
+  bLon: number,
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(bLat - aLat);
+  const dLon = toRad(bLon - aLon);
+  const A =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(A));
+}
+
+/**
+ * NEXRAD sites whose ~230 km coverage intersects a lon/lat viewport,
+ * nearest-to-center first, capped at `limit`.
+ */
+export function sitesCoveringBbox(
+  west: number,
+  south: number,
+  east: number,
+  north: number,
+  limit = 16,
+): string[] {
+  const pad = 2.2; // ~230 km
+  const cx = (west + east) / 2;
+  const cy = (south + north) / 2;
+  const ranked: Array<{ id: string; d: number }> = [];
+  for (const [id, [lat, lon]] of Object.entries(SITE_LATLON)) {
+    if (
+      lon < west - pad ||
+      lon > east + pad ||
+      lat < south - pad ||
+      lat > north + pad
+    ) {
+      continue;
+    }
+    ranked.push({ id, d: haversineKm(cy, cx, lat, lon) });
+  }
+  ranked.sort((a, b) => a.d - b.d);
+  return ranked.slice(0, limit).map((r) => r.id);
+}

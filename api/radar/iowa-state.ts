@@ -1,5 +1,5 @@
 // Iowa State Mesonet NEXRAD composite tile proxy. Keyless XYZ tile
-// cache that updates ~every 5 min and covers CONUS at zoom 0-11.
+// cache that updates ~every 5 min and covers CONUS at zoom 0-12.
 // Proxying lets us cache aggressively at the edge and keeps the
 // Referer off the upstream.
 //
@@ -18,6 +18,7 @@ const ALLOWED = new Set([
   'nexrad-n0q-900913',
   'nexrad-n0r-900913',
   'nexrad-n0r',
+  'q2-hsr-900913',
   'goes-east-vis-1km-900913',
   'goes-west-vis-1km-900913',
   'goes-east-ir-4km-900913',

@@ -16,9 +16,13 @@ interface Props {
   onFrameChange: (i: number) => void;
 }
 
-function alignTimes(series: ModelHourlySeries[]): string[] {
+function alignTimes(
+  series: ModelHourlySeries[],
+  variable: ModelVariable,
+): string[] {
   const set = new Set<string>();
   for (const s of series) {
+    if (!s.available.includes(variable)) continue;
     for (const t of s.time) set.add(t);
   }
   return Array.from(set).sort();
@@ -37,6 +41,35 @@ function valueAt(
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+export interface SeriesState {
+  ok: boolean;
+  label: string;
+}
+
+/** Why a model is (or is not) drawing a line for the current variable. */
+export function describeSeries(
+  s: ModelHourlySeries | undefined,
+  variable: ModelVariable,
+): SeriesState {
+  if (!s) return { ok: false, label: 'Loading…' };
+  switch (s.status) {
+    case 'out-of-domain':
+      return { ok: false, label: s.error ?? 'Outside model domain' };
+    case 'no-upstream-data':
+      return { ok: false, label: 'Unavailable upstream' };
+    case 'error':
+      return { ok: false, label: s.error ?? 'Failed to load' };
+    default:
+      break;
+  }
+  if (!s.available.includes(variable)) {
+    const meta = MODEL_VARIABLES.find((v) => v.id === variable);
+    return { ok: false, label: `No ${meta?.short ?? variable} from this model` };
+  }
+  const hours = s.time.length;
+  return { ok: true, label: `${Math.round(hours / 24)}d of data` };
+}
+
 export function ModelCompareChart({
   series,
   modelIds,
@@ -44,19 +77,22 @@ export function ModelCompareChart({
   frameIdx,
   onFrameChange,
 }: Props) {
-  const times = useMemo(() => alignTimes(series), [series]);
+  const times = useMemo(() => alignTimes(series, variable), [series, variable]);
   const meta = MODEL_VARIABLES.find((v) => v.id === variable)!;
   const safeIdx = Math.min(Math.max(frameIdx, 0), Math.max(times.length - 1, 0));
 
   const { paths, ymin, ymax } = useMemo(() => {
     let min = Infinity;
     let max = -Infinity;
-    const pts: Array<{ id: ModelId; color: string; points: Array<{ x: number; y: number; v: number }> }> =
-      [];
+    const pts: Array<{
+      id: ModelId;
+      color: string;
+      points: Array<{ x: number; y: number; v: number }>;
+    }> = [];
 
     modelIds.forEach((id, mi) => {
       const s = series.find((x) => x.modelId === id);
-      if (!s || s.error || s.time.length === 0) return;
+      if (!s || s.status !== 'ok' || !s.available.includes(variable)) return;
       const points: Array<{ x: number; y: number; v: number }> = [];
       times.forEach((t, ti) => {
         const v = valueAt(s, variable, t);
@@ -100,6 +136,14 @@ export function ModelCompareChart({
   const cursorX = times.length ? xScale(safeIdx) : padL;
   const currentTime = times[safeIdx];
 
+  // Distinguish "nothing selected has this variable" from "nothing has data".
+  const anyLoaded = modelIds.some((id) =>
+    series.some((s) => s.modelId === id && s.status === 'ok'),
+  );
+  const emptyMessage = anyLoaded
+    ? `None of the selected models publish ${meta.label}. Try another variable.`
+    : 'No selected model has data for this location — use “Best here”.';
+
   return (
     <div
       className="rounded-xl border border-[var(--line-default)] p-3 backdrop-blur-[28px]"
@@ -116,23 +160,25 @@ export function ModelCompareChart({
           {modelIds.map((id, i) => {
             const m = getModel(id);
             const s = series.find((x) => x.modelId === id);
+            const state = describeSeries(s, variable);
             return (
               <span
                 key={id}
+                title={state.label}
                 className="inline-flex items-center gap-1.5 text-[11px] text-[var(--ink-2)]"
               >
                 <span
                   className="h-2 w-2 rounded-full"
                   style={{
-                    background: s?.error
-                      ? '#6b7280'
-                      : MODEL_COLORS[i % MODEL_COLORS.length],
+                    background: state.ok
+                      ? MODEL_COLORS[i % MODEL_COLORS.length]
+                      : '#6b7280',
                   }}
                 />
                 {m?.short ?? id}
-                {s?.error ? (
+                {state.ok ? null : (
                   <span className="text-[var(--ink-4)]">(n/a)</span>
-                ) : null}
+                )}
               </span>
             );
           })}
@@ -173,7 +219,9 @@ export function ModelCompareChart({
 
           {paths.map((p) => {
             const d = p.points
-              .map((pt, i) => `${i === 0 ? 'M' : 'L'}${xScale(pt.x)},${yScale(pt.y)}`)
+              .map(
+                (pt, i) => `${i === 0 ? 'M' : 'L'}${xScale(pt.x)},${yScale(pt.y)}`,
+              )
               .join(' ');
             return (
               <path
@@ -246,7 +294,7 @@ export function ModelCompareChart({
         </div>
       ) : (
         <p className="mt-2 text-center text-[12px] text-[var(--ink-4)]">
-          Select models with data for this location.
+          {emptyMessage}
         </p>
       )}
     </div>
@@ -278,7 +326,7 @@ export function ModelValuesTable({
   variable: ModelVariable;
   frameIdx: number;
 }) {
-  const times = alignTimes(series);
+  const times = alignTimes(series, variable);
   const iso = times[Math.min(frameIdx, Math.max(times.length - 1, 0))];
   const meta = MODEL_VARIABLES.find((v) => v.id === variable)!;
 
@@ -299,6 +347,7 @@ export function ModelValuesTable({
           {modelIds.map((id, i) => {
             const m = getModel(id);
             const s = series.find((x) => x.modelId === id);
+            const state = describeSeries(s, variable);
             const v = s && iso ? valueAt(s, variable, iso) : null;
             return (
               <tr
@@ -310,7 +359,9 @@ export function ModelValuesTable({
                     <span
                       className="h-2 w-2 rounded-full"
                       style={{
-                        background: MODEL_COLORS[i % MODEL_COLORS.length],
+                        background: state.ok
+                          ? MODEL_COLORS[i % MODEL_COLORS.length]
+                          : '#6b7280',
                       }}
                     />
                     {m?.label ?? id}
@@ -319,9 +370,7 @@ export function ModelValuesTable({
                 <td className="px-3 py-2 tabular text-[var(--ink-2)]">
                   {v === null ? '—' : `${Math.round(v * 10) / 10} ${meta.unit}`}
                 </td>
-                <td className="px-3 py-2 text-[var(--ink-4)]">
-                  {s?.error ? s.error : 'OK'}
-                </td>
+                <td className="px-3 py-2 text-[var(--ink-4)]">{state.label}</td>
               </tr>
             );
           })}

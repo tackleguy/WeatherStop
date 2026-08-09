@@ -20,6 +20,14 @@ export type ModelGroup =
   | 'switzerland'
   | 'italy';
 
+/** Approximate geographic domain of a limited-area model. */
+export interface ModelCoverage {
+  latMin: number;
+  latMax: number;
+  lonMin: number;
+  lonMax: number;
+}
+
 export interface WeatherModel {
   id: ModelId;
   label: string;
@@ -28,6 +36,10 @@ export interface WeatherModel {
   region: string;
   resolution: string;
   horizon: string;
+  /** Days of hourly data to request; the API pads shorter models with nulls. */
+  horizonDays: number;
+  /** Omitted for global models. Bounds are generous — the API is authoritative. */
+  coverage?: ModelCoverage;
   /** Prefer for default selection / CONUS users. */
   defaultSelected?: boolean;
 }
@@ -50,6 +62,66 @@ export const MODEL_GROUP_LABELS: Record<ModelGroup, string> = {
   italy: 'ItaliaMeteo',
 };
 
+// Domains sampled against the live API rather than taken from documentation,
+// since several models cover noticeably more than their marketing region.
+const HRRR: ModelCoverage = { latMin: 21, latMax: 53, lonMin: -134, lonMax: -60 };
+const NORTH_AMERICA: ModelCoverage = {
+  latMin: 5,
+  latMax: 90,
+  lonMin: -180,
+  lonMax: 10,
+};
+const HRDPS: ModelCoverage = {
+  latMin: 30,
+  latMax: 75,
+  lonMin: -145,
+  lonMax: -45,
+};
+const ICON_EU: ModelCoverage = {
+  latMin: 29.5,
+  latMax: 70.5,
+  lonMin: -23.5,
+  lonMax: 62.5,
+};
+const ICON_D2: ModelCoverage = {
+  latMin: 43.2,
+  latMax: 58.1,
+  lonMin: -3.9,
+  lonMax: 20.4,
+};
+const ARPEGE_EU: ModelCoverage = {
+  latMin: 20,
+  latMax: 72,
+  lonMin: -32,
+  lonMax: 42,
+};
+const AROME_FR: ModelCoverage = { latMin: 38, latMax: 56, lonMin: -8, lonMax: 12 };
+const UKV: ModelCoverage = { latMin: 44, latMax: 64, lonMin: -22, lonMax: 14 };
+const JMA_MSM: ModelCoverage = {
+  latMin: 22.4,
+  latMax: 47.6,
+  lonMin: 120,
+  lonMax: 150,
+};
+const KMA_LDPS: ModelCoverage = {
+  latMin: 32,
+  latMax: 43,
+  lonMin: 121,
+  lonMax: 133,
+};
+const NORDIC: ModelCoverage = { latMin: 54, latMax: 73, lonMin: -10, lonMax: 45 };
+const HARMONIE_EU: ModelCoverage = {
+  latMin: 38,
+  latMax: 63,
+  lonMin: -33,
+  lonMax: 16,
+};
+const HARMONIE_NL: ModelCoverage = { latMin: 49, latMax: 56, lonMin: 0, lonMax: 11 };
+const DMI_EU: ModelCoverage = { latMin: 38, latMax: 66, lonMin: -25, lonMax: 30 };
+const ICON_CH1: ModelCoverage = { latMin: 42, latMax: 52, lonMin: -2, lonMax: 18 };
+const ICON_CH2: ModelCoverage = { latMin: 40, latMax: 53, lonMin: -4, lonMax: 20 };
+const ICON_2I: ModelCoverage = { latMin: 33.7, latMax: 50, lonMin: 2, lonMax: 23 };
+
 export const WEATHER_MODELS: WeatherModel[] = [
   // NOAA
   {
@@ -60,6 +132,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '3–25 km',
     horizon: '16d',
+    horizonDays: 16,
     defaultSelected: true,
   },
   {
@@ -70,6 +143,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '25 km',
     horizon: '16d',
+    horizonDays: 16,
   },
   {
     id: 'gfs_hrrr',
@@ -78,7 +152,9 @@ export const WEATHER_MODELS: WeatherModel[] = [
     group: 'noaa',
     region: 'CONUS',
     resolution: '3 km',
-    horizon: '18–48h',
+    horizon: '48h',
+    horizonDays: 2,
+    coverage: HRRR,
     defaultSelected: true,
   },
   {
@@ -89,6 +165,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '25 km',
     horizon: '10d',
+    horizonDays: 10,
   },
   // ECMWF
   {
@@ -99,6 +176,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '25 km',
     horizon: '15d',
+    horizonDays: 15,
     defaultSelected: true,
   },
   {
@@ -108,7 +186,8 @@ export const WEATHER_MODELS: WeatherModel[] = [
     group: 'ecmwf',
     region: 'Global',
     resolution: '9 km',
-    horizon: '10d',
+    horizon: '15d',
+    horizonDays: 15,
   },
   {
     id: 'ecmwf_aifs025_single',
@@ -118,6 +197,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '25 km',
     horizon: '15d',
+    horizonDays: 15,
   },
   // DWD
   {
@@ -128,6 +208,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '2–13 km',
     horizon: '7.5d',
+    horizonDays: 8,
     defaultSelected: true,
   },
   {
@@ -138,6 +219,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '13 km',
     horizon: '7.5d',
+    horizonDays: 8,
   },
   {
     id: 'icon_eu',
@@ -147,15 +229,19 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Europe',
     resolution: '7 km',
     horizon: '5d',
+    horizonDays: 6,
+    coverage: ICON_EU,
   },
   {
     id: 'icon_d2',
     label: 'ICON-D2',
     short: 'ICON·D2',
     group: 'dwd',
-    region: 'Germany',
+    region: 'Central Europe',
     resolution: '2 km',
     horizon: '2d',
+    horizonDays: 3,
+    coverage: ICON_D2,
   },
   // Canada
   {
@@ -166,6 +252,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global / N. America',
     resolution: '2.5–25 km',
     horizon: '10d',
+    horizonDays: 11,
   },
   {
     id: 'gem_global',
@@ -175,6 +262,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '25 km',
     horizon: '10d',
+    horizonDays: 11,
   },
   {
     id: 'gem_regional',
@@ -184,15 +272,19 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'N. America',
     resolution: '10 km',
     horizon: '3.5d',
+    horizonDays: 4,
+    coverage: NORTH_AMERICA,
   },
   {
     id: 'gem_hrdps_continental',
     label: 'HRDPS',
     short: 'HRDPS',
     group: 'canada',
-    region: 'Canada',
+    region: 'Canada / N. US',
     resolution: '2.5 km',
     horizon: '2d',
+    horizonDays: 3,
+    coverage: HRDPS,
   },
   // France
   {
@@ -203,6 +295,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global / Europe',
     resolution: '1–25 km',
     horizon: '4d',
+    horizonDays: 5,
   },
   {
     id: 'meteofrance_arpege_world',
@@ -212,6 +305,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '25 km',
     horizon: '4d',
+    horizonDays: 5,
   },
   {
     id: 'meteofrance_arpege_europe',
@@ -221,24 +315,30 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Europe',
     resolution: '11 km',
     horizon: '4d',
+    horizonDays: 5,
+    coverage: ARPEGE_EU,
   },
   {
     id: 'meteofrance_arome_france',
     label: 'AROME France',
     short: 'AROME',
     group: 'france',
-    region: 'France',
+    region: 'France / W. Europe',
     resolution: '1.3 km',
     horizon: '2d',
+    horizonDays: 3,
+    coverage: AROME_FR,
   },
   {
     id: 'meteofrance_arome_france_hd',
     label: 'AROME France HD',
     short: 'AROME·HD',
     group: 'france',
-    region: 'France',
+    region: 'France / W. Europe',
     resolution: '1.3 km',
     horizon: '2d',
+    horizonDays: 3,
+    coverage: AROME_FR,
   },
   // UK
   {
@@ -249,6 +349,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global / UK',
     resolution: '2–10 km',
     horizon: '7d',
+    horizonDays: 8,
   },
   {
     id: 'ukmo_global_deterministic_10km',
@@ -258,15 +359,18 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '10 km',
     horizon: '7d',
+    horizonDays: 8,
   },
   {
     id: 'ukmo_uk_deterministic_2km',
     label: 'UKMO UK 2km',
     short: 'UKMO·UK',
     group: 'uk',
-    region: 'UK',
+    region: 'UK / N. Atlantic',
     resolution: '2 km',
     horizon: '2d',
+    horizonDays: 3,
+    coverage: UKV,
   },
   // Japan
   {
@@ -277,6 +381,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global / Japan',
     resolution: '5–55 km',
     horizon: '11d',
+    horizonDays: 11,
   },
   {
     id: 'jma_gsm',
@@ -286,6 +391,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '55 km',
     horizon: '11d',
+    horizonDays: 11,
   },
   {
     id: 'jma_msm',
@@ -295,6 +401,8 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Japan',
     resolution: '5 km',
     horizon: '4d',
+    horizonDays: 5,
+    coverage: JMA_MSM,
   },
   // Korea
   {
@@ -305,6 +413,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global / Korea',
     resolution: '1.5–13 km',
     horizon: '12d',
+    horizonDays: 12,
   },
   {
     id: 'kma_gdps',
@@ -314,6 +423,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '12 km',
     horizon: '12d',
+    horizonDays: 12,
   },
   {
     id: 'kma_ldps',
@@ -323,6 +433,8 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Korea',
     resolution: '1.5 km',
     horizon: '3d',
+    horizonDays: 4,
+    coverage: KMA_LDPS,
   },
   // China / Australia
   {
@@ -333,6 +445,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '15 km',
     horizon: '10d',
+    horizonDays: 11,
   },
   {
     id: 'bom_access_global',
@@ -342,6 +455,7 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Global',
     resolution: '40 km',
     horizon: '10d',
+    horizonDays: 11,
   },
   // Nordic / NL / DK / CH / IT
   {
@@ -352,24 +466,29 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Nordics',
     resolution: '2.5 km',
     horizon: '2.5d',
+    horizonDays: 3,
+    coverage: NORDIC,
   },
   {
     id: 'knmi_seamless',
     label: 'KNMI Seamless',
     short: 'KNMI',
     group: 'netherlands',
-    region: 'Europe / NL',
+    region: 'Global / NL',
     resolution: '2–5 km',
     horizon: '2.5d',
+    horizonDays: 3,
   },
   {
     id: 'knmi_harmonie_arome_europe',
     label: 'HARMONIE Europe',
     short: 'HAR·EU',
     group: 'netherlands',
-    region: 'Europe',
+    region: 'W. Europe',
     resolution: '5 km',
     horizon: '2.5d',
+    horizonDays: 3,
+    coverage: HARMONIE_EU,
   },
   {
     id: 'knmi_harmonie_arome_netherlands',
@@ -379,15 +498,18 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Netherlands',
     resolution: '2 km',
     horizon: '2d',
+    horizonDays: 3,
+    coverage: HARMONIE_NL,
   },
   {
     id: 'dmi_seamless',
     label: 'DMI Seamless',
     short: 'DMI',
     group: 'denmark',
-    region: 'Europe / DK',
+    region: 'Global / DK',
     resolution: '2–5 km',
     horizon: '2.5d',
+    horizonDays: 3,
   },
   {
     id: 'dmi_harmonie_arome_europe',
@@ -397,33 +519,41 @@ export const WEATHER_MODELS: WeatherModel[] = [
     region: 'Europe',
     resolution: '5 km',
     horizon: '2.5d',
+    horizonDays: 3,
+    coverage: DMI_EU,
   },
   {
     id: 'meteoswiss_icon_ch1',
     label: 'ICON-CH1',
     short: 'CH1',
     group: 'switzerland',
-    region: 'Switzerland',
+    region: 'Alps / C. Europe',
     resolution: '1 km',
     horizon: '1.5d',
+    horizonDays: 2,
+    coverage: ICON_CH1,
   },
   {
     id: 'meteoswiss_icon_ch2',
     label: 'ICON-CH2',
     short: 'CH2',
     group: 'switzerland',
-    region: 'Switzerland',
+    region: 'Alps / C. Europe',
     resolution: '2 km',
     horizon: '5d',
+    horizonDays: 6,
+    coverage: ICON_CH2,
   },
   {
     id: 'italia_meteo_arpae_icon_2i',
     label: 'ICON-2I',
     short: 'ICON·IT',
     group: 'italy',
-    region: 'Italy',
+    region: 'Italy / C. Europe',
     resolution: '2 km',
-    horizon: '2d',
+    horizon: '3d',
+    horizonDays: 4,
+    coverage: ICON_2I,
   },
 ];
 
@@ -480,4 +610,30 @@ export function defaultModelIds(): ModelId[] {
 
 export function getModel(id: ModelId): WeatherModel | undefined {
   return WEATHER_MODELS.find((m) => m.id === id);
+}
+
+function wrapLon(lon: number): number {
+  let x = lon;
+  while (x > 180) x -= 360;
+  while (x < -180) x += 360;
+  return x;
+}
+
+/** Advisory only — the API result is the source of truth. */
+export function modelCoversLocation(
+  model: WeatherModel,
+  lat: number,
+  lon: number,
+): boolean {
+  const c = model.coverage;
+  if (!c) return true;
+  const x = wrapLon(lon);
+  return lat >= c.latMin && lat <= c.latMax && x >= c.lonMin && x <= c.lonMax;
+}
+
+/** Global models first, then limited-area models that reach this location. */
+export function modelsForLocation(lat: number, lon: number): ModelId[] {
+  return WEATHER_MODELS.filter((m) => modelCoversLocation(m, lat, lon)).map(
+    (m) => m.id,
+  );
 }

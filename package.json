@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "audit": "tsx src/dev/dataAudit.ts",
+    "audit:models": "tsx src/dev/modelsAudit.ts",
     "check-endpoints": "node scripts/check-endpoints.mjs",
     "verify:licenses": "node scripts/verify-licenses.mjs"
   },

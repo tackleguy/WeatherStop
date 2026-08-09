@@ -1,6 +1,6 @@
 // Multi-model forecast compare powered by Open-Meteo.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapPin, RefreshCw } from 'lucide-react';
 import {
   ModelCompareChart,
@@ -12,9 +12,12 @@ import {
   MODEL_VARIABLES,
   WEATHER_MODELS,
   defaultModelIds,
+  getModel,
+  modelCoversLocation,
   type ModelId,
   type ModelVariable,
 } from '../constants/models';
+import type { ModelStatus } from '../lib/openMeteoModels';
 import { INITIAL_SEED } from '../constants/cities';
 import { useCities } from '../hooks/useCities';
 import { useModelForecasts } from '../hooks/useModelForecasts';
@@ -23,6 +26,15 @@ interface Loc {
   name: string;
   lat: number;
   lon: number;
+}
+
+const MAX_MODELS = 8;
+
+function coveringOnly(ids: ModelId[], lat: number, lon: number): ModelId[] {
+  return ids.filter((id) => {
+    const m = getModel(id);
+    return m ? modelCoversLocation(m, lat, lon) : false;
+  });
 }
 
 export function ModelsView() {
@@ -57,7 +69,9 @@ export function ModelsView() {
       lon: seed?.longitude ?? -94.6,
     };
   });
-  const [modelIds, setModelIds] = useState<ModelId[]>(() => defaultModelIds());
+  const [modelIds, setModelIds] = useState<ModelId[]>(() =>
+    coveringOnly(defaultModelIds(), loc.lat, loc.lon),
+  );
   const [variable, setVariable] = useState<ModelVariable>('temperature_2m');
   const [frameIdx, setFrameIdx] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -72,6 +86,27 @@ export function ModelsView() {
   useEffect(() => {
     setFrameIdx(0);
   }, [loc.lat, loc.lon, modelIds]);
+
+  // A regional model selected for the previous location is dead weight here,
+  // so swap it out for defaults that actually reach the new one.
+  useEffect(() => {
+    setModelIds((prev) => {
+      const kept = coveringOnly(prev, loc.lat, loc.lon);
+      if (kept.length === prev.length) return prev;
+      const fill = coveringOnly(defaultModelIds(), loc.lat, loc.lon).filter(
+        (id) => !kept.includes(id),
+      );
+      return [...kept, ...fill].slice(0, MAX_MODELS);
+    });
+  }, [loc.lat, loc.lon]);
+
+  const statusById = useMemo(() => {
+    const out: Partial<Record<ModelId, ModelStatus>> = {};
+    for (const s of series) out[s.modelId] = s.status;
+    return out;
+  }, [series]);
+
+  const withData = series.filter((s) => s.status === 'ok').length;
 
   return (
     <div
@@ -197,7 +232,14 @@ export function ModelsView() {
         </div>
 
         <div className="grid min-h-0 flex-1 gap-3 overflow-hidden lg:grid-cols-[260px_1fr]">
-          <ModelPicker selected={modelIds} onChange={setModelIds} max={8} />
+          <ModelPicker
+            selected={modelIds}
+            onChange={setModelIds}
+            max={MAX_MODELS}
+            lat={loc.lat}
+            lon={loc.lon}
+            statusById={statusById}
+          />
 
           <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
             <ModelCompareChart
@@ -214,9 +256,10 @@ export function ModelsView() {
               frameIdx={frameIdx}
             />
             <p className="px-1 pb-2 text-[10px] text-[var(--ink-4)]">
-              Data from Open-Meteo. Regional models show n/a outside their
-              domain. All {WEATHER_MODELS.length} catalog models are
-              selectable — compare up to 8 at once.
+              Data from Open-Meteo · {withData} of {modelIds.length} selected
+              models reporting. All {WEATHER_MODELS.length} models are
+              selectable; limited-area models only run over their own domain,
+              so the picker marks the ones that reach this location.
             </p>
           </div>
         </div>

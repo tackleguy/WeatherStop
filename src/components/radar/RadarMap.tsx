@@ -85,6 +85,13 @@ export function RadarMap({ onMapReady }: Props) {
     );
   }, [ts, currentFrameIdx, frames.length]);
 
+  // OpenGeo WMS TIME — ISO8601; server snaps with nearestValue=1.
+  // Live frame omits TIME so the service returns the latest scan.
+  const wmsTime = useMemo(() => {
+    if (currentFrameIdx >= frames.length - 1) return null;
+    return new Date(ts * 1000).toISOString();
+  }, [ts, currentFrameIdx, frames.length]);
+
   const { catalog } = useRainViewer();
   // Map our 0..FRAME_COUNT-1 scrubber index onto the actual RainViewer
   // catalog frame list so each notch on the slider lines up with a real
@@ -180,6 +187,7 @@ export function RadarMap({ onMapReady }: Props) {
     frameIndex: rainViewerFrameIndex,
     ts,
     iowaTs,
+    wmsTime,
     manualSite,
   });
 

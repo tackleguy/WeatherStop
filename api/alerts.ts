@@ -1,6 +1,4 @@
-// NWS active alerts proxy. NWS requires User-Agent + recommends our
-// 60-second cache cadence. Optional bbox= filters to alerts whose
-// geometry intersects the box.
+import { NWS_USER_AGENT } from './_lib/nwsUa.js';
 
 export const config = { runtime: 'edge' };
 
@@ -16,8 +14,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const upstream = await fetch('https://api.weather.gov/alerts/active', {
     headers: {
-      'User-Agent':
-        process.env.NWS_USER_AGENT ?? 'weather-stop/1.0 (contact@example.com)',
+      'User-Agent': NWS_USER_AGENT,
       Accept: 'application/geo+json',
     },
   });

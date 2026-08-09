@@ -130,6 +130,35 @@ export function resolveSource(
     };
   }
 
+  if (product === 'echo-tops') {
+    if (!isUS(region)) return UNAVAILABLE;
+    return {
+      kind: 'ridge-wms',
+      product: 'neet',
+      opacity: 0.8,
+    };
+  }
+
+  if (product === 'precip-type') {
+    if (!isUS(region)) return UNAVAILABLE;
+    return { kind: 'ridge-wms', product: 'pcpn', opacity: 0.85 };
+  }
+
+  if (product === 'hydrometeor') {
+    if (!isUS(region) || zoom < 7) return UNAVAILABLE;
+    return { kind: 'ridge-wms', product: 'bdhc', opacity: 0.85 };
+  }
+
+  if (product === 'rainfall-1h') {
+    if (!isUS(region) || zoom < 7) return UNAVAILABLE;
+    return { kind: 'ridge-wms', product: 'boha', opacity: 0.85 };
+  }
+
+  if (product === 'storm-total') {
+    if (!isUS(region) || zoom < 7) return UNAVAILABLE;
+    return { kind: 'ridge-wms', product: 'bdsa', opacity: 0.85 };
+  }
+
   if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
     // Multi-site OpenGeo mosaic works from CONUS; refine to one site later.
@@ -250,17 +279,30 @@ export function resolveSource(
 
 export function unavailabilityReason(
   product: ProductId,
-  _zoom: number,
+  zoom: number,
   region: Region,
 ): string | null {
   if (
     (product === 'velocity' ||
       product === 'storm-rel-velocity' ||
       product === 'rotation' ||
-      product === 'correlation') &&
+      product === 'correlation' ||
+      product === 'echo-tops' ||
+      product === 'precip-type' ||
+      product === 'hydrometeor' ||
+      product === 'rainfall-1h' ||
+      product === 'storm-total') &&
     !isUS(region)
   ) {
-    return 'Unavailable in this region. US NEXRAD only.';
+    return 'Unavailable in this region. US NEXRAD / MRMS only.';
+  }
+  if (
+    (product === 'hydrometeor' ||
+      product === 'rainfall-1h' ||
+      product === 'storm-total') &&
+    zoom < 7
+  ) {
+    return 'Zoom in further (z7+) to load this single-radar product.';
   }
   return null;
 }

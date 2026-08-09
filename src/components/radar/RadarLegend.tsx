@@ -7,6 +7,10 @@ import {
   SHEAR_STOPS,
   WIND_STOPS,
   TEMP_STOPS,
+  ECHO_STOPS,
+  PTYPE_STOPS,
+  RAIN_STOPS,
+  HHC_STOPS,
 } from '../../lib/colorTables';
 
 interface SwatchRow {
@@ -46,6 +50,22 @@ export function RadarLegend() {
           label: s.label || `${s.value}`,
         }));
     }
+    if (product.legend === 'echo') {
+      return ECHO_STOPS.slice()
+        .reverse()
+        .map((s) => ({ color: s.color, label: `${s.value} kft` }));
+    }
+    if (product.legend === 'ptype') {
+      return PTYPE_STOPS.map((s) => ({ color: s.color, label: s.label }));
+    }
+    if (product.legend === 'rain') {
+      return RAIN_STOPS.slice()
+        .reverse()
+        .map((s) => ({ color: s.color, label: `${s.value}"` }));
+    }
+    if (product.legend === 'hhc') {
+      return HHC_STOPS.map((s) => ({ color: s.color, label: s.label }));
+    }
     if (product.legend === 'wind') {
       return WIND_STOPS.slice()
         .reverse()
@@ -68,13 +88,21 @@ export function RadarLegend() {
           ? 'Correlation (ρ)'
           : product.legend === 'shear'
             ? 'Rotation (ΔV)'
-            : product.legend === 'wind'
-              ? 'Wind (mph)'
-              : product.legend === 'temp'
-                ? 'Temperature (°F)'
-                : product.legend === 'satellite'
-                  ? 'Satellite'
-                  : product.label;
+            : product.legend === 'echo'
+              ? 'Echo tops (kft)'
+              : product.legend === 'ptype'
+                ? 'Precip type'
+                : product.legend === 'rain'
+                  ? 'Rainfall (in)'
+                  : product.legend === 'hhc'
+                    ? 'Hydrometeor'
+                    : product.legend === 'wind'
+                      ? 'Wind (mph)'
+                      : product.legend === 'temp'
+                        ? 'Temperature (°F)'
+                        : product.legend === 'satellite'
+                          ? 'Satellite'
+                          : product.label;
 
   return (
     <div

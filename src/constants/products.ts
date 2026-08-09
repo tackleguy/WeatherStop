@@ -1,14 +1,15 @@
 // The radar product catalog. Each entry describes one toggle in the
 // product rail; the actual upstream picked at runtime is decided by
-// `lib/sourceResolver.ts` based on zoom + region. Products marked with
-// `requiresZoom` are dimmed on the rail until the user zooms in far
-// enough to see useful data.
+// `lib/sourceResolver.ts` based on zoom + region.
 
 import {
   Atom,
   CloudRain,
   Cloudy,
+  CloudSnow,
+  Droplets,
   Layers,
+  Mountain,
   RotateCw,
   Sun,
   Thermometer,
@@ -19,15 +20,20 @@ import type { LucideIcon } from 'lucide-react';
 
 export type ProductId =
   | 'reflectivity'
+  | 'composite'
+  | 'echo-tops'
+  | 'precip-type'
   | 'velocity'
   | 'storm-rel-velocity'
   | 'rotation'
   | 'correlation'
+  | 'hydrometeor'
+  | 'rainfall-1h'
+  | 'storm-total'
   | 'satellite-ir'
   | 'satellite-vis'
   | 'wind'
-  | 'temperature'
-  | 'composite';
+  | 'temperature';
 
 export type ProductGroup = 'radar' | 'satellite' | 'surface';
 
@@ -36,6 +42,10 @@ export type LegendKind =
   | 'kts'
   | 'rho'
   | 'shear'
+  | 'echo'
+  | 'ptype'
+  | 'rain'
+  | 'hhc'
   | 'satellite'
   | 'wind'
   | 'temp'
@@ -75,7 +85,25 @@ export const PRODUCTS: Product[] = [
     shortLabel: 'COMP',
     icon: Layers,
     legend: 'dbz',
-    description: 'CONUS mosaic reflectivity',
+    description: 'CONUS column-max reflectivity',
+    group: 'radar',
+  },
+  {
+    id: 'echo-tops',
+    label: 'Echo Tops',
+    shortLabel: 'TOPS',
+    icon: Mountain,
+    legend: 'echo',
+    description: 'Storm top height (MRMS)',
+    group: 'radar',
+  },
+  {
+    id: 'precip-type',
+    label: 'Precip Type',
+    shortLabel: 'PTYPE',
+    icon: CloudSnow,
+    legend: 'ptype',
+    description: 'Rain / snow / ice / mix (MRMS)',
     group: 'radar',
   },
   {
@@ -115,12 +143,42 @@ export const PRODUCTS: Product[] = [
     group: 'radar',
   },
   {
+    id: 'hydrometeor',
+    label: 'Hydrometeor Class',
+    shortLabel: 'HHC',
+    icon: Droplets,
+    legend: 'hhc',
+    description: 'Dual-pol precip classification (US site)',
+    group: 'radar',
+    requiresZoom: 7,
+  },
+  {
+    id: 'rainfall-1h',
+    label: '1-Hour Rainfall',
+    shortLabel: '1HR',
+    icon: CloudRain,
+    legend: 'rain',
+    description: '1-hour accumulation (US site)',
+    group: 'radar',
+    requiresZoom: 7,
+  },
+  {
+    id: 'storm-total',
+    label: 'Storm Total',
+    shortLabel: 'STP',
+    icon: Droplets,
+    legend: 'rain',
+    description: 'Storm-total precipitation (US site)',
+    group: 'radar',
+    requiresZoom: 7,
+  },
+  {
     id: 'satellite-ir',
     label: 'Satellite (IR)',
     shortLabel: 'IR',
     icon: Cloudy,
     legend: 'satellite',
-    description: 'Infrared cloud cover (global)',
+    description: 'Infrared cloud cover',
     group: 'satellite',
   },
   {

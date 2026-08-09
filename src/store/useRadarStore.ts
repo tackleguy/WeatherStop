@@ -27,7 +27,8 @@ export type PanelKey =
   | 'stations'
   | 'settings'
   | 'bookmarks'
-  | 'ruler';
+  | 'ruler'
+  | 'diagnostics';
 
 export type AlertCategory =
   | 'tornado'
@@ -171,6 +172,9 @@ interface RadarState {
   panelsOpen: Record<PanelKey, boolean>;
   togglePanel: (key: PanelKey) => void;
   setPanelOpen: (key: PanelKey, open: boolean) => void;
+
+  /** Reset product / scrubber / opacity / site / tools to defaults. */
+  resetMapView: () => void;
 }
 
 export const useRadarStore = create<RadarState>((set, get) => ({
@@ -274,6 +278,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     settings: false,
     bookmarks: false,
     ruler: false,
+    diagnostics: false,
   },
   togglePanel: (key) =>
     set((state) => ({
@@ -281,6 +286,22 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     })),
   setPanelOpen: (key, open) =>
     set((state) => ({ panelsOpen: { ...state.panelsOpen, [key]: open } })),
+
+  resetMapView: () =>
+    set(() => {
+      saveOpacity(0.78);
+      return {
+        activeProduct: DEFAULT_PRODUCT,
+        currentFrameIdx: FRAME_COUNT - 1,
+        isPlaying: false,
+        overlayOpacity: 0.78,
+        manualSite: null,
+        focusedAlertId: null,
+        inspectAt: null,
+        rulerActive: false,
+        rulerPoints: [],
+      };
+    }),
 }));
 
 // Categorize an alert event name into one of our filter buckets. Used by

@@ -76,6 +76,8 @@ interface Args {
   frameIndex: number;
   ts: number;
   iowaTs?: string | null;
+  /** ISO8601 for OpenGeo WMS TIME (scrubber). */
+  wmsTime?: string | null;
   manualSite?: NexradSite | null;
 }
 
@@ -273,6 +275,11 @@ function labelFor(
   if (kind === 'ridge-wms') {
     if (product === 'cref') return 'CONUS Composite (NWS)';
     if (product === 'conus-bref') return 'CONUS Base Reflectivity (NWS)';
+    if (product === 'neet') return 'Echo Tops (MRMS)';
+    if (product === 'pcpn') return 'Precipitation Type (MRMS)';
+    if (product === 'bdhc' && site) return `${site.id} · Hydrometeor Class`;
+    if (product === 'boha' && site) return `${site.id} · 1-Hour Rainfall`;
+    if (product === 'bdsa' && site) return `${site.id} · Storm Total`;
     if (site) {
       return `${site.id} · ${product === 'bvel' ? 'Base Velocity' : 'Reflectivity'}`;
     }
@@ -327,6 +334,7 @@ export function useRadarLayers({
   catalog,
   ts,
   iowaTs,
+  wmsTime,
   manualSite,
 }: Args): SourcePlan {
   const overlay = useRadarStore((s) => s.overlayOpacity);
@@ -375,7 +383,9 @@ export function useRadarLayers({
     }
     if (
       effectiveChoice.product === 'cref' ||
-      effectiveChoice.product === 'conus-bref'
+      effectiveChoice.product === 'conus-bref' ||
+      effectiveChoice.product === 'neet' ||
+      effectiveChoice.product === 'pcpn'
     ) {
       return undefined;
     }
@@ -729,16 +739,31 @@ export function useRadarLayers({
     choice.fallback,
   ]);
 
-  // Per-site / CONUS WMS
-  const wmsProduct =
-    effectiveChoice.product === 'bvel'
-      ? 'bvel'
-      : effectiveChoice.product === 'cref'
-        ? 'cref'
-        : 'bref';
+  // Per-site / CONUS WMS (always via transparent PNG factory on the server)
+  const wmsProduct = (():
+    | 'bref'
+    | 'bvel'
+    | 'cref'
+    | 'neet'
+    | 'pcpn'
+    | 'bdhc'
+    | 'boha'
+    | 'bdsa' => {
+    const p = effectiveChoice.product;
+    if (p === 'bvel') return 'bvel';
+    if (p === 'cref') return 'cref';
+    if (p === 'neet') return 'neet';
+    if (p === 'pcpn') return 'pcpn';
+    if (p === 'bdhc') return 'bdhc';
+    if (p === 'boha') return 'boha';
+    if (p === 'bdsa') return 'bdsa';
+    return 'bref';
+  })();
   const wmsSite =
     effectiveChoice.product === 'cref' ||
-    effectiveChoice.product === 'conus-bref'
+    effectiveChoice.product === 'conus-bref' ||
+    effectiveChoice.product === 'neet' ||
+    effectiveChoice.product === 'pcpn'
       ? 'conus'
       : site
         ? site.id.toLowerCase()
@@ -750,6 +775,7 @@ export function useRadarLayers({
     enabled: effectiveChoice.kind === 'ridge-wms',
     site: wmsSite,
     product: wmsProduct,
+    time: wmsTime ?? null,
     opacity: effectiveChoice.opacity * overlay,
   });
 

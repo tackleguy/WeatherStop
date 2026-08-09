@@ -107,3 +107,41 @@ export const TEMP_STOPS: ScalarStop[] = [
   { value: 100, color: '#f0503c' },
   { value: 120, color: '#f050c8' },
 ];
+
+/** Echo tops (kft) — approximate MRMS style ramp. */
+export const ECHO_STOPS: ScalarStop[] = [
+  { value: 10, color: '#00a0ff' },
+  { value: 20, color: '#00e080' },
+  { value: 30, color: '#ffff00' },
+  { value: 40, color: '#ff8000' },
+  { value: 50, color: '#ff0000' },
+  { value: 60, color: '#ff00ff' },
+];
+
+export interface LabeledStop {
+  color: string;
+  label: string;
+}
+
+export const PTYPE_STOPS: LabeledStop[] = [
+  { color: '#00c800', label: 'Rain' },
+  { color: '#00ffff', label: 'Freezing rain' },
+  { color: '#ff80ff', label: 'Ice / mix' },
+  { color: '#ffffff', label: 'Snow' },
+];
+
+export const RAIN_STOPS: ScalarStop[] = [
+  { value: 0.1, color: '#a0f0a0' },
+  { value: 0.5, color: '#00c800' },
+  { value: 1, color: '#ffff00' },
+  { value: 2, color: '#ff8000' },
+  { value: 4, color: '#ff0000' },
+];
+
+export const HHC_STOPS: LabeledStop[] = [
+  { color: '#808080', label: 'Other / clutter' },
+  { color: '#00c800', label: 'Rain' },
+  { color: '#ffff00', label: 'Big drops' },
+  { color: '#ff8000', label: 'Hail' },
+  { color: '#ffffff', label: 'Snow / ice' },
+];

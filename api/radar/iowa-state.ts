@@ -16,8 +16,6 @@ const UPSTREAM_HOST = 'https://mesonet.agron.iastate.edu/cache/tile.py';
 // used to fetch arbitrary upstream paths.
 const ALLOWED = new Set([
   'nexrad-n0q-900913',
-  'nexrad-n0r-900913',
-  'nexrad-n0r',
   'q2-hsr-900913',
   'goes-east-vis-1km-900913',
   'goes-west-vis-1km-900913',

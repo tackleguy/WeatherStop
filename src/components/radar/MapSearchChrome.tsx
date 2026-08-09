@@ -1,7 +1,7 @@
 // Floating map search chrome. Brand lives in PillNav — this bar is
 // search + alert/station actions only, overlaid on the map like Windy.
 
-import { Bell, Menu, Search, X } from 'lucide-react';
+import { Activity, Bell, Menu, RotateCcw, Search, X } from 'lucide-react';
 import type maplibregl from 'maplibre-gl';
 import { useState } from 'react';
 import { IconButton } from '../ui/IconButton';
@@ -34,8 +34,16 @@ function flyToPick(
 export function MapSearchChrome({ map }: Props) {
   const alertCount = useRadarStore((s) => s.alertCount);
   const togglePanel = useRadarStore((s) => s.togglePanel);
+  const resetMapView = useRadarStore((s) => s.resetMapView);
   const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const reset = () => {
+    resetMapView();
+    if (map) {
+      map.flyTo({ center: [-95, 39], zoom: 4, duration: 700 });
+    }
+  };
 
   if (isMobile) {
     return (
@@ -90,6 +98,20 @@ export function MapSearchChrome({ map }: Props) {
         <SearchBar onPick={(p) => flyToPick(map, p)} />
       </div>
       <div className="pointer-events-auto ml-auto flex items-center gap-1.5">
+        <IconButton
+          icon={RotateCcw}
+          title="Reset map layers"
+          onClick={reset}
+          className="h-9 w-9 border border-[var(--line-default)] backdrop-blur-md"
+          style={{ background: 'var(--glass-hi)' }}
+        />
+        <IconButton
+          icon={Activity}
+          title="Diagnostics"
+          onClick={() => togglePanel('diagnostics')}
+          className="h-9 w-9 border border-[var(--line-default)] backdrop-blur-md"
+          style={{ background: 'var(--glass-hi)' }}
+        />
         <button
           type="button"
           onClick={() => togglePanel('alerts')}

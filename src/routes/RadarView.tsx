@@ -8,6 +8,7 @@ import { AlertFilterChips } from '../components/radar/AlertFilterChips';
 import { AlertsPanel } from '../components/radar/AlertsPanel';
 import { BookmarkBar } from '../components/radar/BookmarkBar';
 import { ClickInspector } from '../components/radar/ClickInspector';
+import { DiagnosticsPanel } from '../components/radar/DiagnosticsPanel';
 import { DistanceRuler } from '../components/radar/DistanceRuler';
 import { FocusedAlertChip } from '../components/radar/FocusedAlertChip';
 import { LayerInfoCard } from '../components/radar/LayerInfoCard';
@@ -48,6 +49,7 @@ export function RadarView() {
           <FocusedAlertChip />
           <RadarLegend />
           <LayerInfoCard />
+          <DiagnosticsPanel />
           <ScaleBar map={map} />
           <BookmarkBar map={map} />
           <DistanceRuler />

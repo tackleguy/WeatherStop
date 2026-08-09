@@ -111,6 +111,9 @@ async function main() {
   for (const [name, path] of [
     ['proxy Iowa N0Q', '/api/radar/iowa-state?z=5&x=8&y=12&product=nexrad-n0q-900913'],
     ['proxy CONUS bref', `/api/radar/wms-site?site=conus&product=bref&bbox=${BBOX}&width=256&height=256`],
+    ['proxy CONUS neet', `/api/radar/wms-site?site=conus&product=neet&bbox=${BBOX}&width=256&height=256`],
+    ['proxy CONUS pcpn', `/api/radar/wms-site?site=conus&product=pcpn&bbox=${BBOX}&width=256&height=256`],
+    ['proxy site bdhc', `/api/radar/wms-site?site=ktlx&product=bdhc&bbox=${BBOX}&width=256&height=256`],
     ['proxy mosaic bvel', `/api/radar/mosaic?product=bvel&bbox=${BBOX}&width=512&height=512`],
     ['proxy mosaic rot', `/api/radar/mosaic?product=rot&bbox=${BBOX}&width=512&height=512`],
     ['proxy mosaic n0c', `/api/radar/mosaic?product=n0c&bbox=${BBOX}&width=512&height=512`],

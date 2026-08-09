@@ -3,8 +3,8 @@
 // updateImage()'d whenever the viewport settles. Debounced so a fast
 // pan doesn't fire one request per pixel.
 //
-// Used for both per-site reflectivity (`bref`) and base velocity
-// (`bvel`). Pass `enabled=false` (or null `site`) to mount nothing.
+// All requests go through /api/radar/wms-site which hardcodes
+// transparent=true + format=image/png (black-map defence).
 
 import maplibregl from 'maplibre-gl';
 import { useEffect } from 'react';
@@ -13,15 +13,30 @@ import { metersBboxFromLngLat } from '../lib/mercator';
 export const WMS_SOURCE_ID = 'wms-site-overlay';
 export const WMS_LAYER_ID = 'wms-site-layer';
 
+export type WmsProduct =
+  | 'bref'
+  | 'bvel'
+  | 'cref'
+  | 'neet'
+  | 'pcpn'
+  | 'bdhc'
+  | 'boha'
+  | 'bdsa';
+
 interface Args {
   map: maplibregl.Map | null;
   styleLoaded: boolean;
   enabled: boolean;
   site: string | null; // ICAO (any case) or 'conus'
-  product: 'bref' | 'bvel' | 'cref';
-  /** When true the layer is mounted with reduced opacity so the user can
-   *  still see the underlying basemap. */
+  product: WmsProduct;
+  /** ISO8601 observation time for the scrubber (OpenGeo nearestValue=1). */
+  time?: string | null;
   opacity?: number;
+  onStatus?: (status: {
+    ok: boolean;
+    url: string;
+    error?: string;
+  }) => void;
 }
 
 const DEBOUNCE_MS = 300;
@@ -29,7 +44,12 @@ const DEBOUNCE_MS = 300;
 function bboxFromMap(map: maplibregl.Map) {
   const b = map.getBounds();
   return {
-    bbox: metersBboxFromLngLat(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()),
+    bbox: metersBboxFromLngLat(
+      b.getWest(),
+      b.getSouth(),
+      b.getEast(),
+      b.getNorth(),
+    ),
     coords: [
       [b.getWest(), b.getNorth()],
       [b.getEast(), b.getNorth()],
@@ -50,7 +70,9 @@ export function useWmsSiteLayer({
   enabled,
   site,
   product,
+  time = null,
   opacity = 0.9,
+  onStatus,
 }: Args) {
   useEffect(() => {
     if (!map || !styleLoaded) return;
@@ -79,30 +101,55 @@ export function useWmsSiteLayer({
         width: '1024',
         height: '1024',
       });
+      if (time) params.set('time', time);
       const url = `/api/radar/wms-site?${params.toString()}`;
 
-      const existing = map.getSource(WMS_SOURCE_ID) as
-        | maplibregl.ImageSource
-        | undefined;
-      if (existing) {
-        existing.updateImage({ url, coordinates: coords });
-        return;
-      }
-      map.addSource(WMS_SOURCE_ID, {
-        type: 'image',
-        url,
-        coordinates: coords,
-      });
-      map.addLayer({
-        id: WMS_LAYER_ID,
-        type: 'raster',
-        source: WMS_SOURCE_ID,
-        paint: {
-          'raster-opacity': opacity,
-          'raster-fade-duration': 0,
-          'raster-resampling': 'nearest',
-        },
-      });
+      void fetch(url)
+        .then(async (res) => {
+          if (cancelled || !map) return;
+          if (!res.ok) {
+            onStatus?.({
+              ok: false,
+              url,
+              error: `HTTP ${res.status}`,
+            });
+            return;
+          }
+          const blob = await res.blob();
+          if (cancelled || !map) return;
+          const objUrl = URL.createObjectURL(blob);
+          onStatus?.({ ok: true, url });
+
+          const existing = map.getSource(WMS_SOURCE_ID) as
+            | maplibregl.ImageSource
+            | undefined;
+          if (existing) {
+            existing.updateImage({ url: objUrl, coordinates: coords });
+            return;
+          }
+          map.addSource(WMS_SOURCE_ID, {
+            type: 'image',
+            url: objUrl,
+            coordinates: coords,
+          });
+          map.addLayer({
+            id: WMS_LAYER_ID,
+            type: 'raster',
+            source: WMS_SOURCE_ID,
+            paint: {
+              'raster-opacity': opacity,
+              'raster-fade-duration': 0,
+              'raster-resampling': 'nearest',
+            },
+          });
+        })
+        .catch((err: unknown) => {
+          onStatus?.({
+            ok: false,
+            url,
+            error: err instanceof Error ? err.message : 'fetch failed',
+          });
+        });
     };
 
     const debouncedApply = () => {
@@ -119,9 +166,8 @@ export function useWmsSiteLayer({
       map.off('moveend', debouncedApply);
       teardown();
     };
-  }, [map, styleLoaded, enabled, site, product, opacity]);
+  }, [map, styleLoaded, enabled, site, product, time, opacity, onStatus]);
 
-  // Update opacity in place when caller changes it without remounting.
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (!map.getLayer(WMS_LAYER_ID)) return;

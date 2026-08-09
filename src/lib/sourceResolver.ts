@@ -167,8 +167,17 @@ export function resolveSource(
 
   if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    // May 5/7: nearest-site OpenGeo bvel (works at any zoom).
-    if (zoom <= 11) {
+    // CONUS: multi-site OpenGeo mosaic (single-site is a speck at z≤9).
+    // Closer in: nearest-site WMS, then Level 2.
+    if (zoom <= 9) {
+      return {
+        kind: 'mosaic',
+        product: 'bvel',
+        opacity: 0.9,
+        fallback: 'ridge-wms',
+      };
+    }
+    if (zoom <= 12) {
       return {
         kind: 'ridge-wms',
         product: 'bvel',
@@ -186,7 +195,14 @@ export function resolveSource(
 
   if (product === 'storm-rel-velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    // May treated SRV like base velocity (per-site WMS).
+    if (zoom <= 8) {
+      return {
+        kind: 'mosaic',
+        product: 'n0s',
+        opacity: 0.9,
+        fallback: 'ridge-wms',
+      };
+    }
     if (zoom <= 11) {
       return {
         kind: 'ridge-wms',

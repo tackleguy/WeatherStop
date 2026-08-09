@@ -38,6 +38,11 @@ interface Args {
   enabled: boolean;
   site: string | null; // ICAO (any case) or 'conus'
   product: WmsProduct;
+  /** Site lat/lon — when set, per-site products are pinned to the ~230 km
+   *  radar footprint instead of the full map (fixes invisible velocity at
+   *  CONUS zoom when stretched across the viewport). */
+  siteLat?: number | null;
+  siteLon?: number | null;
   /** ISO8601 observation time for the scrubber (OpenGeo nearestValue=1). */
   time?: string | null;
   opacity?: number;
@@ -45,6 +50,7 @@ interface Args {
 }
 
 const DEBOUNCE_MS = 300;
+const SITE_RADIUS_KM = 230;
 
 function bboxFromMap(map: maplibregl.Map) {
   const b = map.getBounds();
@@ -60,6 +66,31 @@ function bboxFromMap(map: maplibregl.Map) {
       [b.getEast(), b.getNorth()],
       [b.getEast(), b.getSouth()],
       [b.getWest(), b.getSouth()],
+    ] as [
+      [number, number],
+      [number, number],
+      [number, number],
+      [number, number],
+    ],
+  };
+}
+
+/** ~230 km radar coverage box in EPSG:3857 + MapLibre image corners. */
+function bboxFromSite(lat: number, lon: number) {
+  const dLat = SITE_RADIUS_KM / 111;
+  const cos = Math.max(0.2, Math.cos((lat * Math.PI) / 180));
+  const dLon = SITE_RADIUS_KM / (111 * cos);
+  const west = lon - dLon;
+  const east = lon + dLon;
+  const south = lat - dLat;
+  const north = lat + dLat;
+  return {
+    bbox: metersBboxFromLngLat(west, south, east, north),
+    coords: [
+      [west, north],
+      [east, north],
+      [east, south],
+      [west, south],
     ] as [
       [number, number],
       [number, number],
@@ -117,6 +148,8 @@ export function useWmsSiteLayer({
   enabled,
   site,
   product,
+  siteLat = null,
+  siteLon = null,
   time = null,
   opacity = 0.9,
   onStatus,
@@ -128,6 +161,14 @@ export function useWmsSiteLayer({
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
   const refreshRef = useRef<(() => void) | null>(null);
+
+  const useSiteFootprint =
+    Boolean(site) &&
+    site !== 'conus' &&
+    typeof siteLat === 'number' &&
+    typeof siteLon === 'number' &&
+    Number.isFinite(siteLat) &&
+    Number.isFinite(siteLon);
 
   // Mount / pan / product — never depends on time or opacity.
   useEffect(() => {
@@ -157,7 +198,10 @@ export function useWmsSiteLayer({
       abort?.abort();
       abort = new AbortController();
 
-      const { bbox, coords } = bboxFromMap(map);
+      const { bbox, coords } =
+        useSiteFootprint && siteLat != null && siteLon != null
+          ? bboxFromSite(siteLat, siteLon)
+          : bboxFromMap(map);
       const params = new URLSearchParams({
         site,
         product,
@@ -255,18 +299,31 @@ export function useWmsSiteLayer({
 
     refreshRef.current = apply;
     apply();
-    map.on('moveend', debouncedApply);
+    // Site-footprint images are georeferenced — only CONUS/full-map
+    // requests need a refetch on every pan.
+    if (!useSiteFootprint) {
+      map.on('moveend', debouncedApply);
+    }
 
     return () => {
       cancelled = true;
       abort?.abort();
       if (timer !== undefined) window.clearTimeout(timer);
-      map.off('moveend', debouncedApply);
+      if (!useSiteFootprint) map.off('moveend', debouncedApply);
       refreshRef.current = null;
       teardown();
       if (lastObjUrl) URL.revokeObjectURL(lastObjUrl);
     };
-  }, [map, styleLoaded, enabled, site, product]);
+  }, [
+    map,
+    styleLoaded,
+    enabled,
+    site,
+    product,
+    siteLat,
+    siteLon,
+    useSiteFootprint,
+  ]);
 
   // TIME change → in-place refetch (no remount).
   useEffect(() => {

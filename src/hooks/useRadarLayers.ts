@@ -799,7 +799,7 @@ export function useRadarLayers({
     | 'boha'
     | 'bdsa' => {
     const p = effectiveChoice.product;
-    if (p === 'bvel') return 'bvel';
+    if (p === 'bvel' || p === 'n0s') return 'bvel';
     if (p === 'cref') return 'cref';
     if (p === 'neet') return 'neet';
     if (p === 'pcpn') return 'pcpn';
@@ -824,6 +824,8 @@ export function useRadarLayers({
     enabled: effectiveChoice.kind === 'ridge-wms',
     site: wmsSite,
     product: wmsProduct,
+    siteLat: wmsSite && wmsSite !== 'conus' ? (site?.lat ?? null) : null,
+    siteLon: wmsSite && wmsSite !== 'conus' ? (site?.lon ?? null) : null,
     time: wmsTime ?? null,
     opacity: effectiveChoice.opacity * overlay,
     onStatus: (status) => {

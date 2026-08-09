@@ -167,7 +167,8 @@ export function resolveSource(
 
   if (product === 'correlation') {
     if (!isUS(region)) return UNAVAILABLE;
-    // L3 N0C mosaic at CONUS / regional; Level 2 when zoomed in.
+    // CONUS: multi-site Level 3 N0C mosaic. Zoomed in: single-site L3
+    // (L2 CC is available as fallback once the volume parses).
     if (zoom <= 9) {
       return {
         kind: 'mosaic',
@@ -176,7 +177,12 @@ export function resolveSource(
         fallback: 'level3',
       };
     }
-    return { kind: 'level2', product: 'correlation', opacity: 0.9 };
+    return {
+      kind: 'level3',
+      product: 'N0C',
+      opacity: 0.9,
+      fallback: 'level2',
+    };
   }
 
   if (product === 'satellite-ir') {

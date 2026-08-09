@@ -90,8 +90,11 @@ interface Level2RadarLike {
   getAzimuth: (scan: number) => number;
   getHighresReflectivity: (scan?: number) => L2Moment | L2Moment[];
   getHighresVelocity: (scan?: number) => L2Moment | L2Moment[];
-  getHighresCorrelationCoefficient: (scan?: number) => L2Moment | L2Moment[];
-  data: Record<number, Array<{ record?: Record<string, unknown> }>>;
+  elevation?: number;
+  data: Record<
+    number,
+    Array<{ record?: Record<string, unknown> & { rho?: L2Moment } }>
+  >;
 }
 
 function colorForProduct(
@@ -158,9 +161,15 @@ function readMoment(
   scan: number,
 ): L2Moment | null {
   try {
-    if (product === 'velocity') return radar.getHighresVelocity(scan) as L2Moment;
+    if (product === 'velocity') {
+      return radar.getHighresVelocity(scan) as L2Moment;
+    }
     if (product === 'correlation') {
-      return radar.getHighresCorrelationCoefficient(scan) as L2Moment;
+      // Library getter is buggy (uses `this.scan` instead of `scan`).
+      // Read rho directly from the radial record.
+      const elev = radar.elevation ?? pickElevation(radar, product);
+      if (elev == null) return null;
+      return radar.data[elev]?.[scan]?.record?.rho ?? null;
     }
     return radar.getHighresReflectivity(scan) as L2Moment;
   } catch {

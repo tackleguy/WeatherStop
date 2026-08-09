@@ -8,7 +8,7 @@
 // This is intentionally simple — no Workbox dependency, no precache
 // manifest. Vite's hashed asset filenames give us cache-busting for free.
 
-const VERSION = 'weatherstop-v5';
+const VERSION = 'weatherstop-v6';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const APP_SHELL = ['/manifest.webmanifest', '/icon.svg'];

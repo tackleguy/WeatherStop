@@ -488,19 +488,14 @@ export function useRadarLayers({
     });
   }, [map, styleLoaded, catalog, ts]);
 
-  // Iowa State XYZ
+  // Iowa State XYZ (reflectivity composite) — May 5 primary CONUS source.
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    const raw =
-      effectiveChoice.kind === 'iowa-state' ||
-      effectiveChoice.kind === 'iowa-goes'
-        ? effectiveChoice.product
-        : 'nexrad-n0q-900913';
     const product =
-      raw.startsWith('nexrad-') ||
-      raw.startsWith('goes-') ||
-      raw.startsWith('q2-')
-        ? raw
+      effectiveChoice.kind === 'iowa-state' &&
+      (effectiveChoice.product.startsWith('nexrad-') ||
+        effectiveChoice.product.startsWith('q2-'))
+        ? effectiveChoice.product
         : 'nexrad-n0q-900913';
     const tilesUrl = iowaTs
       ? `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}&ts=${iowaTs}`
@@ -523,6 +518,27 @@ export function useRadarLayers({
     effectiveChoice.opacity,
     overlay,
   ]);
+
+  // Iowa composite probe → RainViewer fallback (May ladder).
+  useEffect(() => {
+    if (effectiveChoice.kind !== 'iowa-state' || !choice.fallback) return;
+    let cancelled = false;
+    const product = effectiveChoice.product.startsWith('nexrad-')
+      ? effectiveChoice.product
+      : 'nexrad-n0q-900913';
+    void fetch(`/api/radar/iowa-state?z=5&x=7&y=12&product=${product}`)
+      .then((res) => {
+        if (!cancelled && !res.ok && choice.fallback) {
+          setActiveKind(choice.fallback);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && choice.fallback) setActiveKind(choice.fallback);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveChoice.kind, effectiveChoice.product, choice.fallback]);
 
   // Open-Meteo wind / temp grid — keep source mounted; opacity via crossfade.
   useEffect(() => {

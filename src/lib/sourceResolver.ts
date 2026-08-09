@@ -64,17 +64,16 @@ export function resolveSource(
 
   if (product === 'reflectivity') {
     if (isUS(region)) {
-      // OpenGeo CONUS base reflectivity (national mosaic), then Iowa XYZ,
-      // then single-site / Level 2 as you zoom in.
-      if (zoom <= 9) {
+      // Restored May 5 ladder (deploy 9939199) — RainViewer / Iowa XYZ
+      // for CONUS. OpenGeo national WMS blanked the map in production.
+      if (zoom <= 7) {
         return {
-          kind: 'ridge-wms',
-          product: 'conus-bref',
-          opacity: 0.85,
-          fallback: 'iowa-state',
+          kind: 'rainviewer',
+          product: 'radar',
+          opacity: 0.78,
         };
       }
-      if (zoom <= 11) {
+      if (zoom <= 9) {
         return {
           kind: 'iowa-state',
           product: 'nexrad-n0q-900913',
@@ -82,7 +81,7 @@ export function resolveSource(
           fallback: 'rainviewer',
         };
       }
-      if (zoom <= 13) {
+      if (zoom <= 12) {
         return {
           kind: 'ridge-wms',
           product: 'bref',
@@ -112,22 +111,22 @@ export function resolveSource(
     };
   }
 
-  // CONUS composite mosaic — distinct from single-tilt reflectivity.
+  // CONUS composite — Iowa XYZ (May 7), not OpenGeo cref WMS.
   if (product === 'composite') {
     if (isUS(region)) {
       if (zoom <= 10) {
         return {
-          kind: 'ridge-wms',
-          product: 'cref',
+          kind: 'iowa-state',
+          product: 'nexrad-n0q-900913',
           opacity: 0.85,
-          fallback: 'iowa-state',
+          fallback: 'rainviewer',
         };
       }
       return {
-        kind: 'iowa-state',
-        product: 'nexrad-n0q-900913',
+        kind: 'ridge-wms',
+        product: 'bref',
         opacity: 0.9,
-        fallback: 'rainviewer',
+        fallback: 'iowa-state',
       };
     }
     return {
@@ -168,16 +167,8 @@ export function resolveSource(
 
   if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    // Multi-site OpenGeo mosaic works from CONUS; refine to one site later.
-    if (zoom <= 9) {
-      return {
-        kind: 'mosaic',
-        product: 'bvel',
-        opacity: 0.9,
-        fallback: 'ridge-wms',
-      };
-    }
-    if (zoom <= 12) {
+    // May 5/7: nearest-site OpenGeo bvel (works at any zoom).
+    if (zoom <= 11) {
       return {
         kind: 'ridge-wms',
         product: 'bvel',
@@ -195,38 +186,46 @@ export function resolveSource(
 
   if (product === 'storm-rel-velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    if (zoom <= 8) {
-      // No single-site fallback at CONUS — one radar still looks blank.
-      return { kind: 'mosaic', product: 'n0s', opacity: 0.9 };
+    // May treated SRV like base velocity (per-site WMS).
+    if (zoom <= 11) {
+      return {
+        kind: 'ridge-wms',
+        product: 'bvel',
+        opacity: 0.9,
+        fallback: 'level3',
+      };
     }
     return { kind: 'level3', product: 'N0S', opacity: 0.9 };
   }
 
   if (product === 'rotation') {
     if (!isUS(region)) return UNAVAILABLE;
-    if (zoom <= 8) {
-      return { kind: 'mosaic', product: 'rot', opacity: 0.9 };
+    // Single-site L3 — mosaics looked empty at CONUS in practice.
+    if (zoom < 7) {
+      return UNAVAILABLE;
     }
     return { kind: 'level3', product: 'ROT', opacity: 0.9 };
   }
 
   if (product === 'correlation') {
     if (!isUS(region)) return UNAVAILABLE;
-    // CONUS: multi-site Level 3 N0C mosaic. Zoomed in: single-site L3
-    // (L2 CC is available as fallback once the volume parses).
-    if (zoom <= 9) {
+    // May 7: Level 2 CC when zoomed in enough.
+    if (zoom < 8) {
+      return UNAVAILABLE;
+    }
+    if (zoom <= 11) {
       return {
-        kind: 'mosaic',
-        product: 'n0c',
+        kind: 'level3',
+        product: 'N0C',
         opacity: 0.9,
-        fallback: 'level3',
+        fallback: 'level2',
       };
     }
     return {
-      kind: 'level3',
-      product: 'N0C',
+      kind: 'level2',
+      product: 'correlation',
       opacity: 0.9,
-      fallback: 'level2',
+      fallback: 'level3',
     };
   }
 
@@ -331,6 +330,12 @@ export function unavailabilityReason(
     zoom < 7
   ) {
     return 'Zoom in further (z7+) to load this single-radar product.';
+  }
+  if (product === 'rotation' && zoom < 7) {
+    return 'Zoom in further (z7+) to load rotation.';
+  }
+  if (product === 'correlation' && zoom < 8) {
+    return 'Zoom in further (z8+) for correlation coefficient.';
   }
   return null;
 }

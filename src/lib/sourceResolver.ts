@@ -57,8 +57,16 @@ export function resolveSource(
 
   if (product === 'reflectivity') {
     if (isUS(region)) {
-      // Keep the Iowa CONUS mosaic deeper so national/regional zooms
-      // stay filled before switching to single-site WMS / Level 2.
+      // OpenGeo CONUS base reflectivity (national mosaic), then Iowa XYZ,
+      // then single-site / Level 2 as you zoom in.
+      if (zoom <= 9) {
+        return {
+          kind: 'ridge-wms',
+          product: 'conus-bref',
+          opacity: 0.85,
+          fallback: 'iowa-state',
+        };
+      }
       if (zoom <= 11) {
         return {
           kind: 'iowa-state',
@@ -102,17 +110,17 @@ export function resolveSource(
     if (isUS(region)) {
       if (zoom <= 10) {
         return {
-          kind: 'iowa-state',
-          product: 'nexrad-n0q-900913',
+          kind: 'ridge-wms',
+          product: 'cref',
           opacity: 0.85,
-          fallback: 'rainviewer',
+          fallback: 'iowa-state',
         };
       }
       return {
-        kind: 'ridge-wms',
-        product: 'cref',
+        kind: 'iowa-state',
+        product: 'nexrad-n0q-900913',
         opacity: 0.9,
-        fallback: 'iowa-state',
+        fallback: 'rainviewer',
       };
     }
     return {
@@ -202,11 +210,11 @@ export function resolveSource(
       sector === 'west'
         ? 'GOES-West_ABI_Band13_Clean_Infrared'
         : 'GOES-East_ABI_Band13_Clean_Infrared';
+    // RainViewer satellite.infrared is often empty — don't rely on it.
     return {
       kind: 'gibs',
       product: layer,
       opacity: 0.7,
-      fallback: 'rainviewer',
     };
   }
 

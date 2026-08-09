@@ -18,7 +18,7 @@ import {
   type NexradSite,
 } from '../lib/nexradSites';
 import { useRadarStore } from '../store/useRadarStore';
-import { useWmsSiteLayer } from './useWmsSiteLayer';
+import { useWmsSiteLayer, WMS_LAYER_ID } from './useWmsSiteLayer';
 import { detectRegion } from '../lib/regionDetect';
 import {
   resolveSource,
@@ -272,6 +272,7 @@ function labelFor(
   }
   if (kind === 'ridge-wms') {
     if (product === 'cref') return 'CONUS Composite (NWS)';
+    if (product === 'conus-bref') return 'CONUS Base Reflectivity (NWS)';
     if (site) {
       return `${site.id} · ${product === 'bvel' ? 'Base Velocity' : 'Reflectivity'}`;
     }
@@ -372,7 +373,12 @@ export function useRadarLayers({
     ) {
       return undefined;
     }
-    if (effectiveChoice.product === 'cref') return undefined;
+    if (
+      effectiveChoice.product === 'cref' ||
+      effectiveChoice.product === 'conus-bref'
+    ) {
+      return undefined;
+    }
     return manualSite ?? nearestNexradSite(lon, lat);
   }, [effectiveChoice.kind, effectiveChoice.product, manualSite, lon, lat]);
 
@@ -459,9 +465,16 @@ export function useRadarLayers({
   // Iowa State XYZ
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    const product =
-      effectiveChoice.kind === 'iowa-state'
+    const raw =
+      effectiveChoice.kind === 'iowa-state' ||
+      effectiveChoice.kind === 'iowa-goes'
         ? effectiveChoice.product
+        : 'nexrad-n0q-900913';
+    const product =
+      raw.startsWith('nexrad-') ||
+      raw.startsWith('goes-') ||
+      raw.startsWith('q2-')
+        ? raw
         : 'nexrad-n0q-900913';
     const tilesUrl = iowaTs
       ? `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}&ts=${iowaTs}`
@@ -724,7 +737,8 @@ export function useRadarLayers({
         ? 'cref'
         : 'bref';
   const wmsSite =
-    effectiveChoice.product === 'cref'
+    effectiveChoice.product === 'cref' ||
+    effectiveChoice.product === 'conus-bref'
       ? 'conus'
       : site
         ? site.id.toLowerCase()
@@ -983,6 +997,7 @@ export function useRadarLayers({
     fadeRasterTo(map, GIBS_LAYER, kind === 'gibs' ? target : 0);
     fadeRasterTo(map, IOWA_GOES_LAYER, kind === 'iowa-goes' ? target : 0);
     fadeRasterTo(map, GRID_LAYER, kind === 'open-meteo-grid' ? target : 0);
+    fadeRasterTo(map, WMS_LAYER_ID, kind === 'ridge-wms' ? target : 0);
     fadeRasterTo(map, NWS_LAYER, 0);
   }, [
     map,

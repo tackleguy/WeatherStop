@@ -9,6 +9,12 @@ import {
 
 export const config = { runtime: 'edge' };
 
+function isPng(buf: ArrayBuffer): boolean {
+  if (buf.byteLength < 8) return false;
+  const u = new Uint8Array(buf);
+  return u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47;
+}
+
 export default async function handler(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const siteRaw = searchParams.get('site');
@@ -43,7 +49,11 @@ export default async function handler(req: Request): Promise<Response> {
     if (!res.ok) {
       return new Response(`upstream ${res.status}`, { status: res.status });
     }
-    return new Response(res.body, {
+    const buf = await res.arrayBuffer();
+    if (!isPng(buf)) {
+      return new Response('upstream returned non-PNG', { status: 502 });
+    }
+    return new Response(buf, {
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=60, s-maxage=60',

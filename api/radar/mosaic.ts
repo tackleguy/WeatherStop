@@ -89,11 +89,27 @@ async function fetchOpenGeoSite(
   return buf;
 }
 
+function countOpaque(
+  ctx: ReturnType<ReturnType<typeof createCanvas>['getContext']>,
+  width: number,
+  height: number,
+): number {
+  const step = Math.max(1, Math.floor(Math.min(width, height) / 64));
+  const { data } = ctx.getImageData(0, 0, width, height);
+  let n = 0;
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      if (data[(y * width + x) * 4 + 3] > 24) n++;
+    }
+  }
+  return n;
+}
+
 async function compositeOpenGeo(
   layers: Buffer[],
   width: number,
   height: number,
-): Promise<Buffer> {
+): Promise<{ png: Buffer; opaque: number }> {
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, width, height);
@@ -105,7 +121,8 @@ async function compositeOpenGeo(
       // skip undecodable tile
     }
   }
-  return canvas.toBuffer('image/png');
+  const opaque = countOpaque(ctx, width, height);
+  return { png: canvas.toBuffer('image/png'), opaque };
 }
 
 async function compositeL3Sites(
@@ -114,13 +131,13 @@ async function compositeL3Sites(
   mosaic: [number, number, number, number],
   width: number,
   height: number,
-): Promise<Buffer> {
+): Promise<{ png: Buffer; opaque: number }> {
   const [mx0, my0, mx1, my1] = mosaic;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, width, height);
 
-  const pngs = await mapPool(sites, 4, async (icao) => {
+  const pngs = await mapPool(sites, 6, async (icao) => {
     const png = await renderSiteL3(icao, product, 320);
     if (!png) return null;
     return { icao, png };
@@ -141,7 +158,8 @@ async function compositeL3Sites(
     ctx.drawImage(img, px, py, pw, ph);
   }
 
-  return canvas.toBuffer('image/png');
+  const opaque = countOpaque(ctx, width, height);
+  return { png: canvas.toBuffer('image/png'), opaque };
 }
 
 export async function GET(req: Request): Promise<Response> {
@@ -173,24 +191,25 @@ export async function GET(req: Request): Promise<Response> {
   const [west, south] = metersToLngLat(mx0, my0);
   const [east, north] = metersToLngLat(mx1, my1);
   const span = Math.max(east - west, north - south);
-  // Wider views → more sites; keep L3 smaller to stay under time budget.
-  const openGeoLimit = span > 25 ? 20 : span > 10 ? 14 : 10;
-  const l3Limit = span > 25 ? 10 : span > 10 ? 8 : 6;
+  // Wider views need denser site coverage so CONUS isn't a few dots.
+  const openGeoLimit = span > 40 ? 36 : span > 25 ? 28 : span > 10 ? 18 : 12;
+  const l3Limit = span > 40 ? 32 : span > 25 ? 24 : span > 10 ? 14 : 10;
 
   try {
     let png: Buffer;
+    let opaque: number;
     if (product === 'bvel') {
       const sites = sitesCoveringBbox(west, south, east, north, openGeoLimit);
       if (sites.length === 0) {
         return new Response('no sites in view', { status: 404 });
       }
-      const layers = await mapPool(sites, 8, (icao) =>
+      const layers = await mapPool(sites, 10, (icao) =>
         fetchOpenGeoSite(icao.toLowerCase(), bboxStr, width, height),
       );
       if (layers.length === 0) {
         return new Response('no velocity tiles', { status: 404 });
       }
-      png = await compositeOpenGeo(layers, width, height);
+      ({ png, opaque } = await compositeOpenGeo(layers, width, height));
     } else {
       const l3Product: L3ProductCode =
         product === 'rot' ? 'ROT' : product === 'n0c' ? 'N0C' : 'N0S';
@@ -198,7 +217,18 @@ export async function GET(req: Request): Promise<Response> {
       if (sites.length === 0) {
         return new Response('no sites in view', { status: 404 });
       }
-      png = await compositeL3Sites(sites, l3Product, mosaic, width, height);
+      ({ png, opaque } = await compositeL3Sites(
+        sites,
+        l3Product,
+        mosaic,
+        width,
+        height,
+      ));
+    }
+
+    // Sampled grid — ~64² cells; require a handful of opaque samples.
+    if (opaque < 8) {
+      return new Response('empty mosaic', { status: 404 });
     }
 
     return new Response(new Uint8Array(png), {
@@ -207,6 +237,7 @@ export async function GET(req: Request): Promise<Response> {
         'Cache-Control': 'public, max-age=90, s-maxage=90',
         'X-Source': 'radar-mosaic',
         'X-Product': product,
+        'X-Opaque-Samples': String(opaque),
       },
     });
   } catch (err) {

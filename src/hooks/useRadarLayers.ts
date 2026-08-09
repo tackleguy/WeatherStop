@@ -18,7 +18,7 @@ import {
   type NexradSite,
 } from '../lib/nexradSites';
 import { useRadarStore } from '../store/useRadarStore';
-import { useWmsSiteLayer, WMS_LAYER_ID } from './useWmsSiteLayer';
+import { useWmsSiteLayer, WMS_LAYER_ID, WMS_SOURCE_ID } from './useWmsSiteLayer';
 import { detectRegion } from '../lib/regionDetect';
 import {
   resolveSource,
@@ -315,9 +315,12 @@ function labelFor(
       : 'GOES-East · GIBS';
   }
   if (kind === 'iowa-goes') {
-    return /west/i.test(product)
-      ? 'GOES-West · Visible (Iowa)'
-      : 'GOES-East · Visible (Iowa)';
+    const west = /west/i.test(product);
+    const ir = /ir-/i.test(product) || /Infrared/i.test(product);
+    const sector = west ? 'GOES-West' : 'GOES-East';
+    return ir
+      ? `${sector} · Infrared (Iowa)`
+      : `${sector} · Visible (Iowa)`;
   }
   if (kind === 'open-meteo-grid') {
     return productId === 'wind'
@@ -343,6 +346,7 @@ export function useRadarLayers({
   const lon = mapCenter?.[0] ?? -97;
   const lat = mapCenter?.[1] ?? 39;
   const [activeKind, setActiveKind] = useState<SourceKind | null>(null);
+  const [wmsFailReason, setWmsFailReason] = useState<string | null>(null);
 
   const region = useMemo(() => detectRegion(lon, lat), [lon, lat]);
 
@@ -366,12 +370,24 @@ export function useRadarLayers({
 
   useEffect(() => {
     setActiveKind(null);
+    setWmsFailReason(null);
   }, [choice.kind, choice.product, activeProduct]);
 
-  const reason = useMemo(
-    () => unavailabilityReason(activeProduct, mapZoom, region),
-    [activeProduct, mapZoom, region],
-  );
+  const reason = useMemo(() => {
+    const base = unavailabilityReason(activeProduct, mapZoom, region);
+    if (base) return base;
+    if (wmsFailReason && effectiveChoice.kind === 'ridge-wms' && !choice.fallback) {
+      return `Layer temporarily unavailable (${wmsFailReason}).`;
+    }
+    return null;
+  }, [
+    activeProduct,
+    mapZoom,
+    region,
+    wmsFailReason,
+    effectiveChoice.kind,
+    choice.fallback,
+  ]);
 
   const site = useMemo<NexradSite | undefined>(() => {
     if (
@@ -650,7 +666,8 @@ export function useRadarLayers({
     overlay,
   ]);
 
-  // Multi-site mosaic (velocity / rotation / CC / SRV at CONUS zoom)
+  // Multi-site mosaic (velocity / rotation / CC / SRV at CONUS zoom).
+  // Opacity/time changes must not remount — that blanked CONUS mosaics.
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (effectiveChoice.kind !== 'mosaic') {
@@ -661,9 +678,12 @@ export function useRadarLayers({
 
     let timer: number | undefined;
     let cancelled = false;
+    let seq = 0;
+    let lastObjUrl: string | null = null;
 
     const refresh = () => {
       if (cancelled || !map) return;
+      const mySeq = ++seq;
       const { bbox3857, coords } = bboxFromMap(map);
       const url =
         `/api/radar/mosaic?product=${encodeURIComponent(effectiveChoice.product)}` +
@@ -671,23 +691,21 @@ export function useRadarLayers({
 
       void fetch(url)
         .then(async (res) => {
+          if (cancelled || mySeq !== seq) return;
           if (!res.ok) {
             if (choice.fallback) setActiveKind(choice.fallback);
             return;
           }
           const blob = await res.blob();
-          if (cancelled || !map) return;
+          if (cancelled || mySeq !== seq || !map) return;
           const objUrl = URL.createObjectURL(blob);
+          if (lastObjUrl) URL.revokeObjectURL(lastObjUrl);
+          lastObjUrl = objUrl;
           const src = map.getSource(MOSAIC_SOURCE) as
             | maplibregl.ImageSource
             | undefined;
           if (src) {
             src.updateImage({ url: objUrl, coordinates: coords });
-            setRasterOpacity(
-              map,
-              MOSAIC_LAYER,
-              effectiveChoice.opacity * overlay,
-            );
             return;
           }
           safeAdd(map, styleLoaded, () => {
@@ -710,6 +728,7 @@ export function useRadarLayers({
           });
         })
         .catch(() => {
+          if (cancelled || mySeq !== seq) return;
           if (choice.fallback) setActiveKind(choice.fallback);
         });
     };
@@ -727,16 +746,30 @@ export function useRadarLayers({
       map.off('moveend', debounced);
       if (map.getLayer(MOSAIC_LAYER)) map.removeLayer(MOSAIC_LAYER);
       if (map.getSource(MOSAIC_SOURCE)) map.removeSource(MOSAIC_SOURCE);
+      if (lastObjUrl) URL.revokeObjectURL(lastObjUrl);
     };
   }, [
     map,
     styleLoaded,
     effectiveChoice.kind,
     effectiveChoice.product,
+    choice.fallback,
+  ]);
+
+  useEffect(() => {
+    if (!map || !styleLoaded) return;
+    if (effectiveChoice.kind !== 'mosaic') return;
+    setRasterOpacity(
+      map,
+      MOSAIC_LAYER,
+      effectiveChoice.opacity * overlay,
+    );
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
     effectiveChoice.opacity,
     overlay,
-    ts,
-    choice.fallback,
   ]);
 
   // Per-site / CONUS WMS (always via transparent PNG factory on the server)
@@ -777,7 +810,48 @@ export function useRadarLayers({
     product: wmsProduct,
     time: wmsTime ?? null,
     opacity: effectiveChoice.opacity * overlay,
+    onStatus: (status) => {
+      if (status.ok) {
+        setWmsFailReason(null);
+        return;
+      }
+      setWmsFailReason(status.error ?? 'WMS unavailable');
+      // Keep last good frame; only fall back if nothing mounted yet.
+      if (choice.fallback && map && !map.getSource(WMS_SOURCE_ID)) {
+        setActiveKind(choice.fallback);
+      }
+    },
   });
+
+  // Force-remove WMS when another product owns the map (black-map defence).
+  useEffect(() => {
+    if (!map || !styleLoaded) return;
+    if (effectiveChoice.kind === 'ridge-wms') return;
+    if (map.getLayer(WMS_LAYER_ID)) {
+      map.setPaintProperty(WMS_LAYER_ID, 'raster-opacity', 0);
+      map.removeLayer(WMS_LAYER_ID);
+    }
+    if (map.getSource(WMS_SOURCE_ID)) map.removeSource(WMS_SOURCE_ID);
+  }, [map, styleLoaded, effectiveChoice.kind]);
+
+  // Iowa GOES tile probe → GIBS fallback when declared.
+  useEffect(() => {
+    if (effectiveChoice.kind !== 'iowa-goes' || !choice.fallback) return;
+    let cancelled = false;
+    const product = effectiveChoice.product;
+    void fetch(`/api/radar/iowa-state?z=4&x=3&y=6&product=${product}`)
+      .then((res) => {
+        if (!cancelled && !res.ok && choice.fallback) {
+          setActiveKind(choice.fallback);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && choice.fallback) setActiveKind(choice.fallback);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveChoice.kind, effectiveChoice.product, choice.fallback]);
 
   // Level 2
   useEffect(() => {

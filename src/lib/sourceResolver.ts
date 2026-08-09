@@ -47,6 +47,13 @@ export function goesSector(lon: number): 'east' | 'west' {
   return lon < -105 ? 'west' : 'east';
 }
 
+/** Rough local-solar night — VIS is useless / looks blank. */
+export function isNightAt(lon: number, date = new Date()): boolean {
+  const utcH = date.getUTCHours() + date.getUTCMinutes() / 60;
+  const localSolarHour = (utcH + lon / 15 + 24) % 24;
+  return localSolarHour < 6.25 || localSolarHour >= 18.75;
+}
+
 export function resolveSource(
   product: ProductId,
   zoom: number,
@@ -189,7 +196,8 @@ export function resolveSource(
   if (product === 'storm-rel-velocity') {
     if (!isUS(region)) return UNAVAILABLE;
     if (zoom <= 8) {
-      return { kind: 'mosaic', product: 'n0s', opacity: 0.9, fallback: 'level3' };
+      // No single-site fallback at CONUS — one radar still looks blank.
+      return { kind: 'mosaic', product: 'n0s', opacity: 0.9 };
     }
     return { kind: 'level3', product: 'N0S', opacity: 0.9 };
   }
@@ -197,7 +205,7 @@ export function resolveSource(
   if (product === 'rotation') {
     if (!isUS(region)) return UNAVAILABLE;
     if (zoom <= 8) {
-      return { kind: 'mosaic', product: 'rot', opacity: 0.9, fallback: 'level3' };
+      return { kind: 'mosaic', product: 'rot', opacity: 0.9 };
     }
     return { kind: 'level3', product: 'ROT', opacity: 0.9 };
   }
@@ -248,6 +256,26 @@ export function resolveSource(
   }
 
   if (product === 'satellite-vis') {
+    // Night VIS is nearly black — serve IR so the map isn't empty.
+    if (isNightAt(lon)) {
+      if (isUS(region)) {
+        const iowa =
+          sector === 'west'
+            ? 'goes-west-ir-4km-900913'
+            : 'goes-east-ir-4km-900913';
+        return {
+          kind: 'iowa-goes',
+          product: iowa,
+          opacity: 0.75,
+          fallback: 'gibs',
+        };
+      }
+      const layer =
+        sector === 'west'
+          ? 'GOES-West_ABI_Band13_Clean_Infrared'
+          : 'GOES-East_ABI_Band13_Clean_Infrared';
+      return { kind: 'gibs', product: layer, opacity: 0.7 };
+    }
     if (isUS(region)) {
       const iowa =
         sector === 'west'

@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useRadarLayers } from '../../hooks/useRadarLayers';
 import { useAlerts } from '../../hooks/useAlerts';
 import { useRainViewer } from '../../hooks/useRainViewer';
+import { useStormAnalysis } from '../../hooks/useStormAnalysis';
 import { useTimeFrames } from '../../hooks/useTimeFrames';
 import { useSettings } from '../../hooks/useSettings';
 import { mapStyleUrl } from '../../lib/mapStyles';
@@ -22,6 +23,14 @@ const ALERTS_FOCUS = 'nws-alerts-focus';
 const RULER_SOURCE = 'ruler-line';
 const RULER_LINE_LAYER = 'ruler-line-layer';
 const RULER_POINTS_LAYER = 'ruler-points-layer';
+const AI_STORMS_SOURCE = 'ai-storms';
+const AI_STORMS_BOX_FILL = 'ai-storms-box-fill';
+const AI_STORMS_BOX_LINE = 'ai-storms-box-line';
+const AI_STORMS_PATH = 'ai-storms-path';
+const AI_STORMS_SEVERE = 'ai-storms-severe';
+const AI_STORMS_TORNADO = 'ai-storms-tornado';
+const AI_STORMS_FOCUS = 'ai-storms-focus';
+const AI_STORMS_LABEL = 'ai-storms-label';
 
 interface Props {
   onMapReady?: (map: maplibregl.Map) => void;
@@ -74,6 +83,9 @@ export function RadarMap({ onMapReady }: Props) {
   const rulerActive = useRadarStore((s) => s.rulerActive);
   const rulerPoints = useRadarStore((s) => s.rulerPoints);
   const pushRulerPoint = useRadarStore((s) => s.pushRulerPoint);
+  const aiStormsActive = useRadarStore((s) => s.aiStormsActive);
+  const focusedStormId = useRadarStore((s) => s.focusedStormId);
+  const focusStorm = useRadarStore((s) => s.focusStorm);
 
   const frames = useTimeFrames();
   const ts = frames[currentFrameIdx] ?? frames[frames.length - 1];
@@ -123,6 +135,7 @@ export function RadarMap({ onMapReady }: Props) {
   }, [catalog, activeProduct, ts]);
 
   const { alerts } = useAlerts();
+  const { result: stormResult } = useStormAnalysis(alerts);
 
   const features = useMemo<GeoJSON.Feature[]>(
     () =>
@@ -142,6 +155,11 @@ export function RadarMap({ onMapReady }: Props) {
         })),
     [alerts],
   );
+
+  const stormFeatures = useMemo<GeoJSON.Feature[]>(() => {
+    if (!aiStormsActive || !stormResult) return [];
+    return stormResult.features;
+  }, [aiStormsActive, stormResult]);
 
   // Map setup.
   useEffect(() => {
@@ -308,12 +326,29 @@ export function RadarMap({ onMapReady }: Props) {
     }
   }, [alertFilter, styleLoaded]);
 
-  // Click handling: alerts → alerts page; otherwise → ruler/inspect.
+  // Click handling: AI storms → focus; alerts → alerts page; else ruler/inspect.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleLoaded) return;
 
     const handler = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+      if (aiStormsActive && !rulerActive) {
+        const stormHits = map.queryRenderedFeatures(e.point, {
+          layers: [
+            AI_STORMS_BOX_FILL,
+            AI_STORMS_SEVERE,
+            AI_STORMS_TORNADO,
+          ].filter((id) => Boolean(map.getLayer(id))),
+        });
+        if (stormHits.length > 0) {
+          const sid = stormHits[0].properties?.stormId;
+          if (typeof sid === 'string') {
+            focusStorm(sid);
+            return;
+          }
+        }
+      }
+
       const hits = map.queryRenderedFeatures(e.point, {
         layers: [ALERTS_FILL],
       });
@@ -343,7 +378,9 @@ export function RadarMap({ onMapReady }: Props) {
   }, [
     styleLoaded,
     rulerActive,
+    aiStormsActive,
     focusAlert,
+    focusStorm,
     pushRulerPoint,
     setInspectAt,
     navigate,
@@ -437,6 +474,175 @@ export function RadarMap({ onMapReady }: Props) {
       },
     });
   }, [rulerPoints, styleLoaded]);
+
+  // AI storm overlays: identification boxes, motion paths, severe / tornado spots.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoaded) return;
+
+    const collection: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: stormFeatures,
+    };
+
+    const existing = map.getSource(AI_STORMS_SOURCE) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (existing) {
+      existing.setData(collection);
+    } else {
+      map.addSource(AI_STORMS_SOURCE, { type: 'geojson', data: collection });
+
+      map.addLayer({
+        id: AI_STORMS_BOX_FILL,
+        type: 'fill',
+        source: AI_STORMS_SOURCE,
+        filter: ['==', ['get', 'kind'], 'box'],
+        paint: {
+          'fill-color': ['coalesce', ['get', 'fill'], '#f59e0b'],
+          'fill-opacity': 0.12,
+        },
+      });
+      map.addLayer({
+        id: AI_STORMS_BOX_LINE,
+        type: 'line',
+        source: AI_STORMS_SOURCE,
+        filter: ['==', ['get', 'kind'], 'box'],
+        paint: {
+          'line-color': ['coalesce', ['get', 'stroke'], '#fde68a'],
+          'line-width': 2.4,
+          'line-opacity': 0.95,
+        },
+      });
+      map.addLayer({
+        id: AI_STORMS_PATH,
+        type: 'line',
+        source: AI_STORMS_SOURCE,
+        filter: ['==', ['get', 'kind'], 'path'],
+        paint: {
+          'line-color': ['coalesce', ['get', 'stroke'], '#38bdf8'],
+          'line-width': 3,
+          'line-opacity': 0.95,
+          'line-dasharray': [1.2, 1.6],
+        },
+      });
+      map.addLayer({
+        id: AI_STORMS_SEVERE,
+        type: 'circle',
+        source: AI_STORMS_SOURCE,
+        filter: ['==', ['get', 'kind'], 'severe'],
+        paint: {
+          'circle-radius': 7,
+          'circle-color': ['coalesce', ['get', 'fill'], '#ef4444'],
+          'circle-stroke-color': '#fff7ed',
+          'circle-stroke-width': 2,
+          'circle-opacity': 0.95,
+        },
+      });
+      map.addLayer({
+        id: AI_STORMS_TORNADO,
+        type: 'circle',
+        source: AI_STORMS_SOURCE,
+        filter: ['==', ['get', 'kind'], 'tornado'],
+        paint: {
+          'circle-radius': 9,
+          'circle-color': ['coalesce', ['get', 'fill'], '#d946ef'],
+          'circle-stroke-color': '#fdf4ff',
+          'circle-stroke-width': 2.5,
+          'circle-opacity': 0.98,
+        },
+      });
+      map.addLayer({
+        id: AI_STORMS_FOCUS,
+        type: 'line',
+        source: AI_STORMS_SOURCE,
+        filter: ['==', ['get', 'stormId'], '__none__'],
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 3.5,
+          'line-opacity': 1,
+        },
+      });
+      map.addLayer({
+        id: AI_STORMS_LABEL,
+        type: 'symbol',
+        source: AI_STORMS_SOURCE,
+        filter: [
+          'any',
+          ['==', ['get', 'kind'], 'box'],
+          ['==', ['get', 'kind'], 'tornado'],
+        ],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 11,
+          'text-offset': [0, 1.2],
+          'text-anchor': 'top',
+          'text-max-width': 14,
+          'text-optional': true,
+        },
+        paint: {
+          'text-color': '#f8fafc',
+          'text-halo-color': '#0b1220',
+          'text-halo-width': 1.4,
+        },
+      });
+    }
+
+    const visibility = aiStormsActive ? 'visible' : 'none';
+    for (const id of [
+      AI_STORMS_BOX_FILL,
+      AI_STORMS_BOX_LINE,
+      AI_STORMS_PATH,
+      AI_STORMS_SEVERE,
+      AI_STORMS_TORNADO,
+      AI_STORMS_FOCUS,
+      AI_STORMS_LABEL,
+    ]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    }
+  }, [stormFeatures, aiStormsActive, styleLoaded]);
+
+  // Highlight + fly to a focused AI storm.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoaded || !map.getLayer(AI_STORMS_FOCUS)) return;
+
+    if (!focusedStormId || !aiStormsActive) {
+      map.setFilter(AI_STORMS_FOCUS, ['==', ['get', 'stormId'], '__none__']);
+      return;
+    }
+
+    map.setFilter(AI_STORMS_FOCUS, [
+      'all',
+      ['==', ['get', 'stormId'], focusedStormId],
+      ['==', ['get', 'kind'], 'box'],
+    ]);
+
+    const target = stormFeatures.find((f) => {
+      const p = f.properties as { stormId?: string; kind?: string } | null;
+      return p?.stormId === focusedStormId && p?.kind === 'box';
+    });
+    if (!target?.geometry) return;
+
+    const bounds = new maplibregl.LngLatBounds();
+    const collect = (g: GeoJSON.Geometry) => {
+      if (g.type === 'Polygon')
+        for (const ring of g.coordinates)
+          for (const c of ring) bounds.extend(c as [number, number]);
+      else if (g.type === 'MultiPolygon')
+        for (const poly of g.coordinates)
+          for (const ring of poly)
+            for (const c of ring) bounds.extend(c as [number, number]);
+      else if (g.type === 'Point')
+        bounds.extend(g.coordinates as [number, number]);
+      else if (g.type === 'LineString')
+        for (const c of g.coordinates) bounds.extend(c as [number, number]);
+    };
+    collect(target.geometry);
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 90, duration: 700, maxZoom: 9 });
+    }
+  }, [focusedStormId, stormFeatures, aiStormsActive, styleLoaded]);
 
   // Fly to + highlight a focused alert.
   useEffect(() => {

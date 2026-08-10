@@ -5,6 +5,7 @@
 import maplibregl from 'maplibre-gl';
 import { useState } from 'react';
 import { AlertFilterChips } from '../components/radar/AlertFilterChips';
+import { AiStormPanel } from '../components/radar/AiStormPanel';
 import { AlertsPanel } from '../components/radar/AlertsPanel';
 import { BookmarkBar } from '../components/radar/BookmarkBar';
 import { ClickInspector } from '../components/radar/ClickInspector';
@@ -84,6 +85,7 @@ export function RadarView() {
               alertsOverlap ? 'right-[376px]' : 'right-4'
             }`}
           >
+            <AiStormPanel />
             <DistanceRuler />
             <RadarLegend />
           </div>

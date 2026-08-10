@@ -158,6 +158,12 @@ interface RadarState {
   pushRulerPoint: (p: [number, number]) => void;
   clearRuler: () => void;
 
+  // AI storm identification overlay (boxes / paths / tornado spots)
+  aiStormsActive: boolean;
+  setAiStormsActive: (active: boolean) => void;
+  focusedStormId: string | null;
+  focusStorm: (id: string | null) => void;
+
   // Click inspector
   inspectAt: [number, number] | null;
   setInspectAt: (p: [number, number] | null) => void;
@@ -279,6 +285,15 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     }),
   clearRuler: () => set({ rulerPoints: [] }),
 
+  aiStormsActive: false,
+  setAiStormsActive: (active) =>
+    set(() => ({
+      aiStormsActive: active,
+      ...(active ? {} : { focusedStormId: null }),
+    })),
+  focusedStormId: null,
+  focusStorm: (id) => set({ focusedStormId: id }),
+
   inspectAt: null,
   setInspectAt: (p) => set({ inspectAt: p }),
 
@@ -332,6 +347,8 @@ export const useRadarStore = create<RadarState>((set, get) => ({
         inspectAt: null,
         rulerActive: false,
         rulerPoints: [],
+        aiStormsActive: false,
+        focusedStormId: null,
       };
     }),
 }));

@@ -28,6 +28,7 @@ import {
   type ImageCorners,
 } from '../lib/imageLayer';
 import {
+  remapGoesProduct,
   resolveSource,
   unavailabilityReason,
   type SourceChoice,
@@ -151,16 +152,15 @@ function bboxFromMap(map: maplibregl.Map) {
 
 /** GIBS REST WMTS. IR max Level6; VIS max Level7. Prefer dated path. */
 function gibsTileUrl(layerName: string): string {
-  const day = new Date().toISOString().slice(0, 10);
   const isVis = /Visible|Band2/i.test(layerName);
   const ext = isVis ? 'jpg' : 'png';
   const matrix = isVis
     ? 'GoogleMapsCompatible_Level7'
     : 'GoogleMapsCompatible_Level6';
-  // Dated path; GIBS also accepts the literal "default" time for NRT.
+  // Literal "default" time tracks NRT; calendar dates often snap to 00Z.
   return (
     `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/` +
-    `${layerName}/default/${day}/${matrix}/{z}/{y}/{x}.${ext}`
+    `${layerName}/default/default/${matrix}/{z}/{y}/{x}.${ext}`
   );
 }
 
@@ -175,6 +175,15 @@ function setRasterOpacity(
     'raster-opacity',
     Math.max(0, Math.min(1, opacity)),
   );
+}
+
+/** Lift dark IR / VIS so satellite doesn't read as a blank black sheet. */
+function applySatelliteRasterLook(map: maplibregl.Map, layerId: string): void {
+  if (!map.getLayer(layerId)) return;
+  map.setPaintProperty(layerId, 'raster-contrast', 0.35);
+  map.setPaintProperty(layerId, 'raster-brightness-min', 0.12);
+  map.setPaintProperty(layerId, 'raster-brightness-max', 1);
+  map.setPaintProperty(layerId, 'raster-resampling', 'linear');
 }
 
 /**
@@ -375,7 +384,12 @@ export function useRadarLayers({
       activeKind === choice.fallback &&
       choice.kind !== activeKind
     ) {
-      return { ...choice, kind: choice.fallback, fallback: undefined };
+      return {
+        ...choice,
+        kind: choice.fallback,
+        product: remapGoesProduct(choice.kind, choice.fallback, choice.product),
+        fallback: undefined,
+      };
     }
     return choice;
   }, [choice, activeKind]);
@@ -725,7 +739,11 @@ export function useRadarLayers({
       minzoom: 0,
       maxzoom: isVis ? 7 : 6,
       opacity,
+      resampling: 'linear',
     });
+    if (effectiveChoice.kind === 'gibs') {
+      applySatelliteRasterLook(map, GIBS_LAYER);
+    }
   }, [
     map,
     styleLoaded,
@@ -741,7 +759,7 @@ export function useRadarLayers({
     const product =
       effectiveChoice.kind === 'iowa-goes'
         ? effectiveChoice.product
-        : 'goes-east-vis-1km-900913';
+        : 'goes-east-ir-4km-900913';
     const url = `/api/radar/iowa-state?z={z}&x={x}&y={y}&product=${product}`;
     const opacity =
       effectiveChoice.kind === 'iowa-goes'
@@ -751,7 +769,11 @@ export function useRadarLayers({
       minzoom: 0,
       maxzoom: 10,
       opacity,
+      resampling: 'linear',
     });
+    if (effectiveChoice.kind === 'iowa-goes') {
+      applySatelliteRasterLook(map, IOWA_GOES_LAYER);
+    }
   }, [
     map,
     styleLoaded,
@@ -928,12 +950,35 @@ export function useRadarLayers({
     removeImageLayer(map, WMS_SOURCE_ID, WMS_LAYER_ID);
   }, [map, styleLoaded, effectiveChoice.kind]);
 
+  // GIBS tile probe → Iowa GOES fallback when declared.
+  useEffect(() => {
+    if (effectiveChoice.kind !== 'gibs' || !choice.fallback) return;
+    let cancelled = false;
+    const probe = gibsTileUrl(effectiveChoice.product)
+      .replace('{z}', '4')
+      .replace('{y}', '5')
+      .replace('{x}', '3');
+    void fetch(probe)
+      .then((res) => {
+        if (!cancelled && !res.ok && choice.fallback) {
+          setActiveKind(choice.fallback);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && choice.fallback) setActiveKind(choice.fallback);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveChoice.kind, effectiveChoice.product, choice.fallback]);
+
   // Iowa GOES tile probe → GIBS fallback when declared.
   useEffect(() => {
     if (effectiveChoice.kind !== 'iowa-goes' || !choice.fallback) return;
     let cancelled = false;
     const product = effectiveChoice.product;
-    void fetch(`/api/radar/iowa-state?z=4&x=3&y=6&product=${product}`)
+    // CONUS tile known to carry imagery (avoid empty ocean / lime no-data).
+    void fetch(`/api/radar/iowa-state?z=5&x=7&y=12&product=${product}`)
       .then((res) => {
         if (!cancelled && !res.ok && choice.fallback) {
           setActiveKind(choice.fallback);

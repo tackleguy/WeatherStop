@@ -54,6 +54,50 @@ export function isNightAt(lon: number, date = new Date()): boolean {
   return localSolarHour < 6.25 || localSolarHour >= 18.75;
 }
 
+export function gibsGoesLayer(
+  sector: 'east' | 'west',
+  mode: 'ir' | 'vis',
+): string {
+  if (mode === 'vis') {
+    return sector === 'west'
+      ? 'GOES-West_ABI_Band2_Red_Visible_1km'
+      : 'GOES-East_ABI_Band2_Red_Visible_1km';
+  }
+  return sector === 'west'
+    ? 'GOES-West_ABI_Band13_Clean_Infrared'
+    : 'GOES-East_ABI_Band13_Clean_Infrared';
+}
+
+export function iowaGoesProduct(
+  sector: 'east' | 'west',
+  mode: 'ir' | 'vis',
+): string {
+  if (mode === 'vis') {
+    return sector === 'west'
+      ? 'goes-west-vis-1km-900913'
+      : 'goes-east-vis-1km-900913';
+  }
+  return sector === 'west'
+    ? 'goes-west-ir-4km-900913'
+    : 'goes-east-ir-4km-900913';
+}
+
+/** Remap GOES product codes when falling back between GIBS ↔ Iowa. */
+export function remapGoesProduct(
+  fromKind: SourceKind,
+  toKind: SourceKind,
+  product: string,
+): string {
+  if (fromKind === toKind) return product;
+  const west = /west/i.test(product);
+  const vis = /vis|visible|band2/i.test(product);
+  const sector: 'east' | 'west' = west ? 'west' : 'east';
+  const mode: 'ir' | 'vis' = vis ? 'vis' : 'ir';
+  if (toKind === 'gibs') return gibsGoesLayer(sector, mode);
+  if (toKind === 'iowa-goes') return iowaGoesProduct(sector, mode);
+  return product;
+}
+
 export function resolveSource(
   product: ProductId,
   zoom: number,
@@ -222,68 +266,32 @@ export function resolveSource(
   }
 
   if (product === 'satellite-ir') {
-    if (isUS(region)) {
-      const iowa =
-        sector === 'west'
-          ? 'goes-west-ir-4km-900913'
-          : 'goes-east-ir-4km-900913';
-      return {
-        kind: 'iowa-goes',
-        product: iowa,
-        opacity: 0.75,
-        fallback: 'gibs',
-      };
-    }
-    const layer =
-      sector === 'west'
-        ? 'GOES-West_ABI_Band13_Clean_Infrared'
-        : 'GOES-East_ABI_Band13_Clean_Infrared';
-    // RainViewer satellite.infrared is often empty — don't rely on it.
+    // Prefer NASA GIBS — Iowa Mesonet IR is near-black (median ~30) and
+    // reads as a blank map on dark basemaps. Keep Iowa as a fallback.
     return {
       kind: 'gibs',
-      product: layer,
-      opacity: 0.7,
+      product: gibsGoesLayer(sector, 'ir'),
+      opacity: 0.82,
+      fallback: 'iowa-goes',
     };
   }
 
   if (product === 'satellite-vis') {
     // Night VIS is nearly black — serve IR so the map isn't empty.
     if (isNightAt(lon)) {
-      if (isUS(region)) {
-        const iowa =
-          sector === 'west'
-            ? 'goes-west-ir-4km-900913'
-            : 'goes-east-ir-4km-900913';
-        return {
-          kind: 'iowa-goes',
-          product: iowa,
-          opacity: 0.75,
-          fallback: 'gibs',
-        };
-      }
-      const layer =
-        sector === 'west'
-          ? 'GOES-West_ABI_Band13_Clean_Infrared'
-          : 'GOES-East_ABI_Band13_Clean_Infrared';
-      return { kind: 'gibs', product: layer, opacity: 0.7 };
-    }
-    if (isUS(region)) {
-      const iowa =
-        sector === 'west'
-          ? 'goes-west-vis-1km-900913'
-          : 'goes-east-vis-1km-900913';
       return {
-        kind: 'iowa-goes',
-        product: iowa,
-        opacity: 0.85,
-        fallback: 'gibs',
+        kind: 'gibs',
+        product: gibsGoesLayer(sector, 'ir'),
+        opacity: 0.82,
+        fallback: 'iowa-goes',
       };
     }
-    const layer =
-      sector === 'west'
-        ? 'GOES-West_ABI_Band2_Red_Visible_1km'
-        : 'GOES-East_ABI_Band2_Red_Visible_1km';
-    return { kind: 'gibs', product: layer, opacity: 0.7 };
+    return {
+      kind: 'gibs',
+      product: gibsGoesLayer(sector, 'vis'),
+      opacity: 0.78,
+      fallback: 'iowa-goes',
+    };
   }
 
   if (product === 'wind') {

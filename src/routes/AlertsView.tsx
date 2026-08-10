@@ -1,9 +1,10 @@
 // Full-page NWS alerts — list + detail split matching the UI board.
 
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAlerts } from '../hooks/useAlerts';
 import type { AlertRow } from '../lib/nwsAlerts';
+import { useRadarStore } from '../store/useRadarStore';
 
 type Filter = 'all' | 'severe' | 'moderate' | 'minor';
 
@@ -25,7 +26,14 @@ function sevColor(s: AlertRow['severity']): string {
 export function AlertsView() {
   const { alerts, loading, error, refresh } = useAlerts();
   const [filter, setFilter] = useState<Filter>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const focusFromUrl = searchParams.get('id');
+  const [selectedId, setSelectedId] = useState<string | null>(focusFromUrl);
+  const focusAlert = useRadarStore((s) => s.focusAlert);
+
+  useEffect(() => {
+    if (focusFromUrl) setSelectedId(focusFromUrl);
+  }, [focusFromUrl]);
 
   const filtered = useMemo(() => {
     if (filter === 'all') return alerts;
@@ -36,8 +44,14 @@ export function AlertsView() {
     return alerts.filter((a) => a.severity === filter);
   }, [alerts, filter]);
 
+  // Prefer the deep-linked id even if the current severity filter would hide it.
   const selected =
-    filtered.find((a) => a.id === selectedId) ?? filtered[0] ?? null;
+    (selectedId
+      ? alerts.find((a) => a.id === selectedId) ??
+        filtered.find((a) => a.id === selectedId)
+      : null) ??
+    filtered[0] ??
+    null;
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden">
@@ -177,6 +191,9 @@ export function AlertsView() {
               </p>
               <Link
                 to="/radar"
+                onClick={() => {
+                  if (selected) focusAlert(selected.id);
+                }}
                 className="mt-5 inline-flex rounded-full bg-[var(--accent)] px-4 py-2 text-[12px] font-semibold text-white"
               >
                 View on Radar

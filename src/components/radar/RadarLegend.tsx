@@ -12,18 +12,48 @@ import {
   RAIN_STOPS,
   HHC_STOPS,
 } from '../../lib/colorTables';
+import { isForecastProduct, useTimeFrames } from '../../hooks/useTimeFrames';
+import { formatTime } from '../../lib/time';
 
 interface SwatchRow {
   color: string;
   label: string;
 }
 
+function gradientCss(
+  stops: Array<{ value: number; color: string }>,
+): string {
+  if (stops.length === 0) return 'transparent';
+  const min = stops[0].value;
+  const max = stops[stops.length - 1].value;
+  const span = Math.max(1e-6, max - min);
+  const parts = stops.map((s) => {
+    const pct = ((s.value - min) / span) * 100;
+    return `${s.color} ${pct.toFixed(1)}%`;
+  });
+  return `linear-gradient(to top, ${parts.join(', ')})`;
+}
+
 export function RadarLegend() {
   const activeProduct = useRadarStore((s) => s.activeProduct);
+  const currentFrameIdx = useRadarStore((s) => s.currentFrameIdx);
+  const frames = useTimeFrames();
   const product = getProduct(activeProduct);
   if (product.legend === 'none') return null;
 
+  const forecast = isForecastProduct(activeProduct);
+  const ts = frames[currentFrameIdx] ?? frames[frames.length - 1];
+  const hoursAhead = forecast ? currentFrameIdx : 0;
+
+  const continuous =
+    product.legend === 'wind'
+      ? { stops: WIND_STOPS, low: '0', high: '60+', unit: 'mph' }
+      : product.legend === 'temp'
+        ? { stops: TEMP_STOPS, low: '−20°', high: '120°', unit: '°F' }
+        : null;
+
   const rows: SwatchRow[] | null = (() => {
+    if (continuous) return null;
     if (product.legend === 'dbz') {
       return DBZ_STOPS.slice()
         .reverse()
@@ -66,16 +96,6 @@ export function RadarLegend() {
     if (product.legend === 'hhc') {
       return HHC_STOPS.map((s) => ({ color: s.color, label: s.label }));
     }
-    if (product.legend === 'wind') {
-      return WIND_STOPS.slice()
-        .reverse()
-        .map((s) => ({ color: s.color, label: `${s.value} mph` }));
-    }
-    if (product.legend === 'temp') {
-      return TEMP_STOPS.slice()
-        .reverse()
-        .map((s) => ({ color: s.color, label: `${s.value}°F` }));
-    }
     return null;
   })();
 
@@ -97,22 +117,45 @@ export function RadarLegend() {
                   : product.legend === 'hhc'
                     ? 'Hydrometeor'
                     : product.legend === 'wind'
-                      ? 'Wind (mph)'
+                      ? 'Wind'
                       : product.legend === 'temp'
-                        ? 'Temperature (°F)'
+                        ? 'Temperature'
                         : product.legend === 'satellite'
                           ? 'Satellite'
                           : product.label;
 
   return (
     <div
-      className="radar-legend pointer-events-auto w-[148px] rounded-xl border border-[var(--line-default)] p-3 backdrop-blur-[20px]"
+      className="radar-legend pointer-events-auto w-[156px] rounded-xl border border-[var(--line-default)] p-3 backdrop-blur-[20px] transition-all duration-[var(--t-base)]"
       style={{ background: 'var(--glass)' }}
     >
       <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--ink-2)]">
         {title}
       </div>
-      {rows ? (
+
+      {forecast && ts ? (
+        <div
+          data-num
+          className="mb-2 rounded-md border border-[var(--line-subtle)] px-2 py-1 text-[10px] font-semibold text-[var(--ink-2)]"
+          style={{ background: 'var(--hover-fill)' }}
+        >
+          {hoursAhead === 0 ? 'NOW' : `+${hoursAhead}h`} · {formatTime(ts)}
+        </div>
+      ) : null}
+
+      {continuous ? (
+        <div className="flex items-stretch gap-2">
+          <div
+            className="h-28 w-3.5 shrink-0 rounded-sm"
+            style={{ background: gradientCss(continuous.stops) }}
+          />
+          <div className="flex flex-col justify-between py-0.5 text-[10px] text-[var(--ink-2)]">
+            <span data-num>{continuous.high}</span>
+            <span className="text-[var(--ink-4)]">{continuous.unit}</span>
+            <span data-num>{continuous.low}</span>
+          </div>
+        </div>
+      ) : rows ? (
         <div className="space-y-0.5">
           {rows.map((row) => (
             <div key={`${row.color}-${row.label}`} className="flex items-center gap-2">
@@ -131,6 +174,12 @@ export function RadarLegend() {
           {product.description}
         </div>
       )}
+
+      {forecast ? (
+        <p className="mt-2 text-[9px] leading-snug text-[var(--ink-4)]">
+          Scrub the timeline for the next 48 hours. Tap the map for a point value.
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import maplibregl from 'maplibre-gl';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useRadarLayers } from '../../hooks/useRadarLayers';
 import { useAlerts } from '../../hooks/useAlerts';
@@ -7,6 +8,7 @@ import { useRainViewer } from '../../hooks/useRainViewer';
 import { useTimeFrames } from '../../hooks/useTimeFrames';
 import { useSettings } from '../../hooks/useSettings';
 import { mapStyleUrl } from '../../lib/mapStyles';
+import { alertsPageHref } from '../../lib/alertsNav';
 import {
   categorizeAlertEvent,
   type AlertCategory,
@@ -52,6 +54,7 @@ function buildCategoryFilter(
 }
 
 export function RadarMap({ onMapReady }: Props) {
+  const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [styleLoaded, setStyleLoaded] = useState(false);
@@ -305,14 +308,12 @@ export function RadarMap({ onMapReady }: Props) {
     }
   }, [alertFilter, styleLoaded]);
 
-  // Click handling: alerts → focus; otherwise → ruler/inspect.
+  // Click handling: alerts → alerts page; otherwise → ruler/inspect.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleLoaded) return;
 
     const handler = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      // If the click landed on an alert polygon, treat it as alert focus
-      // (highest-priority interaction).
       const hits = map.queryRenderedFeatures(e.point, {
         layers: [ALERTS_FILL],
       });
@@ -320,6 +321,7 @@ export function RadarMap({ onMapReady }: Props) {
         const id = hits[0].properties?.id;
         if (typeof id === 'string') {
           focusAlert(id);
+          navigate(alertsPageHref(id));
           return;
         }
       }
@@ -331,7 +333,6 @@ export function RadarMap({ onMapReady }: Props) {
         return;
       }
 
-      // Otherwise — show inspector for the clicked point.
       setInspectAt(lngLat);
     };
 
@@ -339,7 +340,14 @@ export function RadarMap({ onMapReady }: Props) {
     return () => {
       map.off('click', handler);
     };
-  }, [styleLoaded, rulerActive, focusAlert, pushRulerPoint, setInspectAt]);
+  }, [
+    styleLoaded,
+    rulerActive,
+    focusAlert,
+    pushRulerPoint,
+    setInspectAt,
+    navigate,
+  ]);
 
   // Cursor hint when the ruler tool is active.
   useEffect(() => {

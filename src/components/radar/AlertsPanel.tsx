@@ -1,15 +1,18 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, ChevronRight, X } from 'lucide-react';
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAlerts } from '../../hooks/useAlerts';
 import {
   categorizeAlertEvent,
   useRadarStore,
 } from '../../store/useRadarStore';
 import { severityColor } from '../../lib/colorTables';
+import { alertsPageHref } from '../../lib/alertsNav';
 import { AlertDetail } from './AlertDetail';
 
 export function AlertsPanel() {
+  const navigate = useNavigate();
   const open = useRadarStore((s) => s.panelsOpen.alerts);
   const togglePanel = useRadarStore((s) => s.togglePanel);
   const focusedAlertId = useRadarStore((s) => s.focusedAlertId);
@@ -29,6 +32,11 @@ export function AlertsPanel() {
     ? alerts.find((a) => a.id === focusedAlertId) ??
       rawAlerts.find((a) => a.id === focusedAlertId)
     : null;
+
+  const openAlert = (id: string) => {
+    focusAlert(id);
+    navigate(alertsPageHref(id));
+  };
 
   return (
     <AnimatePresence>
@@ -96,7 +104,7 @@ export function AlertsPanel() {
                   <button
                     key={a.id}
                     type="button"
-                    onClick={() => focusAlert(a.id)}
+                    onClick={() => openAlert(a.id)}
                     className="flex w-full items-start gap-3 border-b border-[var(--line-subtle)] px-4 py-3 text-left transition-colors hover:bg-white/5"
                   >
                     <div

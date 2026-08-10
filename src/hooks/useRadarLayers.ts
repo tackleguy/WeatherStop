@@ -190,9 +190,20 @@ function ensureRasterSource(
   sourceId: string,
   layerId: string,
   tilesUrl: string,
-  opts: { minzoom?: number; maxzoom?: number; opacity?: number } = {},
+  opts: {
+    minzoom?: number;
+    maxzoom?: number;
+    opacity?: number;
+    /** Default nearest (radar). Use linear for continuous fields like wind/temp. */
+    resampling?: 'nearest' | 'linear';
+  } = {},
 ): void {
-  const { minzoom = 0, maxzoom = 12, opacity = 0 } = opts;
+  const {
+    minzoom = 0,
+    maxzoom = 12,
+    opacity = 0,
+    resampling = 'nearest',
+  } = opts;
   const existing = map.getSource(sourceId) as
     | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
     | undefined;
@@ -209,6 +220,9 @@ function ensureRasterSource(
   }
   if (map.getLayer(layerId)) {
     setRasterOpacity(map, layerId, opacity);
+    if (map.getPaintProperty(layerId, 'raster-resampling') !== resampling) {
+      map.setPaintProperty(layerId, 'raster-resampling', resampling);
+    }
     return;
   }
   map.addLayer({
@@ -217,8 +231,8 @@ function ensureRasterSource(
     source: sourceId,
     paint: {
       'raster-opacity': Math.max(0, Math.min(1, opacity)),
-      'raster-fade-duration': 0,
-      'raster-resampling': 'nearest',
+      'raster-fade-duration': resampling === 'linear' ? 200 : 0,
+      'raster-resampling': resampling,
     },
   });
 }
@@ -561,6 +575,7 @@ export function useRadarLayers({
       minzoom: 2,
       maxzoom: 12,
       opacity,
+      resampling: 'linear',
     });
   }, [
     map,

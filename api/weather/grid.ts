@@ -205,7 +205,8 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const { lonW, lonE, latN, latS } = tileBboxLngLat(z, x, y);
-  const GRID = 8;
+  // Denser sample grid → smoother bilinear field (Windy-like, less blocky).
+  const GRID = 12;
   const points: Array<{ lat: number; lon: number }> = [];
   for (let iy = 0; iy < GRID; iy++) {
     for (let ix = 0; ix < GRID; ix++) {

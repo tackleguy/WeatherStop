@@ -5,6 +5,7 @@
 
 import { createCanvas, type ImageData } from '@napi-rs/canvas';
 import { createRequire } from 'node:module';
+import { fillAnnularSector } from './polarRender.js';
 
 const require = createRequire(import.meta.url);
 
@@ -209,7 +210,7 @@ export function renderVelocityOrShearPng(
   maxNeg: number,
   maxPos: number,
   mode: 'velocity' | 'shear',
-  size = 512,
+  size = 768,
 ): Buffer {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext('2d');
@@ -218,9 +219,11 @@ export function renderVelocityOrShearPng(
   const pixels = imageData.data;
 
   const angles: number[] = [];
+  const deltas: number[] = [];
   const field: (number | null)[][] = [];
   for (const radial of packet.radials) {
     angles.push(radial.startAngle);
+    deltas.push(radial.angleDelta || 1);
     const row: (number | null)[] = [];
     for (let i = 0; i < packet.numberBins; i++) {
       row.push(binToKnots(radial.bins[i] ?? 0, maxNeg, maxPos));
@@ -234,14 +237,14 @@ export function renderVelocityOrShearPng(
   const metersPerPixel = (maxRangeMeters * 2) / size;
   const cx = size / 2;
   const cy = size / 2;
-  const rStep = n > 180 ? 2 : 1;
-  const gStep = packet.numberBins > 120 ? 2 : 1;
+  const firstBinM = packet.firstBin * gateMeters;
 
-  for (let ri = 0; ri < n; ri += rStep) {
-    const azRad = ((angles[ri] - 90) * Math.PI) / 180;
-    const next = field[(ri + rStep) % n];
+  for (let ri = 0; ri < n; ri++) {
+    const az0 = angles[ri];
+    const az1 = az0 + deltas[ri];
+    const next = field[(ri + 1) % n];
     const cur = field[ri];
-    for (let gi = 0; gi < packet.numberBins; gi += gStep) {
+    for (let gi = 0; gi < packet.numberBins; gi++) {
       let rgba: [number, number, number, number] | null = null;
       if (mode === 'velocity') {
         const v = cur[gi];
@@ -253,22 +256,20 @@ export function renderVelocityOrShearPng(
         if (v0 == null || v1 == null) continue;
         rgba = shearToColor(v1 - v0);
       }
-      const rangeM = (gi + 0.5) * gateMeters + packet.firstBin * gateMeters;
-      const px = cx + (rangeM * Math.cos(azRad)) / metersPerPixel;
-      const py = cy + (rangeM * Math.sin(azRad)) / metersPerPixel;
-      const [r, g, b, a] = rgba;
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dx = 0; dx < 2; dx++) {
-          const ipx = Math.floor(px) + dx;
-          const ipy = Math.floor(py) + dy;
-          if (ipx < 0 || ipx >= size || ipy < 0 || ipy >= size) continue;
-          const idx = (ipy * size + ipx) * 4;
-          pixels[idx] = r;
-          pixels[idx + 1] = g;
-          pixels[idx + 2] = b;
-          pixels[idx + 3] = a;
-        }
-      }
+      const rInner = firstBinM + gi * gateMeters;
+      const rOuter = firstBinM + (gi + 1) * gateMeters;
+      fillAnnularSector(
+        pixels,
+        size,
+        cx,
+        cy,
+        metersPerPixel,
+        az0,
+        az1,
+        rInner,
+        rOuter,
+        rgba,
+      );
     }
   }
 
@@ -280,7 +281,7 @@ export function renderCorrelationPng(
   packet: Level3Packet,
   min: number,
   increment: number,
-  size = 512,
+  size = 768,
 ): Buffer {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext('2d');
@@ -294,31 +295,29 @@ export function renderCorrelationPng(
   const metersPerPixel = (maxRangeMeters * 2) / size;
   const cx = size / 2;
   const cy = size / 2;
-  const rStep = n > 180 ? 2 : 1;
-  const gStep = packet.numberBins > 120 ? 2 : 1;
+  const firstBinM = packet.firstBin * gateMeters;
 
-  for (let ri = 0; ri < n; ri += rStep) {
+  for (let ri = 0; ri < n; ri++) {
     const radial = packet.radials[ri];
-    const azRad = ((radial.startAngle - 90) * Math.PI) / 180;
-    for (let gi = 0; gi < packet.numberBins; gi += gStep) {
+    const az0 = radial.startAngle;
+    const az1 = az0 + (radial.angleDelta || 1);
+    for (let gi = 0; gi < packet.numberBins; gi++) {
       const rho = digitalBinToValue(radial.bins[gi] ?? 0, min, increment);
       if (rho == null) continue;
-      const [r, g, b, a] = ccColor(rho);
-      const rangeM = (gi + 0.5) * gateMeters + packet.firstBin * gateMeters;
-      const px = cx + (rangeM * Math.cos(azRad)) / metersPerPixel;
-      const py = cy + (rangeM * Math.sin(azRad)) / metersPerPixel;
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dx = 0; dx < 2; dx++) {
-          const ipx = Math.floor(px) + dx;
-          const ipy = Math.floor(py) + dy;
-          if (ipx < 0 || ipx >= size || ipy < 0 || ipy >= size) continue;
-          const idx = (ipy * size + ipx) * 4;
-          pixels[idx] = r;
-          pixels[idx + 1] = g;
-          pixels[idx + 2] = b;
-          pixels[idx + 3] = a;
-        }
-      }
+      const rInner = firstBinM + gi * gateMeters;
+      const rOuter = firstBinM + (gi + 1) * gateMeters;
+      fillAnnularSector(
+        pixels,
+        size,
+        cx,
+        cy,
+        metersPerPixel,
+        az0,
+        az1,
+        rInner,
+        rOuter,
+        ccColor(rho),
+      );
     }
   }
 

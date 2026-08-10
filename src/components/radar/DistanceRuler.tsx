@@ -80,7 +80,7 @@ export function DistanceRuler() {
         ) : readout ? (
           <div className="space-y-2">
             <div className="flex items-baseline gap-3">
-              <span data-num className="text-2xl font-light text-white">
+              <span data-num className="text-2xl font-light text-[var(--ink-1)]">
                 {readout.pretty.miles}
               </span>
               <span data-num className="text-[12px] text-[var(--ink-3)]">

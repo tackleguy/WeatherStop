@@ -61,7 +61,7 @@ export function PillNav() {
           }}
           strokeWidth={2.2}
         />
-        <span className="hidden sm:inline text-[13px] font-semibold tracking-tight text-white">
+        <span className="hidden sm:inline text-[13px] font-semibold tracking-tight text-[var(--ink-1)]">
           WeatherStop
         </span>
       </NavLink>
@@ -82,8 +82,8 @@ export function PillNav() {
                   return [
                     'flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium transition-all duration-[var(--t-fast)] ease-[var(--ease)] sm:px-3.5 sm:py-2 sm:text-[13px]',
                     active
-                      ? 'text-black shadow-[0_0_16px_rgba(255,138,61,0.5)]'
-                      : 'text-white/70 hover:bg-white/5 hover:text-white',
+                      ? 'text-white shadow-[0_0_16px_var(--accent-glow)]'
+                      : 'text-[var(--ink-3)] hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]',
                   ].join(' ');
                 }}
                 style={({ isActive }) => {

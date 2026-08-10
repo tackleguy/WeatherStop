@@ -135,7 +135,7 @@ export function BookmarkBar({ map }: Props) {
                   onClick={() => onRestore(b)}
                   className="flex-1 text-left"
                 >
-                  <div className="text-[12px] font-medium text-white">
+                  <div className="text-[12px] font-medium text-[var(--ink-1)]">
                     {b.name}
                   </div>
                   <div className="tabular text-[10px] text-[var(--ink-3)]">

@@ -45,7 +45,7 @@ export async function GET(req: Request): Promise<Response> {
   else if (productRaw === 'N0C' || productRaw === 'CC') product = 'N0C';
 
   const fetchCode = product === 'N0C' ? 'N0C' : 'N0S';
-  const cacheKey = `l3/${site3}/${product}/latest.png`;
+  const cacheKey = `l3v2/${site3}/${product}/latest.png`;
   const TTL_MS = 5 * 60_000;
   const hasBlob = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 

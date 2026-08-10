@@ -13,6 +13,7 @@
 // + render (typical: 1-3s on warm functions).
 
 import { bboxForSite } from '../_lib/nexradSites.js';
+import { fillAnnularSector } from '../_lib/polarRender.js';
 import { put, list } from '@vercel/blob';
 import { createCanvas, type ImageData } from '@napi-rs/canvas';
 import { Level2Radar } from 'nexrad-level-2-data';
@@ -182,7 +183,7 @@ function renderProduct(radar: Level2RadarLike, product: L2Product): Buffer {
   if (elev == null) throw new Error('no elevation for product');
   radar.setElevation(elev);
 
-  const SIZE = 512;
+  const SIZE = 768;
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, SIZE, SIZE);
@@ -195,42 +196,45 @@ function renderProduct(radar: Level2RadarLike, product: L2Product): Buffer {
   const cy = SIZE / 2;
 
   const scanCount = radar.data[elev]?.length ?? 0;
-  const rStep = scanCount > 360 ? 2 : 1;
+  if (scanCount === 0) {
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toBuffer('image/png');
+  }
 
-  for (let si = 0; si < scanCount; si += rStep) {
+  // Pre-read azimuths so each gate can fill a continuous wedge to the next radial.
+  const azimuths: number[] = new Array(scanCount);
+  for (let si = 0; si < scanCount; si++) {
+    azimuths[si] = radar.getAzimuth(si);
+  }
+
+  for (let si = 0; si < scanCount; si++) {
     const moment = readMoment(radar, product, si);
     const gates = moment?.moment_data;
     if (!moment || !gates?.length) continue;
 
-    const azDeg = radar.getAzimuth(si);
-    const azRad = ((azDeg - 90) * Math.PI) / 180;
-    // gate_size / first_gate are kilometers in Archive II high-res moments
+    const az0 = azimuths[si];
+    const az1 = azimuths[(si + 1) % scanCount];
     const gateSizeM = (moment.gate_size ?? 0.25) * 1000;
     const firstGateM = (moment.first_gate ?? 0) * 1000;
-    const gStep = gates.length > 400 ? 2 : 1;
 
-    for (let gi = 0; gi < gates.length; gi += gStep) {
+    for (let gi = 0; gi < gates.length; gi++) {
       const value = gates[gi];
       if (shouldDropGate(product, value)) continue;
 
-      const rangeM = firstGateM + (gi + 0.5) * gateSizeM;
-      const px = cx + (rangeM * Math.cos(azRad)) / metersPerPixel;
-      const py = cy + (rangeM * Math.sin(azRad)) / metersPerPixel;
-      if (px < 0 || px >= SIZE || py < 0 || py >= SIZE) continue;
-
-      const [r, g, b, a] = colorForProduct(product, value as number);
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dx = 0; dx < 2; dx++) {
-          const ipx = Math.floor(px) + dx;
-          const ipy = Math.floor(py) + dy;
-          if (ipx < 0 || ipx >= SIZE || ipy < 0 || ipy >= SIZE) continue;
-          const idx = (ipy * SIZE + ipx) * 4;
-          pixels[idx] = r;
-          pixels[idx + 1] = g;
-          pixels[idx + 2] = b;
-          pixels[idx + 3] = a;
-        }
-      }
+      const rInner = firstGateM + gi * gateSizeM;
+      const rOuter = firstGateM + (gi + 1) * gateSizeM;
+      fillAnnularSector(
+        pixels,
+        SIZE,
+        cx,
+        cy,
+        metersPerPixel,
+        az0,
+        az1,
+        rInner,
+        rOuter,
+        colorForProduct(product, value as number),
+      );
     }
   }
 
@@ -256,7 +260,7 @@ export async function GET(req: Request): Promise<Response> {
         ? 'correlation'
         : 'reflectivity';
 
-  const cacheKey = `l2/${site}/${product}/latest.png`;
+  const cacheKey = `l2v2/${site}/${product}/latest.png`;
   const TTL_MS = 5 * 60_000;
   const hasBlob = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 

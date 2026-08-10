@@ -13,7 +13,7 @@
 // + render (typical: 1-3s on warm functions).
 
 import { bboxForSite } from '../_lib/nexradSites.js';
-import { fillAnnularSector } from '../_lib/polarRender.js';
+import { renderPolarToImageData } from '../_lib/polarRender.js';
 import { put, list } from '@vercel/blob';
 import { createCanvas, type ImageData } from '@napi-rs/canvas';
 import { Level2Radar } from 'nexrad-level-2-data';
@@ -46,13 +46,20 @@ const REFL_PALETTE: Array<[number, number, number, number]> = [
 ];
 
 function dbzToColor(dbz: number): [number, number, number, number] {
-  if (dbz < -32) return [0, 0, 0, 0]; // transparent
-  let last = REFL_PALETTE[0];
-  for (const stop of REFL_PALETTE) {
-    if (stop[0] > dbz) break;
-    last = stop;
-  }
-  return [last[1], last[2], last[3], 220];
+  if (dbz < -32) return [0, 0, 0, 0];
+  let i = 0;
+  while (i < REFL_PALETTE.length - 1 && REFL_PALETTE[i + 1][0] <= dbz) i++;
+  const a = REFL_PALETTE[i];
+  const b = REFL_PALETTE[Math.min(i + 1, REFL_PALETTE.length - 1)];
+  if (a[0] === b[0] || dbz <= a[0]) return [a[1], a[2], a[3], 220];
+  if (dbz >= b[0]) return [b[1], b[2], b[3], 220];
+  const t = (dbz - a[0]) / (b[0] - a[0]);
+  return [
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+    Math.round(a[3] + (b[3] - a[3]) * t),
+    220,
+  ];
 }
 
 // Velocity: red (toward) → near-black (zero) → green (away). Knots.
@@ -183,7 +190,7 @@ function renderProduct(radar: Level2RadarLike, product: L2Product): Buffer {
   if (elev == null) throw new Error('no elevation for product');
   radar.setElevation(elev);
 
-  const SIZE = 768;
+  const SIZE = 1024;
   const canvas = createCanvas(SIZE, SIZE);
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, SIZE, SIZE);
@@ -191,52 +198,52 @@ function renderProduct(radar: Level2RadarLike, product: L2Product): Buffer {
   const pixels = imageData.data;
 
   const maxRangeMeters = 230_000;
-  const metersPerPixel = (maxRangeMeters * 2) / SIZE;
-  const cx = SIZE / 2;
-  const cy = SIZE / 2;
-
   const scanCount = radar.data[elev]?.length ?? 0;
   if (scanCount === 0) {
     ctx.putImageData(imageData, 0, 0);
     return canvas.toBuffer('image/png');
   }
 
-  // Pre-read azimuths so each gate can fill a continuous wedge to the next radial.
-  const azimuths: number[] = new Array(scanCount);
-  for (let si = 0; si < scanCount; si++) {
-    azimuths[si] = radar.getAzimuth(si);
-  }
+  const anglesDeg: number[] = new Array(scanCount);
+  const values: (number | null)[][] = new Array(scanCount);
+  let gateSizeM = 250;
+  let firstGateM = 0;
+  let maxGates = 0;
 
   for (let si = 0; si < scanCount; si++) {
+    anglesDeg[si] = radar.getAzimuth(si);
     const moment = readMoment(radar, product, si);
     const gates = moment?.moment_data;
-    if (!moment || !gates?.length) continue;
-
-    const az0 = azimuths[si];
-    const az1 = azimuths[(si + 1) % scanCount];
-    const gateSizeM = (moment.gate_size ?? 0.25) * 1000;
-    const firstGateM = (moment.first_gate ?? 0) * 1000;
-
+    if (!moment || !gates?.length) {
+      values[si] = [];
+      continue;
+    }
+    gateSizeM = (moment.gate_size ?? 0.25) * 1000;
+    firstGateM = (moment.first_gate ?? 0) * 1000;
+    maxGates = Math.max(maxGates, gates.length);
+    const row: (number | null)[] = new Array(gates.length);
     for (let gi = 0; gi < gates.length; gi++) {
       const value = gates[gi];
-      if (shouldDropGate(product, value)) continue;
-
-      const rInner = firstGateM + gi * gateSizeM;
-      const rOuter = firstGateM + (gi + 1) * gateSizeM;
-      fillAnnularSector(
-        pixels,
-        SIZE,
-        cx,
-        cy,
-        metersPerPixel,
-        az0,
-        az1,
-        rInner,
-        rOuter,
-        colorForProduct(product, value as number),
-      );
+      row[gi] = shouldDropGate(product, value) ? null : (value as number);
     }
+    values[si] = row;
   }
+
+  renderPolarToImageData(
+    SIZE,
+    {
+      anglesDeg,
+      values,
+      gateSizeM,
+      firstGateM,
+      maxRangeM: Math.min(
+        maxRangeMeters,
+        firstGateM + maxGates * gateSizeM,
+      ),
+      colorFor: (v) => colorForProduct(product, v),
+    },
+    pixels,
+  );
 
   ctx.putImageData(imageData, 0, 0);
   return canvas.toBuffer('image/png');
@@ -260,7 +267,7 @@ export async function GET(req: Request): Promise<Response> {
         ? 'correlation'
         : 'reflectivity';
 
-  const cacheKey = `l2v2/${site}/${product}/latest.png`;
+  const cacheKey = `l2v3/${site}/${product}/latest.png`;
   const TTL_MS = 5 * 60_000;
   const hasBlob = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 

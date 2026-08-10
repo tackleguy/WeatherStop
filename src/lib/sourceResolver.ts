@@ -196,7 +196,23 @@ export function resolveSource(
 
   if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    // Station-first Level 2 (Supercell-style); WMS/mosaic only as fallback.
+    // WeatherWise-style: CONUS mosaic / WMS at glance zoom, L2 when zoomed in.
+    if (zoom <= 7) {
+      return {
+        kind: 'mosaic',
+        product: 'bvel',
+        opacity: 0.88,
+        fallback: 'ridge-wms',
+      };
+    }
+    if (zoom <= 9) {
+      return {
+        kind: 'ridge-wms',
+        product: 'bvel',
+        opacity: 0.9,
+        fallback: 'mosaic',
+      };
+    }
     return {
       kind: 'level2',
       product: 'velocity',
@@ -207,6 +223,14 @@ export function resolveSource(
 
   if (product === 'storm-rel-velocity') {
     if (!isUS(region)) return UNAVAILABLE;
+    if (zoom <= 7) {
+      return {
+        kind: 'mosaic',
+        product: 'n0s',
+        opacity: 0.88,
+        fallback: 'level3',
+      };
+    }
     return {
       kind: 'level3',
       product: 'N0S',
@@ -217,12 +241,27 @@ export function resolveSource(
 
   if (product === 'rotation') {
     if (!isUS(region)) return UNAVAILABLE;
+    if (zoom <= 7) {
+      return {
+        kind: 'mosaic',
+        product: 'rot',
+        opacity: 0.88,
+        fallback: 'level3',
+      };
+    }
     return { kind: 'level3', product: 'ROT', opacity: 0.9, fallback: 'mosaic' };
   }
 
   if (product === 'correlation') {
     if (!isUS(region)) return UNAVAILABLE;
-    // Prefer L2 dual-pol CC; L3 N0C as fallback.
+    if (zoom <= 7) {
+      return {
+        kind: 'mosaic',
+        product: 'n0c',
+        opacity: 0.85,
+        fallback: 'level3',
+      };
+    }
     return {
       kind: 'level2',
       product: 'correlation',

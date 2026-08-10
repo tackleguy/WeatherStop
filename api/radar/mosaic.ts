@@ -138,7 +138,7 @@ async function compositeL3Sites(
   ctx.clearRect(0, 0, width, height);
 
   const pngs = await mapPool(sites, 6, async (icao) => {
-    const png = await renderSiteL3(icao, product, 320);
+    const png = await renderSiteL3(icao, product, 640);
     if (!png) return null;
     return { icao, png };
   });

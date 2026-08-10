@@ -14,21 +14,20 @@ function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
+type ImageSourceLike = maplibregl.ImageSource & {
+  updateImage?: (opts: { url: string; coordinates: ImageCorners }) => void;
+};
+
 /**
- * Mount an image source and its raster layer, replacing any previous one.
+ * Mount or update an image source + raster layer.
  *
- * Do not add `raster-resampling: 'nearest'` here. The tile products use it to
- * keep radar pixels crisp, but on an image source it makes the layer paint a
- * solid opaque black quad across the whole footprint the moment the image is
- * minified — which it always is, since these are 1024² frames drawn into a
- * smaller viewport. That is what turned the map black for every image-backed
- * product; the source itself gives no hint of trouble, because the decoded
- * bitmap and the GL texture are both fine.
+ * Prefer `updateImage` when the source already exists so frame refreshes
+ * don't tear down the GL texture (that flash is what made radar feel
+ * jumpy vs WeatherWise). Fall back to remount if coordinates change a lot
+ * or updateImage isn't available.
  *
- * The source is rebuilt rather than updated through `updateImage` so that a
- * moved footprint or a second frame arriving mid-download cannot interleave
- * with a load already in flight. Refreshes carry a blob that is already in
- * memory, so the rebuild costs a frame at most.
+ * Do not set `raster-resampling: 'nearest'` — on ImageSource it paints a
+ * solid black quad when the bitmap is minified.
  */
 export function putImageLayer(
   map: maplibregl.Map,
@@ -38,6 +37,17 @@ export function putImageLayer(
   coordinates: ImageCorners,
   opacity: number,
 ): void {
+  const existing = map.getSource(sourceId) as ImageSourceLike | undefined;
+  if (existing && typeof existing.updateImage === 'function' && map.getLayer(layerId)) {
+    try {
+      existing.updateImage({ url, coordinates });
+      map.setPaintProperty(layerId, 'raster-opacity', clamp01(opacity));
+      return;
+    } catch {
+      // Fall through to remount.
+    }
+  }
+
   removeImageLayer(map, sourceId, layerId);
   map.addSource(sourceId, { type: 'image', url, coordinates });
   map.addLayer({
@@ -46,7 +56,8 @@ export function putImageLayer(
     source: sourceId,
     paint: {
       'raster-opacity': clamp01(opacity),
-      'raster-fade-duration': 0,
+      // Short fade softens frame swaps without delaying live feel.
+      'raster-fade-duration': 180,
     },
   });
 }

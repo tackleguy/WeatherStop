@@ -5,7 +5,7 @@
 
 import { createCanvas, type ImageData } from '@napi-rs/canvas';
 import { createRequire } from 'node:module';
-import { fillAnnularSector } from './polarRender.js';
+import { renderPolarToImageData } from './polarRender.js';
 
 const require = createRequire(import.meta.url);
 
@@ -210,7 +210,7 @@ export function renderVelocityOrShearPng(
   maxNeg: number,
   maxPos: number,
   mode: 'velocity' | 'shear',
-  size = 768,
+  size = 1024,
 ): Buffer {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext('2d');
@@ -218,12 +218,10 @@ export function renderVelocityOrShearPng(
   const imageData = ctx.createImageData(size, size) as unknown as ImageData;
   const pixels = imageData.data;
 
-  const angles: number[] = [];
-  const deltas: number[] = [];
+  const anglesDeg: number[] = [];
   const field: (number | null)[][] = [];
   for (const radial of packet.radials) {
-    angles.push(radial.startAngle);
-    deltas.push(radial.angleDelta || 1);
+    anglesDeg.push(radial.startAngle);
     const row: (number | null)[] = [];
     for (let i = 0; i < packet.numberBins; i++) {
       row.push(binToKnots(radial.bins[i] ?? 0, maxNeg, maxPos));
@@ -233,44 +231,44 @@ export function renderVelocityOrShearPng(
 
   const n = field.length;
   const gateMeters = 1000 * (packet.rangeScale || 1);
-  const maxRangeMeters = packet.numberBins * gateMeters;
-  const metersPerPixel = (maxRangeMeters * 2) / size;
-  const cx = size / 2;
-  const cy = size / 2;
   const firstBinM = packet.firstBin * gateMeters;
+  const maxRangeMeters = firstBinM + packet.numberBins * gateMeters;
 
-  for (let ri = 0; ri < n; ri++) {
-    const az0 = angles[ri];
-    const az1 = az0 + deltas[ri];
-    const next = field[(ri + 1) % n];
-    const cur = field[ri];
-    for (let gi = 0; gi < packet.numberBins; gi++) {
-      let rgba: [number, number, number, number] | null = null;
-      if (mode === 'velocity') {
-        const v = cur[gi];
-        if (v == null) continue;
-        rgba = velToColor(v);
-      } else {
-        const v0 = cur[gi];
+  if (mode === 'velocity') {
+    renderPolarToImageData(
+      size,
+      {
+        anglesDeg,
+        values: field,
+        gateSizeM: gateMeters,
+        firstGateM: firstBinM,
+        maxRangeM: maxRangeMeters,
+        colorFor: (v) => velToColor(v),
+      },
+      pixels,
+    );
+  } else {
+    // Shear: difference vs next radial at same gate, then polar render.
+    const shearField: (number | null)[][] = field.map((row, ri) => {
+      const next = field[(ri + 1) % n];
+      return row.map((v0, gi) => {
         const v1 = next[gi];
-        if (v0 == null || v1 == null) continue;
-        rgba = shearToColor(v1 - v0);
-      }
-      const rInner = firstBinM + gi * gateMeters;
-      const rOuter = firstBinM + (gi + 1) * gateMeters;
-      fillAnnularSector(
-        pixels,
-        size,
-        cx,
-        cy,
-        metersPerPixel,
-        az0,
-        az1,
-        rInner,
-        rOuter,
-        rgba,
-      );
-    }
+        if (v0 == null || v1 == null) return null;
+        return v1 - v0;
+      });
+    });
+    renderPolarToImageData(
+      size,
+      {
+        anglesDeg,
+        values: shearField,
+        gateSizeM: gateMeters,
+        firstGateM: firstBinM,
+        maxRangeM: maxRangeMeters,
+        colorFor: (v) => shearToColor(v),
+      },
+      pixels,
+    );
   }
 
   ctx.putImageData(imageData, 0, 0);
@@ -281,7 +279,7 @@ export function renderCorrelationPng(
   packet: Level3Packet,
   min: number,
   increment: number,
-  size = 768,
+  size = 1024,
 ): Buffer {
   const canvas = createCanvas(size, size);
   const ctx = canvas.getContext('2d');
@@ -289,37 +287,33 @@ export function renderCorrelationPng(
   const imageData = ctx.createImageData(size, size) as unknown as ImageData;
   const pixels = imageData.data;
 
-  const n = packet.radials.length;
-  const gateMeters = 1000 * (packet.rangeScale || 1);
-  const maxRangeMeters = packet.numberBins * gateMeters;
-  const metersPerPixel = (maxRangeMeters * 2) / size;
-  const cx = size / 2;
-  const cy = size / 2;
-  const firstBinM = packet.firstBin * gateMeters;
-
-  for (let ri = 0; ri < n; ri++) {
-    const radial = packet.radials[ri];
-    const az0 = radial.startAngle;
-    const az1 = az0 + (radial.angleDelta || 1);
-    for (let gi = 0; gi < packet.numberBins; gi++) {
-      const rho = digitalBinToValue(radial.bins[gi] ?? 0, min, increment);
-      if (rho == null) continue;
-      const rInner = firstBinM + gi * gateMeters;
-      const rOuter = firstBinM + (gi + 1) * gateMeters;
-      fillAnnularSector(
-        pixels,
-        size,
-        cx,
-        cy,
-        metersPerPixel,
-        az0,
-        az1,
-        rInner,
-        rOuter,
-        ccColor(rho),
-      );
+  const anglesDeg: number[] = [];
+  const field: (number | null)[][] = [];
+  for (const radial of packet.radials) {
+    anglesDeg.push(radial.startAngle);
+    const row: (number | null)[] = [];
+    for (let i = 0; i < packet.numberBins; i++) {
+      row.push(digitalBinToValue(radial.bins[i] ?? 0, min, increment));
     }
+    field.push(row);
   }
+
+  const gateMeters = 1000 * (packet.rangeScale || 1);
+  const firstBinM = packet.firstBin * gateMeters;
+  const maxRangeMeters = firstBinM + packet.numberBins * gateMeters;
+
+  renderPolarToImageData(
+    size,
+    {
+      anglesDeg,
+      values: field,
+      gateSizeM: gateMeters,
+      firstGateM: firstBinM,
+      maxRangeM: maxRangeMeters,
+      colorFor: (v) => ccColor(v),
+    },
+    pixels,
+  );
 
   ctx.putImageData(imageData, 0, 0);
   return canvas.toBuffer('image/png');
@@ -329,7 +323,7 @@ export function renderCorrelationPng(
 export async function renderSiteL3(
   siteIcao: string,
   product: L3ProductCode,
-  size = 384,
+  size = 640,
 ): Promise<Buffer | null> {
   const site3 = siteCode(siteIcao);
   const fetchCode = product === 'N0C' ? 'N0C' : 'N0S';

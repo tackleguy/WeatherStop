@@ -91,8 +91,10 @@ interface Args {
 
 const PIXELATED_PAINT: maplibregl.RasterLayerSpecification['paint'] = {
   'raster-opacity': 0,
-  'raster-fade-duration': 0,
-  'raster-resampling': 'nearest',
+  'raster-fade-duration': 200,
+  // Linear = WeatherWise-like soft composite; categorical L2/L3 images
+  // still look crisp because their source PNGs are solid polar fills.
+  'raster-resampling': 'linear',
 };
 
 function radarTileUrl(
@@ -108,7 +110,7 @@ function radarTileUrl(
     kind: 'radar',
     frameIndex: idx,
     color: 7,
-    smooth: 0,
+    smooth: 1,
     snow: 1,
   });
 }
@@ -212,7 +214,7 @@ function ensureRasterSource(
     minzoom = 0,
     maxzoom = 12,
     opacity = 0,
-    resampling = 'nearest',
+    resampling = 'linear',
   } = opts;
   const existing = map.getSource(sourceId) as
     | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })

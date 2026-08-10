@@ -27,7 +27,8 @@ export type SourceKind =
   | 'windy'
   | 'gibs'
   | 'iowa-goes'
-  | 'open-meteo-grid';
+  | 'open-meteo-grid'
+  | 'nullschool';
 
 export interface SourceChoice {
   kind: SourceKind;
@@ -108,28 +109,12 @@ export function resolveSource(
 
   if (product === 'reflectivity') {
     if (isUS(region)) {
-      // Restored May 5 ladder (deploy 9939199) — RainViewer / Iowa XYZ
-      // for CONUS. OpenGeo national WMS blanked the map in production.
+      // Supercell-style: continental tiles at low zoom, NEXRAD L2 from z8+.
       if (zoom <= 7) {
         return {
           kind: 'rainviewer',
           product: 'radar',
           opacity: 0.78,
-        };
-      }
-      if (zoom <= 9) {
-        return {
-          kind: 'iowa-state',
-          product: 'nexrad-n0q-900913',
-          opacity: 0.85,
-          fallback: 'rainviewer',
-        };
-      }
-      if (zoom <= 12) {
-        return {
-          kind: 'ridge-wms',
-          product: 'bref',
-          opacity: 0.9,
           fallback: 'iowa-state',
         };
       }
@@ -211,16 +196,7 @@ export function resolveSource(
 
   if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    // Station-first: pin the nearest (or manually chosen) site and let the
-    // user step site-to-site. Mosaic is only the last-resort fallback.
-    if (zoom <= 12) {
-      return {
-        kind: 'ridge-wms',
-        product: 'bvel',
-        opacity: 0.9,
-        fallback: 'mosaic',
-      };
-    }
+    // Station-first Level 2 (Supercell-style); WMS/mosaic only as fallback.
     return {
       kind: 'level2',
       product: 'velocity',
@@ -231,15 +207,12 @@ export function resolveSource(
 
   if (product === 'storm-rel-velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    if (zoom <= 11) {
-      return {
-        kind: 'level3',
-        product: 'N0S',
-        opacity: 0.9,
-        fallback: 'ridge-wms',
-      };
-    }
-    return { kind: 'level3', product: 'N0S', opacity: 0.9, fallback: 'mosaic' };
+    return {
+      kind: 'level3',
+      product: 'N0S',
+      opacity: 0.9,
+      fallback: 'mosaic',
+    };
   }
 
   if (product === 'rotation') {
@@ -249,14 +222,7 @@ export function resolveSource(
 
   if (product === 'correlation') {
     if (!isUS(region)) return UNAVAILABLE;
-    if (zoom <= 11) {
-      return {
-        kind: 'level3',
-        product: 'N0C',
-        opacity: 0.9,
-        fallback: 'level2',
-      };
-    }
+    // Prefer L2 dual-pol CC; L3 N0C as fallback.
     return {
       kind: 'level2',
       product: 'correlation',
@@ -295,13 +261,13 @@ export function resolveSource(
   }
 
   if (product === 'wind') {
-    return { kind: 'open-meteo-grid', product: 'wind', opacity: 0.55 };
+    return { kind: 'nullschool', product: 'wind', opacity: 0 };
   }
   if (product === 'temperature') {
-    return { kind: 'open-meteo-grid', product: 'temperature', opacity: 0.7 };
+    return { kind: 'nullschool', product: 'temp', opacity: 0 };
   }
   if (product === 'rain-forecast') {
-    return { kind: 'open-meteo-grid', product: 'precipitation', opacity: 0.75 };
+    return { kind: 'nullschool', product: 'precip', opacity: 0 };
   }
 
   return UNAVAILABLE;

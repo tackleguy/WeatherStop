@@ -3,11 +3,15 @@
 // useRadarLayers hook applies on top of the crossfade target.
 
 import { Sliders } from 'lucide-react';
+import { isForecastProduct } from '../../hooks/useTimeFrames';
 import { useRadarStore } from '../../store/useRadarStore';
 
 export function LayerOpacitySlider() {
   const opacity = useRadarStore((s) => s.overlayOpacity);
   const setOpacity = useRadarStore((s) => s.setOverlayOpacity);
+  const product = useRadarStore((s) => s.activeProduct);
+  // Nullschool embed owns its own visuals — opacity slider doesn't apply.
+  if (isForecastProduct(product)) return null;
 
   return (
     <div

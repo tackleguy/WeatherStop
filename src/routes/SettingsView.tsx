@@ -219,10 +219,32 @@ export function SettingsView() {
             <div className="panel panel-padded mx-auto max-w-lg space-y-2 text-[13px] text-[var(--ink-3)]">
               <p>NOAA / NWS — forecasts, alerts, radar</p>
               <p>NOAA / SPC — convective & fire outlooks</p>
-              <p>Open-Meteo — global models & forecast overlays</p>
+              <p>NOAA NEXRAD Level 2/3 — site radar (AWS Open Data)</p>
+              <p>Open-Meteo — global models & city forecasts</p>
+              <p>Earth Nullschool — wind / temp / rain map</p>
               <p>Iowa State Mesonet — CONUS composite</p>
               <p>RainViewer — global radar / satellite</p>
               <p>OpenFreeMap — basemap</p>
+              <p className="pt-1 text-[10px] leading-snug text-[var(--ink-3)]">
+                Companion desktop radar:{' '}
+                <a
+                  href="https://supercellwx.net/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-[var(--ink-2)]"
+                >
+                  Supercell Wx
+                </a>{' '}
+                (MIT) ·{' '}
+                <a
+                  href="https://supercell-wx.readthedocs.io/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-[var(--ink-2)]"
+                >
+                  docs
+                </a>
+              </p>
             </div>
           ) : null}
 

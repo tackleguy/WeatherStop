@@ -41,6 +41,8 @@ export function RadarLegend() {
   const frames = useTimeFrames();
   const product = getProduct(activeProduct);
   if (product.legend === 'none') return null;
+  // Nullschool embed brings its own scale UI.
+  if (isForecastProduct(activeProduct)) return null;
 
   const forecast = isForecastProduct(activeProduct);
   const ts = frames[currentFrameIdx] ?? frames[frames.length - 1];

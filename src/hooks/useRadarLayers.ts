@@ -268,6 +268,8 @@ function attributionFor(kind: SourceKind): string {
       return '© <a href="https://earthdata.nasa.gov/gibs" target="_blank" rel="noopener">NASA GIBS</a> · GOES ABI';
     case 'open-meteo-grid':
       return '© <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>';
+    case 'nullschool':
+      return '© <a href="https://earth.nullschool.net" target="_blank" rel="noopener">earth.nullschool.net</a> · GFS / NOAA';
     case 'windy':
       return '© <a href="https://windy.com" target="_blank" rel="noopener">Windy</a>';
   }
@@ -301,18 +303,18 @@ function labelFor(
   if (kind === 'level2' && site) {
     const label =
       product === 'velocity'
-        ? 'Base Velocity (L2)'
+        ? 'Level 2 Velocity'
         : product === 'correlation'
-          ? 'Correlation Coef (L2)'
-          : 'Reflectivity (L2)';
+          ? 'Level 2 Correlation'
+          : 'Level 2 Reflectivity';
     return `${site.id} · ${label}`;
   }
   if (kind === 'level3' && site) {
     return product === 'ROT'
-      ? `${site.id} · Rotation (L3)`
+      ? `${site.id} · Level 3 Rotation`
       : product === 'N0C'
-        ? `${site.id} · Correlation (L3)`
-        : `${site.id} · Storm-Rel Vel (L3)`;
+        ? `${site.id} · Level 3 Correlation`
+        : `${site.id} · Level 3 Storm-Rel Vel`;
   }
   if (kind === 'mosaic') {
     if (product === 'bvel') return 'Base Velocity (CONUS mosaic)';
@@ -339,6 +341,11 @@ function labelFor(
     if (productId === 'wind') return 'Wind (Open-Meteo, forecast)';
     if (productId === 'rain-forecast') return 'Rain forecast (Open-Meteo)';
     return 'Temperature (Open-Meteo, forecast)';
+  }
+  if (kind === 'nullschool') {
+    if (productId === 'wind') return 'Wind (earth.nullschool.net)';
+    if (productId === 'rain-forecast') return 'Rain (earth.nullschool.net)';
+    return 'Temperature (earth.nullschool.net)';
   }
   return 'Reflectivity';
 }
@@ -384,10 +391,34 @@ export function useRadarLayers({
       activeKind === choice.fallback &&
       choice.kind !== activeKind
     ) {
+      let product = remapGoesProduct(
+        choice.kind,
+        choice.fallback,
+        choice.product,
+      );
+      // L2 → L3 CC uses N0C; L2 velocity → WMS uses bvel.
+      if (choice.fallback === 'level3' && product === 'correlation') {
+        product = 'N0C';
+      }
+      if (choice.fallback === 'ridge-wms' && product === 'velocity') {
+        product = 'bvel';
+      }
+      if (
+        choice.fallback === 'ridge-wms' &&
+        (product === 'reflectivity' || product === 'radar')
+      ) {
+        product = 'bref';
+      }
+      if (choice.fallback === 'mosaic' && product === 'N0S') product = 'n0s';
+      if (choice.fallback === 'mosaic' && product === 'ROT') product = 'rot';
+      if (choice.fallback === 'mosaic' && product === 'N0C') product = 'n0c';
+      if (choice.fallback === 'iowa-state' && product === 'radar') {
+        product = 'nexrad-n0q-900913';
+      }
       return {
         ...choice,
         kind: choice.fallback,
-        product: remapGoesProduct(choice.kind, choice.fallback, choice.product),
+        product,
         fallback: undefined,
       };
     }
@@ -901,7 +932,7 @@ export function useRadarLayers({
     | 'boha'
     | 'bdsa' => {
     const p = effectiveChoice.product;
-    if (p === 'bvel' || p === 'n0s') return 'bvel';
+    if (p === 'bvel' || p === 'n0s' || p === 'velocity') return 'bvel';
     if (p === 'cref') return 'cref';
     if (p === 'neet') return 'neet';
     if (p === 'pcpn') return 'pcpn';
@@ -1065,7 +1096,8 @@ export function useRadarLayers({
     };
 
     void load();
-    interval = window.setInterval(() => void load(), 5 * 60_000);
+    // Supercell-style cadence: refresh L2 ~every 2 min (volumes update ~1–6 min).
+    interval = window.setInterval(() => void load(), 2 * 60_000);
 
     return () => {
       cancelled = true;
@@ -1084,7 +1116,7 @@ export function useRadarLayers({
     setLayerLoading,
   ]);
 
-  // Level 3 (N0S / ROT)
+  // Level 3 (N0S / ROT / N0C)
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (effectiveChoice.kind !== 'level3' || !site) {
@@ -1157,7 +1189,7 @@ export function useRadarLayers({
     };
 
     void load();
-    interval = window.setInterval(() => void load(), 5 * 60_000);
+    interval = window.setInterval(() => void load(), 2 * 60_000);
 
     return () => {
       cancelled = true;

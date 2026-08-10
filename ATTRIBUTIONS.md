@@ -16,17 +16,21 @@ attribution chip and the map's `attributionControl`.
 | **NOAA / SPC** — spc.noaa.gov / mapservices.weather.noaa.gov | Convective outlooks (Day 1–8) + fire weather outlooks | Public domain. Cite "NOAA / Storm Prediction Center". |
 | **NOAA / NWS RIDGE WMS** — opengeo.ncep.noaa.gov | Per-site reflectivity / velocity overlays | Public domain. Cite "NOAA / NWS". |
 | **NOAA NEXRAD Level 2** — `noaa-nexrad-level2` AWS Open Data bucket | Storm-scale radar (server-rendered) | Public domain. Bucket is part of the NOAA Big Data Program. |
-| **Unidata NEXRAD Level 3** — `unidata-nexrad-level3` AWS Open Data | Storm-relative velocity / rotation (server-rendered) | Public domain. Cite "NOAA / Unidata". |
+| **Unidata NEXRAD Level 3** — `unidata-nexrad-level3` AWS Open Data | Storm-relative velocity / rotation / CC (server-rendered) | Public domain. Cite "NOAA / Unidata". |
+| **Supercell Wx** — [supercellwx.net](https://supercellwx.net/) / [dpaulat/supercell-wx](https://github.com/dpaulat/supercell-wx) | Companion desktop radar (inspiration; tiny in-app download/docs links) | MIT. We do **not** redistribute the desktop binary. In-app radar uses the same public NOAA NEXRAD Open Data streams Supercell visualizes. |
 | **NASA GIBS** — gibs.earthdata.nasa.gov | GOES IR / visible satellite WMTS | Free public imagery; cite NASA GIBS / GOES. |
 | **NOAA / NHC** — mapservices.weather.noaa.gov tropical | Tropical cones, tracks, watches, GTWO | Public domain. Cite "NOAA / National Hurricane Center". |
-| **Open-Meteo** — api.open-meteo.com | Forecasts, model compare, seamless wind/temp/rain map fields + wind particles | CC BY 4.0 (`https://open-meteo.com/en/license`). Attribution shown in-app. |
+| **Open-Meteo** — api.open-meteo.com | Home/forecast cards, model compare | CC BY 4.0 (`https://open-meteo.com/en/license`). Attribution shown in-app. |
+| **Earth Nullschool** — earth.nullschool.net | Wind / temperature / rain map visualization (embedded deep-link) | Proprietary visualization © Nullschool Technologies Inc. We deep-link/embed only; do not redistribute their app. Contact `inquiries@nullschool.net` for commercial licensing. Data shown is primarily GFS / NOAA (public). |
 | **RainViewer** — tilecache.rainviewer.com | Global radar / satellite raster tiles | Free for non-commercial use; attribution required (`https://www.rainviewer.com/api.html`). |
 | **Iowa State Mesonet** — mesonet.agron.iastate.edu | NEXRAD CONUS composite tiles | Free with attribution (`https://mesonet.agron.iastate.edu/`). |
 | **OpenFreeMap** — tiles.openfreemap.org | Vector basemap | Free; OpenStreetMap data © OpenStreetMap contributors (ODbL). |
 | **Windy Webcams** — api.windy.com/webcams | Live cameras card | Requires API key; non-commercial use. |
 
 If you fork this project for commercial distribution, audit each source's
-terms — RainViewer and Windy Webcams both restrict commercial use.
+terms — RainViewer, Windy Webcams, and Earth Nullschool all restrict or
+require a license for commercial use. Supercell Wx itself is MIT; follow
+its project license if you redistribute that app.
 
 ## Bundled JavaScript dependencies
 

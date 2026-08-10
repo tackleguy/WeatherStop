@@ -15,11 +15,13 @@ import { LayerInfoCard } from '../components/radar/LayerInfoCard';
 import { LayerLoadingChip } from '../components/radar/LayerLoadingChip';
 import { LayerOpacitySlider } from '../components/radar/LayerOpacitySlider';
 import { MapSearchChrome } from '../components/radar/MapSearchChrome';
+import { NullschoolEarth } from '../components/radar/NullschoolEarth';
 import { ProductRail } from '../components/radar/ProductRail';
 import { RadarLegend } from '../components/radar/RadarLegend';
 import { RadarMap } from '../components/radar/RadarMap';
 import { ScaleBar } from '../components/radar/ScaleBar';
 import { StationModal } from '../components/radar/StationModal';
+import { SupercellCompanionChip } from '../components/radar/SupercellCompanionChip';
 import { TimeScrubber } from '../components/radar/TimeScrubber';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { PRODUCTS } from '../constants/products';
@@ -47,6 +49,7 @@ export function RadarView() {
 
         <main className="relative flex-1 overflow-hidden">
           <RadarMap onMapReady={setMap} />
+          <NullschoolEarth />
 
           <MapSearchChrome map={map} />
 
@@ -73,6 +76,7 @@ export function RadarView() {
               }}
             />
             <ScaleBar map={map} />
+            <SupercellCompanionChip />
           </div>
 
           <div

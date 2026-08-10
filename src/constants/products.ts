@@ -198,7 +198,7 @@ export const PRODUCTS: Product[] = [
     shortLabel: 'WIND',
     icon: Wind,
     legend: 'wind',
-    description: 'Surface wind forecast + particles (scrub +48h)',
+    description: 'Surface wind via earth.nullschool.net (GFS)',
     group: 'surface',
   },
   {
@@ -207,7 +207,7 @@ export const PRODUCTS: Product[] = [
     shortLabel: 'TEMP',
     icon: Thermometer,
     legend: 'temp',
-    description: 'Surface temperature forecast (scrub +48h)',
+    description: 'Surface temperature via earth.nullschool.net (GFS)',
     group: 'surface',
   },
   {
@@ -216,7 +216,7 @@ export const PRODUCTS: Product[] = [
     shortLabel: 'RAIN',
     icon: CloudRain,
     legend: 'rain-fcst',
-    description: 'Hourly precipitation forecast (scrub +48h)',
+    description: '3-hour precip via earth.nullschool.net (GFS)',
     group: 'surface',
   },
 ];

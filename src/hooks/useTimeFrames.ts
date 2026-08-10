@@ -1,7 +1,7 @@
 // Scrub frames for the radar timeline.
 //
 // Radar / satellite products: rolling past hour (5-minute steps).
-// Wind / temperature: hourly Open-Meteo forecast (now → +47h), Windy-style.
+// Wind / temperature / rain: Earth Nullschool (GFS) via deep-link embed.
 
 import { useEffect, useMemo, useState } from 'react';
 import {

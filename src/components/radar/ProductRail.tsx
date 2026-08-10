@@ -62,16 +62,16 @@ export function ProductRail() {
                     onClick={() => !disabled && setActiveProduct(p.id)}
                     disabled={disabled}
                     aria-label={p.label}
-                    className={`grid h-10 w-10 place-items-center rounded-lg transition-all duration-[var(--t-fast)] ease-[var(--ease)] ${
+                    className={`grid h-10 w-10 place-items-center rounded-lg transition-all duration-[var(--t-base)] ease-[var(--ease)] ${
                       active
-                        ? 'text-black'
-                        : 'text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]'
+                        ? 'scale-[1.04] text-white'
+                        : 'text-[var(--ink-3)] hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]'
                     } ${disabled ? 'cursor-not-allowed opacity-30' : ''}`}
                     style={
                       active
                         ? {
                             background: 'var(--accent)',
-                            boxShadow: '0 0 12px var(--accent-glow)',
+                            boxShadow: '0 0 14px var(--accent-glow)',
                           }
                         : undefined
                     }

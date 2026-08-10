@@ -52,7 +52,7 @@ export function ScaleBar({ map }: Props) {
 
   return (
     <div
-      className="pointer-events-none absolute bottom-3 left-3 z-10 select-none rounded-md border border-[var(--line-subtle)] bg-black/45 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-2)] backdrop-blur"
+      className="pointer-events-none select-none rounded-md border border-[var(--line-subtle)] bg-black/45 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-2)] backdrop-blur"
       data-num
     >
       <div className="mb-0.5">{prettyMiles(computed.miles)}</div>

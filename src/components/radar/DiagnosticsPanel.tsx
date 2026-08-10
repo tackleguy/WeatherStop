@@ -19,7 +19,7 @@ export function DiagnosticsPanel() {
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-[100px] left-3 z-30 w-[260px] rounded-xl border border-[var(--line-default)] p-3 text-[11px] backdrop-blur-[20px]"
+      className="pointer-events-auto w-[260px] rounded-xl border border-[var(--line-default)] p-3 text-[11px] backdrop-blur-[20px]"
       style={{ background: 'var(--glass-hi)' }}
     >
       <div className="mb-2 flex items-center justify-between">

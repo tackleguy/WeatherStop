@@ -8,10 +8,22 @@
 // This is intentionally simple — no Workbox dependency, no precache
 // manifest. Vite's hashed asset filenames give us cache-busting for free.
 
-const VERSION = 'weatherstop-v8';
+const VERSION = 'weatherstop-v10';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const APP_SHELL = ['/manifest.webmanifest', '/icon.svg'];
+
+// How long a cached /api response may be served before we wait for the
+// network instead. Previously there was no age check at all, so a cached
+// body was returned forever.
+const API_MAX_AGE_MS = 5 * 60 * 1000;
+const CACHED_AT_HEADER = 'x-sw-cached-at';
+
+// Radar imagery is georeferenced per bbox (or per tile) and runs to
+// megabytes a frame, so the cache would grow without ever being hit.
+// These already carry their own Cache-Control, so leave them to the HTTP
+// cache and keep the service worker out of the image path entirely.
+const BYPASS_CACHE = /^\/api\/(?:radar\/|weather\/grid)/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -73,6 +85,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // API or weather data — stale-while-revalidate.
+  if (BYPASS_CACHE.test(url.pathname)) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/data/')) {
     event.respondWith(staleWhileRevalidate(req));
   }
@@ -114,13 +127,48 @@ async function staleWhileRevalidate(request) {
   const cache = await caches.open(RUNTIME_CACHE);
   const cached = await cache.match(request);
   const networked = fetch(request)
-    .then((response) => {
+    .then(async (response) => {
       if (response && response.status === 200 && response.type !== 'opaque') {
-        cache.put(request, response.clone());
+        await putStamped(cache, request, response);
       }
       return response;
     })
     .catch(() => undefined);
 
-  return cached ?? networked ?? new Response('offline', { status: 503 });
+  // Serve a fresh-enough copy immediately and let the refetch land in the
+  // background; otherwise wait for the network and only fall back to a
+  // stale body if it fails.
+  if (cached && ageOf(cached) < API_MAX_AGE_MS) {
+    networked.catch(() => undefined);
+    return cached;
+  }
+
+  const response = await networked;
+  if (response) return response;
+  // `cached ?? networked` used to return the pending promise here, which
+  // resolves to undefined on a failed fetch and makes respondWith throw
+  // instead of surfacing the offline response.
+  return cached ?? new Response('offline', { status: 503 });
+}
+
+function ageOf(response) {
+  const stamped = Number(response.headers.get(CACHED_AT_HEADER));
+  if (Number.isFinite(stamped) && stamped > 0) return Date.now() - stamped;
+  const date = Date.parse(response.headers.get('date') ?? '');
+  if (Number.isFinite(date)) return Date.now() - date;
+  return Number.POSITIVE_INFINITY;
+}
+
+async function putStamped(cache, request, response) {
+  const body = await response.clone().arrayBuffer();
+  const headers = new Headers(response.headers);
+  headers.set(CACHED_AT_HEADER, String(Date.now()));
+  await cache.put(
+    request,
+    new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    }),
+  );
 }

@@ -2,6 +2,12 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
+// Set DEV_API_PROXY to a deployed origin to exercise the real radar
+// endpoints against local client code, e.g.
+//   DEV_API_PROXY=https://weather-stop.vercel.app npm run dev
+// Without it /api is stubbed (see devApiStub).
+const API_PROXY = process.env.DEV_API_PROXY;
+
 // `npm run dev` doesn't execute the Vercel Edge Functions in /api — those
 // only run under `vercel dev` or in production. Without this plugin the
 // browser's calls to /api/alerts etc. would land on the Vite dev server,
@@ -14,6 +20,7 @@ function devApiStub(): Plugin {
     name: 'weatherstop-dev-api-stub',
     apply: 'serve',
     configureServer(server) {
+      if (API_PROXY) return;
       server.middlewares.use((req, res, next) => {
         if (!req.url) return next();
         if (!req.url.startsWith('/api/')) return next();
@@ -31,6 +38,10 @@ function devApiStub(): Plugin {
   };
 }
 
+const apiProxyConfig = API_PROXY
+  ? { '/api': { target: API_PROXY, changeOrigin: true, secure: true } }
+  : undefined;
+
 export default defineConfig({
   plugins: [react(), devApiStub()],
   resolve: {
@@ -41,6 +52,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    proxy: apiProxyConfig,
     watch: {
       // Keep the watcher out of api/ — those files are Vercel-runtime
       // source, not part of the SPA bundle.

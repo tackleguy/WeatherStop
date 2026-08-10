@@ -17,10 +17,12 @@ export interface ActiveSourcePlan {
   unavailableReason: string | null;
 }
 
-// 13 frames × 5 minutes = 60 minute rolling window. Index FRAME_COUNT-1
-// is "live" (most recent frame).
+// Radar: 13 frames × 5 minutes = 60 minute rolling window.
+// Index FRAME_COUNT-1 is "live" (most recent frame).
 export const FRAME_COUNT = 13;
 export const FRAME_INTERVAL_MIN = 5;
+/** Hourly forecast horizon for wind / temperature (Windy-style). */
+export const FORECAST_FRAME_COUNT = 48;
 
 export type PanelKey =
   | 'alerts'
@@ -168,6 +170,12 @@ interface RadarState {
   manualSite: NexradSite | null;
   setManualSite: (site: NexradSite | null) => void;
 
+  /** Label of the overlay currently being fetched, or null when idle.
+   *  CONUS mosaics and Level 2 renders take seconds; with no feedback an
+   *  empty map during that window reads as a broken layer. */
+  layerLoading: string | null;
+  setLayerLoading: (label: string | null) => void;
+
   // Panel visibility
   panelsOpen: Record<PanelKey, boolean>;
   togglePanel: (key: PanelKey) => void;
@@ -179,7 +187,23 @@ interface RadarState {
 
 export const useRadarStore = create<RadarState>((set, get) => ({
   activeProduct: DEFAULT_PRODUCT,
-  setActiveProduct: (id) => set({ activeProduct: id }),
+  setActiveProduct: (id) => {
+    const wasForecast =
+      get().activeProduct === 'wind' || get().activeProduct === 'temperature';
+    const isForecast = id === 'wind' || id === 'temperature';
+    // Radar scrubber ends on LIVE; forecast scrubber starts at NOW (idx 0).
+    const frame =
+      wasForecast === isForecast
+        ? get().currentFrameIdx
+        : isForecast
+          ? 0
+          : FRAME_COUNT - 1;
+    set({
+      activeProduct: id,
+      currentFrameIdx: frame,
+      isPlaying: false,
+    });
+  },
 
   currentFrameIdx: FRAME_COUNT - 1,
   setCurrentFrameIdx: (next) =>
@@ -263,7 +287,8 @@ export const useRadarStore = create<RadarState>((set, get) => ({
         prev &&
         prev.kind === plan.kind &&
         prev.label === plan.label &&
-        prev.siteId === plan.siteId
+        prev.siteId === plan.siteId &&
+        prev.unavailableReason === plan.unavailableReason
       ) {
         return state;
       }
@@ -271,6 +296,10 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     }),
   manualSite: null,
   setManualSite: (site) => set({ manualSite: site }),
+
+  layerLoading: null,
+  setLayerLoading: (label) =>
+    set((state) => (state.layerLoading === label ? state : { layerLoading: label })),
 
   panelsOpen: {
     alerts: true,

@@ -25,7 +25,10 @@ export function SearchBar({ onPick }: Props) {
 
   return (
     <div className="relative w-full">
-      <div className="flex items-center gap-2 rounded-lg border border-[var(--line-default)] bg-[var(--glass)] px-3 py-1.5 backdrop-blur-md">
+      <div
+        className="flex items-center gap-2 rounded-lg border border-[var(--line-default)] px-3 py-1.5 backdrop-blur-md transition-colors duration-[var(--t-fast)]"
+        style={{ background: 'var(--glass-hi)' }}
+      >
         <Search
           className="h-3.5 w-3.5 text-[var(--ink-3)]"
           strokeWidth={2}

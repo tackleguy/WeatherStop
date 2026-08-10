@@ -1,87 +1,129 @@
-// Bottom-left chip that shows what the user is currently looking at —
-// "RainViewer · Reflectivity" at low zoom, "KFWS · Reflectivity"
-// when the per-site WMS is active. When a per-site source is active
-// the chip expands into a 5-station "switch site" dropdown so the
-// user can pin a different radar.
+// Bottom-left chip: active source + station stepper for per-site products.
 
-import { ChevronUp, MapPin, Radio } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, MapPin, Radio } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { nearestNexradSites } from '../../lib/nexradSites';
+import {
+  nearestNexradSites,
+  stepNexradSite,
+} from '../../lib/nexradSites';
 import { useRadarStore } from '../../store/useRadarStore';
 
-export function LayerInfoCard() {
+interface Props {
+  onFlyToSite?: (lon: number, lat: number) => void;
+}
+
+export function LayerInfoCard({ onFlyToSite }: Props) {
   const plan = useRadarStore((s) => s.sourcePlan);
   const setManualSite = useRadarStore((s) => s.setManualSite);
   const manualSite = useRadarStore((s) => s.manualSite);
   const center = useRadarStore((s) => s.mapCenter);
   const [open, setOpen] = useState(false);
 
-  const isPerSite = plan?.kind === 'ridge-wms' || plan?.kind === 'level2';
+  const isPerSite = Boolean(plan?.siteId);
   const nearby = useMemo(() => {
     if (!isPerSite || !center) return [];
-    return nearestNexradSites(center[0], center[1], 6);
+    return nearestNexradSites(center[0], center[1], 8);
   }, [isPerSite, center]);
+
+  const activeSite = useMemo(() => {
+    if (!plan?.siteId) return null;
+    return (
+      nearby.find((n) => n.site.id === plan.siteId)?.site ??
+      manualSite ??
+      null
+    );
+  }, [plan?.siteId, nearby, manualSite]);
 
   if (!plan) return null;
 
-  // Banner shown when the active product isn't available in this region
-  // (e.g. velocity over Europe). Replaces the chip entirely so the user
-  // doesn't think the layer just hasn't loaded yet.
   if (plan.kind === 'unavailable' && plan.unavailableReason) {
     return (
       <div
-        className="pointer-events-auto absolute left-3 bottom-[88px] z-10 max-w-[280px] rounded-xl border border-amber-500/30 px-3 py-2 backdrop-blur-md"
+        className="pointer-events-auto max-w-[280px] rounded-xl border border-amber-500/30 px-3 py-2 backdrop-blur-md transition-all duration-[var(--t-base)]"
         style={{ background: 'rgba(245, 158, 11, 0.12)' }}
       >
-        <div className="text-[11px] font-medium text-amber-200">
+        <div className="text-[11px] font-medium leading-snug text-amber-200">
           {plan.unavailableReason}
         </div>
       </div>
     );
   }
 
+  const step = (dir: 1 | -1) => {
+    if (!activeSite || !center) return;
+    const next = stepNexradSite(activeSite, center[0], center[1], dir);
+    setManualSite(next);
+    onFlyToSite?.(next.lon, next.lat);
+  };
+
   return (
     <div
-      className="pointer-events-auto absolute left-3 bottom-[88px] z-10 rounded-xl border border-[var(--line-default)] backdrop-blur-md"
+      className="pointer-events-auto max-w-[340px] rounded-xl border border-[var(--line-default)] backdrop-blur-md transition-all duration-[var(--t-base)]"
       style={{ background: 'var(--glass)' }}
     >
-      <button
-        type="button"
-        onClick={() => isPerSite && setOpen((v) => !v)}
-        className={`flex items-center gap-2 px-3 py-2 ${
-          isPerSite ? 'cursor-pointer hover:bg-white/5' : 'cursor-default'
-        }`}
-        aria-expanded={isPerSite ? open : undefined}
-      >
-        <Radio
-          className="h-3.5 w-3.5 text-[var(--accent,#ff8a3d)]"
-          strokeWidth={2}
-        />
-        <div className="flex flex-col items-start gap-0">
-          <span className="text-[12px] font-semibold tracking-tight text-white">
-            {plan.label}
-          </span>
-          {plan.siteName ? (
-            <span className="text-[10px] text-[var(--ink-3)]">
-              {plan.siteName}, {plan.siteState} · 230 km range
-              {manualSite ? ' · pinned' : ''}
-            </span>
-          ) : (
-            <span
-              className="text-[10px] text-[var(--ink-3)]"
-              dangerouslySetInnerHTML={{ __html: plan.attribution }}
-            />
-          )}
-        </div>
+      <div className="flex items-stretch">
         {isPerSite ? (
-          <ChevronUp
-            className={`ml-1 h-3 w-3 text-[var(--ink-3)] transition-transform ${
-              open ? '' : 'rotate-180'
-            }`}
-            strokeWidth={2.4}
-          />
+          <button
+            type="button"
+            aria-label="Previous radar site"
+            onClick={() => step(-1)}
+            className="grid w-8 shrink-0 place-items-center border-r border-[var(--line-subtle)] text-[var(--ink-3)] transition-colors hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]"
+          >
+            <ChevronLeft className="h-4 w-4" strokeWidth={2} />
+          </button>
         ) : null}
-      </button>
+
+        <button
+          type="button"
+          onClick={() => isPerSite && setOpen((v) => !v)}
+          className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-2 transition-colors ${
+            isPerSite
+              ? 'cursor-pointer hover:bg-[var(--hover-fill)]'
+              : 'cursor-default'
+          }`}
+          aria-expanded={isPerSite ? open : undefined}
+        >
+          <Radio
+            className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]"
+            strokeWidth={2}
+          />
+          <div className="flex min-w-0 flex-col items-start gap-0">
+            <span className="truncate text-[12px] font-semibold leading-snug tracking-tight text-[var(--ink-1)]">
+              {plan.label}
+            </span>
+            {plan.siteName ? (
+              <span className="truncate text-[10px] leading-snug text-[var(--ink-3)]">
+                {plan.siteName}, {plan.siteState} · 230 km
+                {manualSite ? ' · pinned' : ''}
+              </span>
+            ) : (
+              <span
+                className="truncate text-[10px] leading-snug text-[var(--ink-3)]"
+                dangerouslySetInnerHTML={{ __html: plan.attribution }}
+              />
+            )}
+          </div>
+          {isPerSite ? (
+            <ChevronUp
+              className={`ml-1 h-3 w-3 shrink-0 text-[var(--ink-3)] transition-transform duration-[var(--t-fast)] ${
+                open ? '' : 'rotate-180'
+              }`}
+              strokeWidth={2.4}
+            />
+          ) : null}
+        </button>
+
+        {isPerSite ? (
+          <button
+            type="button"
+            aria-label="Next radar site"
+            onClick={() => step(1)}
+            className="grid w-8 shrink-0 place-items-center border-l border-[var(--line-subtle)] text-[var(--ink-3)] transition-colors hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]"
+          >
+            <ChevronRight className="h-4 w-4" strokeWidth={2} />
+          </button>
+        ) : null}
+      </div>
 
       {isPerSite && open ? (
         <div className="border-t border-[var(--line-subtle)] px-2 py-2">
@@ -97,12 +139,13 @@ export function LayerInfoCard() {
                     type="button"
                     onClick={() => {
                       setManualSite(site);
+                      onFlyToSite?.(site.lon, site.lat);
                       setOpen(false);
                     }}
                     className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] transition-colors ${
                       active
-                        ? 'bg-white/15 text-white'
-                        : 'text-[var(--ink-2)] hover:bg-white/5 hover:text-[var(--ink-1)]'
+                        ? 'bg-[var(--hover-fill)] text-[var(--ink-1)]'
+                        : 'text-[var(--ink-2)] hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]'
                     }`}
                   >
                     <span className="flex items-center gap-1.5">
@@ -110,7 +153,7 @@ export function LayerInfoCard() {
                         className="h-2.5 w-2.5 shrink-0"
                         strokeWidth={2.4}
                         style={{
-                          color: active ? 'var(--accent,#ff8a3d)' : 'var(--ink-4)',
+                          color: active ? 'var(--accent)' : 'var(--ink-4)',
                         }}
                       />
                       <span className="font-mono font-semibold">{site.id}</span>
@@ -133,7 +176,7 @@ export function LayerInfoCard() {
                     setManualSite(null);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-center rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
+                  className="flex w-full items-center justify-center rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-3)] hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]"
                 >
                   Use nearest (auto)
                 </button>

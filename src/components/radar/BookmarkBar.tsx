@@ -31,7 +31,7 @@ export function BookmarkBar({ map }: Props) {
       <button
         type="button"
         onClick={() => togglePanel('bookmarks')}
-        className="pointer-events-auto absolute left-4 bottom-[88px] z-10 flex items-center gap-1 rounded-lg border border-[var(--line-default)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-2)] backdrop-blur-md hover:text-[var(--ink-1)]"
+        className="pointer-events-auto flex items-center gap-1 rounded-lg border border-[var(--line-default)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-2)] backdrop-blur-md hover:text-[var(--ink-1)]"
         style={{ background: 'var(--glass)' }}
       >
         <Bookmark className="h-3.5 w-3.5" strokeWidth={1.8} />
@@ -75,7 +75,7 @@ export function BookmarkBar({ map }: Props) {
 
   return (
     <div
-      className="pointer-events-auto absolute left-4 bottom-[88px] z-10 w-72 rounded-xl border border-[var(--line-default)] backdrop-blur-md"
+      className="pointer-events-auto w-72 rounded-xl border border-[var(--line-default)] backdrop-blur-md"
       style={{ background: 'var(--glass-hi)' }}
     >
       <header className="flex items-center justify-between border-b border-[var(--line-subtle)] px-3 py-2">

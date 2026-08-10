@@ -167,22 +167,14 @@ export function resolveSource(
 
   if (product === 'velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    // CONUS: multi-site OpenGeo mosaic (single-site is a speck at z≤9).
-    // Closer in: nearest-site WMS, then Level 2.
-    if (zoom <= 9) {
-      return {
-        kind: 'mosaic',
-        product: 'bvel',
-        opacity: 0.9,
-        fallback: 'ridge-wms',
-      };
-    }
+    // Station-first: pin the nearest (or manually chosen) site and let the
+    // user step site-to-site. Mosaic is only the last-resort fallback.
     if (zoom <= 12) {
       return {
         kind: 'ridge-wms',
         product: 'bvel',
         opacity: 0.9,
-        fallback: 'level2',
+        fallback: 'mosaic',
       };
     }
     return {
@@ -195,40 +187,24 @@ export function resolveSource(
 
   if (product === 'storm-rel-velocity') {
     if (!isUS(region)) return UNAVAILABLE;
-    if (zoom <= 8) {
+    if (zoom <= 11) {
       return {
-        kind: 'mosaic',
-        product: 'n0s',
+        kind: 'level3',
+        product: 'N0S',
         opacity: 0.9,
         fallback: 'ridge-wms',
       };
     }
-    if (zoom <= 11) {
-      return {
-        kind: 'ridge-wms',
-        product: 'bvel',
-        opacity: 0.9,
-        fallback: 'level3',
-      };
-    }
-    return { kind: 'level3', product: 'N0S', opacity: 0.9 };
+    return { kind: 'level3', product: 'N0S', opacity: 0.9, fallback: 'mosaic' };
   }
 
   if (product === 'rotation') {
     if (!isUS(region)) return UNAVAILABLE;
-    // Single-site L3 — mosaics looked empty at CONUS in practice.
-    if (zoom < 7) {
-      return UNAVAILABLE;
-    }
-    return { kind: 'level3', product: 'ROT', opacity: 0.9 };
+    return { kind: 'level3', product: 'ROT', opacity: 0.9, fallback: 'mosaic' };
   }
 
   if (product === 'correlation') {
     if (!isUS(region)) return UNAVAILABLE;
-    // May 7: Level 2 CC when zoomed in enough.
-    if (zoom < 8) {
-      return UNAVAILABLE;
-    }
     if (zoom <= 11) {
       return {
         kind: 'level3',
@@ -346,12 +322,6 @@ export function unavailabilityReason(
     zoom < 7
   ) {
     return 'Zoom in further (z7+) to load this single-radar product.';
-  }
-  if (product === 'rotation' && zoom < 7) {
-    return 'Zoom in further (z7+) to load rotation.';
-  }
-  if (product === 'correlation' && zoom < 8) {
-    return 'Zoom in further (z8+) for correlation coefficient.';
   }
   return null;
 }

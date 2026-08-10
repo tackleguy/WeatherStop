@@ -12,6 +12,7 @@ import { DiagnosticsPanel } from '../components/radar/DiagnosticsPanel';
 import { DistanceRuler } from '../components/radar/DistanceRuler';
 import { FocusedAlertChip } from '../components/radar/FocusedAlertChip';
 import { LayerInfoCard } from '../components/radar/LayerInfoCard';
+import { LayerLoadingChip } from '../components/radar/LayerLoadingChip';
 import { LayerOpacitySlider } from '../components/radar/LayerOpacitySlider';
 import { MapSearchChrome } from '../components/radar/MapSearchChrome';
 import { ProductRail } from '../components/radar/ProductRail';
@@ -27,6 +28,11 @@ import { useRadarStore } from '../store/useRadarStore';
 export function RadarView() {
   const [map, setMap] = useState<maplibregl.Map | null>(null);
   const isMobile = useIsMobile();
+  // AlertsPanel is absolutely positioned over the right edge of the map
+  // rather than taking layout space, so the right-hand stack has to step
+  // aside or the legend and ruler end up hidden behind it.
+  const alertsOpen = useRadarStore((s) => s.panelsOpen.alerts);
+  const alertsOverlap = !isMobile && alertsOpen;
 
   return (
     <div className="absolute inset-0 flex flex-col" style={{ background: 'var(--surface-0)' }}>
@@ -47,12 +53,37 @@ export function RadarView() {
           {!isMobile ? <AlertFilterChips /> : null}
           {!isMobile ? <LayerOpacitySlider /> : null}
           <FocusedAlertChip />
-          <RadarLegend />
-          <LayerInfoCard />
-          <DiagnosticsPanel />
-          <ScaleBar map={map} />
-          <BookmarkBar map={map} />
-          <DistanceRuler />
+
+          {/* Bottom corners are flex stacks rather than four independently
+              positioned cards. Previously the bookmarks pill, the layer
+              chip, the legend and the ruler all sat at bottom-[88px] with
+              the same z-index, so whichever rendered last hid the status
+              and "unavailable" messages underneath it. */}
+          <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col items-start gap-2">
+            <DiagnosticsPanel />
+            <BookmarkBar map={map} />
+            <LayerLoadingChip />
+            <LayerInfoCard
+              onFlyToSite={(lon, lat) => {
+                map?.flyTo({
+                  center: [lon, lat],
+                  zoom: Math.max(map.getZoom(), 7.5),
+                  duration: 650,
+                });
+              }}
+            />
+            <ScaleBar map={map} />
+          </div>
+
+          <div
+            className={`pointer-events-none absolute bottom-7 z-10 flex flex-col items-end gap-2 ${
+              alertsOverlap ? 'right-[376px]' : 'right-4'
+            }`}
+          >
+            <DistanceRuler />
+            <RadarLegend />
+          </div>
+
           <ClickInspector />
         </main>
 

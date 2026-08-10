@@ -4,7 +4,7 @@
 // crossfades all the others to opacity 0.
 
 import maplibregl from 'maplibre-gl';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fadeRasterTo } from '../lib/crossfade';
 import { type ProductId } from '../constants/products';
 import {
@@ -19,7 +19,13 @@ import {
 } from '../lib/nexradSites';
 import { useRadarStore } from '../store/useRadarStore';
 import { useWmsSiteLayer, WMS_LAYER_ID, WMS_SOURCE_ID } from './useWmsSiteLayer';
-import { detectRegion } from '../lib/regionDetect';
+import { detectRegionForViewport } from '../lib/regionDetect';
+import {
+  createRetiringUrlSlot,
+  putImageLayer,
+  removeImageLayer,
+  type ImageCorners,
+} from '../lib/imageLayer';
 import {
   resolveSource,
   unavailabilityReason,
@@ -87,19 +93,6 @@ const PIXELATED_PAINT: maplibregl.RasterLayerSpecification['paint'] = {
   'raster-resampling': 'nearest',
 };
 
-function safeAdd(
-  map: maplibregl.Map,
-  styleLoaded: boolean,
-  fn: () => void,
-): void {
-  if (!styleLoaded) return;
-  if (typeof map.isStyleLoaded === 'function' && !map.isStyleLoaded()) {
-    map.once('idle', fn);
-    return;
-  }
-  fn();
-}
-
 function radarTileUrl(
   catalog: RainViewerCatalog | undefined,
   ts: number,
@@ -151,12 +144,7 @@ function bboxFromMap(map: maplibregl.Map) {
       [b.getEast(), b.getNorth()],
       [b.getEast(), b.getSouth()],
       [b.getWest(), b.getSouth()],
-    ] as [
-      [number, number],
-      [number, number],
-      [number, number],
-      [number, number],
-    ],
+    ] as ImageCorners,
   };
 }
 
@@ -188,9 +176,17 @@ function setRasterOpacity(
   );
 }
 
+/**
+ * Mount a raster tile source once, then only swap tiles and opacity.
+ *
+ * Callers must already have checked `styleLoaded`, which is set from
+ * MapLibre's `load` event — at that point the style is parsed and
+ * addSource/addLayer are safe. Deferring to `map.once('idle', …)` is not:
+ * `idle` waits for every mounted source to settle, and this map keeps
+ * several tile sources fetching continuously.
+ */
 function ensureRasterSource(
   map: maplibregl.Map,
-  styleLoaded: boolean,
   sourceId: string,
   layerId: string,
   tilesUrl: string,
@@ -200,20 +196,9 @@ function ensureRasterSource(
   const existing = map.getSource(sourceId) as
     | (maplibregl.RasterTileSource & { setTiles?: (urls: string[]) => void })
     | undefined;
-  if (existing && typeof existing.setTiles === 'function') {
-    existing.setTiles([tilesUrl]);
-    setRasterOpacity(map, layerId, opacity);
-    return;
-  }
   if (existing) {
-    setRasterOpacity(map, layerId, opacity);
-    return;
-  }
-  safeAdd(map, styleLoaded, () => {
-    if (map.getSource(sourceId)) {
-      setRasterOpacity(map, layerId, opacity);
-      return;
-    }
+    if (typeof existing.setTiles === 'function') existing.setTiles([tilesUrl]);
+  } else {
     map.addSource(sourceId, {
       type: 'raster',
       tiles: [tilesUrl],
@@ -221,16 +206,20 @@ function ensureRasterSource(
       minzoom,
       maxzoom,
     });
-    map.addLayer({
-      id: layerId,
-      type: 'raster',
-      source: sourceId,
-      paint: {
-        'raster-opacity': opacity,
-        'raster-fade-duration': 0,
-        'raster-resampling': 'nearest',
-      },
-    });
+  }
+  if (map.getLayer(layerId)) {
+    setRasterOpacity(map, layerId, opacity);
+    return;
+  }
+  map.addLayer({
+    id: layerId,
+    type: 'raster',
+    source: sourceId,
+    paint: {
+      'raster-opacity': Math.max(0, Math.min(1, opacity)),
+      'raster-fade-duration': 0,
+      'raster-resampling': 'nearest',
+    },
   });
 }
 
@@ -343,12 +332,20 @@ export function useRadarLayers({
   const overlay = useRadarStore((s) => s.overlayOpacity);
   const mapZoom = useRadarStore((s) => s.mapZoom);
   const mapCenter = useRadarStore((s) => s.mapCenter);
+  const bbox = useRadarStore((s) => s.bbox);
+  const setLayerLoading = useRadarStore((s) => s.setLayerLoading);
   const lon = mapCenter?.[0] ?? -97;
   const lat = mapCenter?.[1] ?? 39;
   const [activeKind, setActiveKind] = useState<SourceKind | null>(null);
   const [wmsFailReason, setWmsFailReason] = useState<string | null>(null);
 
-  const region = useMemo(() => detectRegion(lon, lat), [lon, lat]);
+  // Classify from the whole viewport, not just the centre: at continental
+  // zoom the centre drifts into Canada or the Gulf while CONUS fills the
+  // screen, which reported US-only products as unavailable.
+  const region = useMemo(
+    () => detectRegionForViewport(lon, lat, bbox),
+    [lon, lat, bbox],
+  );
 
   const choice: SourceChoice = useMemo(
     () => resolveSource(activeProduct, mapZoom, region, lon),
@@ -412,6 +409,12 @@ export function useRadarLayers({
     activeProduct === 'satellite-ir' || activeProduct === 'satellite-vis';
   const hasRainviewerSat = (catalog?.satelliteInfrared.length ?? 0) > 0;
 
+  // Image layers mount from async callbacks, so they must read the live
+  // target rather than whatever `overlay` was when the effect was set up.
+  const targetOpacity = effectiveChoice.opacity * overlay;
+  const targetOpacityRef = useRef(targetOpacity);
+  targetOpacityRef.current = targetOpacity;
+
   const plan = useMemo<SourcePlan>(() => {
     return {
       kind: effectiveChoice.opacity === 0 ? 'unavailable' : effectiveChoice.kind,
@@ -440,21 +443,18 @@ export function useRadarLayers({
       return;
     }
     if (existing) return;
-    safeAdd(map, styleLoaded, () => {
-      if (map.getSource(RAINVIEWER_RADAR_SOURCE)) return;
-      map.addSource(RAINVIEWER_RADAR_SOURCE, {
-        type: 'raster',
-        tiles: [url],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 12,
-      });
-      map.addLayer({
-        id: RAINVIEWER_RADAR_LAYER,
-        type: 'raster',
-        source: RAINVIEWER_RADAR_SOURCE,
-        paint: PIXELATED_PAINT,
-      });
+    map.addSource(RAINVIEWER_RADAR_SOURCE, {
+      type: 'raster',
+      tiles: [url],
+      tileSize: 256,
+      minzoom: 0,
+      maxzoom: 12,
+    });
+    map.addLayer({
+      id: RAINVIEWER_RADAR_LAYER,
+      type: 'raster',
+      source: RAINVIEWER_RADAR_SOURCE,
+      paint: PIXELATED_PAINT,
     });
   }, [map, styleLoaded, catalog, ts]);
 
@@ -470,21 +470,18 @@ export function useRadarLayers({
       return;
     }
     if (existing) return;
-    safeAdd(map, styleLoaded, () => {
-      if (map.getSource(RAINVIEWER_SAT_SOURCE)) return;
-      map.addSource(RAINVIEWER_SAT_SOURCE, {
-        type: 'raster',
-        tiles: [url],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 9,
-      });
-      map.addLayer({
-        id: RAINVIEWER_SAT_LAYER,
-        type: 'raster',
-        source: RAINVIEWER_SAT_SOURCE,
-        paint: PIXELATED_PAINT,
-      });
+    map.addSource(RAINVIEWER_SAT_SOURCE, {
+      type: 'raster',
+      tiles: [url],
+      tileSize: 256,
+      minzoom: 0,
+      maxzoom: 9,
+    });
+    map.addLayer({
+      id: RAINVIEWER_SAT_LAYER,
+      type: 'raster',
+      source: RAINVIEWER_SAT_SOURCE,
+      paint: PIXELATED_PAINT,
     });
   }, [map, styleLoaded, catalog, ts]);
 
@@ -504,7 +501,7 @@ export function useRadarLayers({
       effectiveChoice.kind === 'iowa-state'
         ? effectiveChoice.opacity * overlay
         : 0;
-    ensureRasterSource(map, styleLoaded, IOWA_SOURCE, IOWA_LAYER, tilesUrl, {
+    ensureRasterSource(map, IOWA_SOURCE, IOWA_LAYER, tilesUrl, {
       minzoom: 0,
       maxzoom: 12,
       opacity,
@@ -540,19 +537,27 @@ export function useRadarLayers({
     };
   }, [effectiveChoice.kind, effectiveChoice.product, choice.fallback]);
 
-  // Open-Meteo wind / temp grid — keep source mounted; opacity via crossfade.
+  // Open-Meteo wind / temp grid — scrubber drives the forecast hour.
   useEffect(() => {
     if (!map || !styleLoaded) return;
     const layer =
       effectiveChoice.kind === 'open-meteo-grid'
         ? effectiveChoice.product
         : 'wind';
-    const url = `/api/weather/grid?z={z}&x={x}&y={y}&layer=${layer}`;
+    // Round scrubber ts to the UTC hour the tile API keys on.
+    const hourIso = new Date(Math.floor(ts / 3600) * 3600 * 1000)
+      .toISOString()
+      .slice(0, 13);
+    const url =
+      `/api/weather/grid?z={z}&x={x}&y={y}&layer=${layer}` +
+      (effectiveChoice.kind === 'open-meteo-grid'
+        ? `&time=${encodeURIComponent(hourIso)}`
+        : '');
     const opacity =
       effectiveChoice.kind === 'open-meteo-grid'
         ? effectiveChoice.opacity * overlay
         : 0;
-    ensureRasterSource(map, styleLoaded, GRID_SOURCE, GRID_LAYER, url, {
+    ensureRasterSource(map, GRID_SOURCE, GRID_LAYER, url, {
       minzoom: 2,
       maxzoom: 12,
       opacity,
@@ -564,14 +569,14 @@ export function useRadarLayers({
     effectiveChoice.product,
     effectiveChoice.opacity,
     overlay,
+    ts,
   ]);
 
   // DWD
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (effectiveChoice.kind !== 'dwd') {
-      if (map.getLayer(DWD_LAYER)) map.removeLayer(DWD_LAYER);
-      if (map.getSource(DWD_SOURCE)) map.removeSource(DWD_SOURCE);
+      removeImageLayer(map, DWD_SOURCE, DWD_LAYER);
       return;
     }
 
@@ -582,28 +587,14 @@ export function useRadarLayers({
       const url = `/api/radar/dwd?bbox=${encodeURIComponent(
         bbox3857,
       )}&width=1024&height=1024`;
-      const src = map.getSource(DWD_SOURCE) as
-        | maplibregl.ImageSource
-        | undefined;
-      if (src) {
-        src.updateImage({ url, coordinates: coords });
-        setRasterOpacity(map, DWD_LAYER, effectiveChoice.opacity * overlay);
-        return;
-      }
-      safeAdd(map, styleLoaded, () => {
-        if (map.getSource(DWD_SOURCE)) return;
-        map.addSource(DWD_SOURCE, { type: 'image', url, coordinates: coords });
-        map.addLayer({
-          id: DWD_LAYER,
-          type: 'raster',
-          source: DWD_SOURCE,
-          paint: {
-            'raster-opacity': effectiveChoice.opacity * overlay,
-            'raster-fade-duration': 0,
-            'raster-resampling': 'nearest',
-          },
-        });
-      });
+      putImageLayer(
+        map,
+        DWD_SOURCE,
+        DWD_LAYER,
+        url,
+        coords,
+        targetOpacityRef.current,
+      );
     };
 
     const debounced = () => {
@@ -639,7 +630,7 @@ export function useRadarLayers({
       effectiveChoice.kind === 'gibs'
         ? effectiveChoice.opacity * overlay
         : 0;
-    ensureRasterSource(map, styleLoaded, GIBS_SOURCE, GIBS_LAYER, url, {
+    ensureRasterSource(map, GIBS_SOURCE, GIBS_LAYER, url, {
       minzoom: 0,
       maxzoom: isVis ? 7 : 6,
       opacity,
@@ -665,14 +656,11 @@ export function useRadarLayers({
       effectiveChoice.kind === 'iowa-goes'
         ? effectiveChoice.opacity * overlay
         : 0;
-    ensureRasterSource(
-      map,
-      styleLoaded,
-      IOWA_GOES_SOURCE,
-      IOWA_GOES_LAYER,
-      url,
-      { minzoom: 0, maxzoom: 10, opacity },
-    );
+    ensureRasterSource(map, IOWA_GOES_SOURCE, IOWA_GOES_LAYER, url, {
+      minzoom: 0,
+      maxzoom: 10,
+      opacity,
+    });
   }, [
     map,
     styleLoaded,
@@ -687,15 +675,20 @@ export function useRadarLayers({
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (effectiveChoice.kind !== 'mosaic') {
-      if (map.getLayer(MOSAIC_LAYER)) map.removeLayer(MOSAIC_LAYER);
-      if (map.getSource(MOSAIC_SOURCE)) map.removeSource(MOSAIC_SOURCE);
+      removeImageLayer(map, MOSAIC_SOURCE, MOSAIC_LAYER);
       return;
     }
 
     let timer: number | undefined;
     let cancelled = false;
     let seq = 0;
-    let lastObjUrl: string | null = null;
+    const urls = createRetiringUrlSlot();
+    const label = labelFor(
+      'mosaic',
+      effectiveChoice.product,
+      activeProduct,
+      undefined,
+    );
 
     const refresh = () => {
       if (cancelled || !map) return;
@@ -704,48 +697,42 @@ export function useRadarLayers({
       const url =
         `/api/radar/mosaic?product=${encodeURIComponent(effectiveChoice.product)}` +
         `&bbox=${encodeURIComponent(bbox3857)}&width=1024&height=1024`;
+      setLayerLoading(label);
 
       void fetch(url)
         .then(async (res) => {
-          if (cancelled || mySeq !== seq) return;
+          if (cancelled) return;
           if (!res.ok) {
             if (choice.fallback) setActiveKind(choice.fallback);
             return;
           }
           const blob = await res.blob();
-          if (cancelled || mySeq !== seq || !map) return;
-          const objUrl = URL.createObjectURL(blob);
-          if (lastObjUrl) URL.revokeObjectURL(lastObjUrl);
-          lastObjUrl = objUrl;
-          const src = map.getSource(MOSAIC_SOURCE) as
-            | maplibregl.ImageSource
-            | undefined;
-          if (src) {
-            src.updateImage({ url: objUrl, coordinates: coords });
-            return;
-          }
-          safeAdd(map, styleLoaded, () => {
-            if (map.getSource(MOSAIC_SOURCE)) return;
-            map.addSource(MOSAIC_SOURCE, {
-              type: 'image',
-              url: objUrl,
-              coordinates: coords,
-            });
-            map.addLayer({
-              id: MOSAIC_LAYER,
-              type: 'raster',
-              source: MOSAIC_SOURCE,
-              paint: {
-                'raster-opacity': effectiveChoice.opacity * overlay,
-                'raster-fade-duration': 0,
-                'raster-resampling': 'nearest',
-              },
-            });
-          });
+          if (cancelled || !map) return;
+          // A mosaic takes seconds to render, so any pan in the meantime
+          // used to invalidate the response and nothing ever mounted.
+          // Superseded frames are only worth dropping once something is
+          // already on screen.
+          if (mySeq !== seq && map.getLayer(MOSAIC_LAYER)) return;
+          putImageLayer(
+            map,
+            MOSAIC_SOURCE,
+            MOSAIC_LAYER,
+            urls.next(blob),
+            coords,
+            targetOpacityRef.current,
+          );
         })
-        .catch(() => {
-          if (cancelled || mySeq !== seq) return;
-          if (choice.fallback) setActiveKind(choice.fallback);
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          // Only a transport failure should demote us to the fallback —
+          // a mount error must not silently swap CONUS velocity for a
+          // single-site footprint that is invisible at this zoom.
+          if (err instanceof TypeError && choice.fallback) {
+            setActiveKind(choice.fallback);
+          }
+        })
+        .finally(() => {
+          if (!cancelled && mySeq === seq) setLayerLoading(null);
         });
     };
 
@@ -758,11 +745,11 @@ export function useRadarLayers({
     map.on('moveend', debounced);
     return () => {
       cancelled = true;
+      setLayerLoading(null);
       if (timer !== undefined) window.clearTimeout(timer);
       map.off('moveend', debounced);
-      if (map.getLayer(MOSAIC_LAYER)) map.removeLayer(MOSAIC_LAYER);
-      if (map.getSource(MOSAIC_SOURCE)) map.removeSource(MOSAIC_SOURCE);
-      if (lastObjUrl) URL.revokeObjectURL(lastObjUrl);
+      removeImageLayer(map, MOSAIC_SOURCE, MOSAIC_LAYER);
+      urls.dispose();
     };
   }, [
     map,
@@ -770,6 +757,8 @@ export function useRadarLayers({
     effectiveChoice.kind,
     effectiveChoice.product,
     choice.fallback,
+    activeProduct,
+    setLayerLoading,
   ]);
 
   useEffect(() => {
@@ -845,11 +834,7 @@ export function useRadarLayers({
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (effectiveChoice.kind === 'ridge-wms') return;
-    if (map.getLayer(WMS_LAYER_ID)) {
-      map.setPaintProperty(WMS_LAYER_ID, 'raster-opacity', 0);
-      map.removeLayer(WMS_LAYER_ID);
-    }
-    if (map.getSource(WMS_SOURCE_ID)) map.removeSource(WMS_SOURCE_ID);
+    removeImageLayer(map, WMS_SOURCE_ID, WMS_LAYER_ID);
   }, [map, styleLoaded, effectiveChoice.kind]);
 
   // Iowa GOES tile probe → GIBS fallback when declared.
@@ -875,17 +860,21 @@ export function useRadarLayers({
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (effectiveChoice.kind !== 'level2' || !site) {
-      if (map.getLayer(L2_LAYER)) map.removeLayer(L2_LAYER);
-      if (map.getSource(L2_SOURCE)) map.removeSource(L2_SOURCE);
+      removeImageLayer(map, L2_SOURCE, L2_LAYER);
       return;
     }
 
     const siteId = site.id;
+    const siteLon = site.lon;
+    const siteLat = site.lat;
     const product = effectiveChoice.product;
+    const label = labelFor('level2', product, activeProduct, site);
     let cancelled = false;
     let interval: number | undefined;
+    const urls = createRetiringUrlSlot();
 
     const load = async () => {
+      setLayerLoading(label);
       try {
         const res = await fetch(
           `/api/radar/level2?site=${siteId}&product=${product}`,
@@ -906,104 +895,86 @@ export function useRadarLayers({
           bbox = data.bbox;
         } else {
           const blob = await res.blob();
-          url = URL.createObjectURL(blob);
+          url = urls.next(blob);
           const hdr = res.headers.get('X-Bbox');
           if (hdr) {
             const parts = hdr.split(',').map(Number);
             bbox = [parts[0], parts[1], parts[2], parts[3]];
           } else {
-            bbox = [
-              site.lon - 2.5,
-              site.lat - 2.5,
-              site.lon + 2.5,
-              site.lat + 2.5,
-            ];
+            bbox = [siteLon - 2.5, siteLat - 2.5, siteLon + 2.5, siteLat + 2.5];
           }
         }
         if (cancelled || !map) return;
 
         const [w, s, e, n] = bbox;
-        const coords: [
-          [number, number],
-          [number, number],
-          [number, number],
-          [number, number],
-        ] = [
+        const coords: ImageCorners = [
           [w, n],
           [e, n],
           [e, s],
           [w, s],
         ];
-
-        const existing = map.getSource(L2_SOURCE) as
-          | maplibregl.ImageSource
-          | undefined;
-        if (existing) {
-          existing.updateImage({ url, coordinates: coords });
-          return;
-        }
-        safeAdd(map, styleLoaded, () => {
-          if (map.getSource(L2_SOURCE)) return;
-          map.addSource(L2_SOURCE, {
-            type: 'image',
-            url,
-            coordinates: coords,
-          });
-          map.addLayer({
-            id: L2_LAYER,
-            type: 'raster',
-            source: L2_SOURCE,
-            paint: {
-              'raster-opacity': effectiveChoice.opacity * overlay,
-              'raster-fade-duration': 0,
-              'raster-resampling': 'nearest',
-            },
-          });
-        });
-        setRasterOpacity(map, L2_LAYER, effectiveChoice.opacity * overlay);
+        putImageLayer(
+          map,
+          L2_SOURCE,
+          L2_LAYER,
+          url,
+          coords,
+          targetOpacityRef.current,
+        );
       } catch {
         if (choice.fallback) setActiveKind(choice.fallback);
+      } finally {
+        if (!cancelled) setLayerLoading(null);
       }
     };
 
-    load();
-    interval = window.setInterval(load, 5 * 60_000);
+    void load();
+    interval = window.setInterval(() => void load(), 5 * 60_000);
 
     return () => {
       cancelled = true;
+      setLayerLoading(null);
       if (interval !== undefined) window.clearInterval(interval);
+      urls.dispose();
     };
   }, [
     map,
     styleLoaded,
     effectiveChoice.kind,
     effectiveChoice.product,
-    effectiveChoice.opacity,
-    overlay,
-    site?.id,
+    site,
     choice.fallback,
+    activeProduct,
+    setLayerLoading,
   ]);
 
   // Level 3 (N0S / ROT)
   useEffect(() => {
     if (!map || !styleLoaded) return;
     if (effectiveChoice.kind !== 'level3' || !site) {
-      if (map.getLayer(L3_LAYER)) map.removeLayer(L3_LAYER);
-      if (map.getSource(L3_SOURCE)) map.removeSource(L3_SOURCE);
+      removeImageLayer(map, L3_SOURCE, L3_LAYER);
       return;
     }
 
     const siteId = site.id;
+    const siteLon = site.lon;
+    const siteLat = site.lat;
     const product = effectiveChoice.product;
+    const label = labelFor('level3', product, activeProduct, site);
     let cancelled = false;
     let interval: number | undefined;
+    const urls = createRetiringUrlSlot();
 
     const load = async () => {
+      setLayerLoading(label);
       try {
         const res = await fetch(
           `/api/radar/level3?site=${siteId}&product=${product}`,
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (choice.fallback) setActiveKind(choice.fallback);
+          return;
+        }
         const ct = res.headers.get('content-type') ?? '';
         let url: string;
         let bbox: [number, number, number, number];
@@ -1016,83 +987,57 @@ export function useRadarLayers({
           bbox = data.bbox;
         } else {
           const blob = await res.blob();
-          url = URL.createObjectURL(blob);
+          url = urls.next(blob);
           const hdr = res.headers.get('X-Bbox');
           if (hdr) {
             const parts = hdr.split(',').map(Number);
             bbox = [parts[0], parts[1], parts[2], parts[3]];
           } else {
-            bbox = [
-              site.lon - 2.5,
-              site.lat - 2.5,
-              site.lon + 2.5,
-              site.lat + 2.5,
-            ];
+            bbox = [siteLon - 2.5, siteLat - 2.5, siteLon + 2.5, siteLat + 2.5];
           }
         }
         if (cancelled || !map) return;
 
         const [w, s, e, n] = bbox;
-        const coords: [
-          [number, number],
-          [number, number],
-          [number, number],
-          [number, number],
-        ] = [
+        const coords: ImageCorners = [
           [w, n],
           [e, n],
           [e, s],
           [w, s],
         ];
-
-        const existing = map.getSource(L3_SOURCE) as
-          | maplibregl.ImageSource
-          | undefined;
-        if (existing) {
-          existing.updateImage({ url, coordinates: coords });
-          return;
-        }
-        safeAdd(map, styleLoaded, () => {
-          if (map.getSource(L3_SOURCE)) return;
-          map.addSource(L3_SOURCE, {
-            type: 'image',
-            url,
-            coordinates: coords,
-          });
-          map.addLayer({
-            id: L3_LAYER,
-            type: 'raster',
-            source: L3_SOURCE,
-            paint: {
-              'raster-opacity': effectiveChoice.opacity * overlay,
-              'raster-fade-duration': 0,
-              'raster-resampling': 'nearest',
-            },
-          });
-        });
-        setRasterOpacity(map, L3_LAYER, effectiveChoice.opacity * overlay);
+        putImageLayer(
+          map,
+          L3_SOURCE,
+          L3_LAYER,
+          url,
+          coords,
+          targetOpacityRef.current,
+        );
       } catch {
         // Non-fatal — banner still shows US-only context.
+      } finally {
+        if (!cancelled) setLayerLoading(null);
       }
     };
 
-    load();
-    interval = window.setInterval(load, 5 * 60_000);
+    void load();
+    interval = window.setInterval(() => void load(), 5 * 60_000);
 
     return () => {
       cancelled = true;
+      setLayerLoading(null);
       if (interval !== undefined) window.clearInterval(interval);
+      urls.dispose();
     };
   }, [
     map,
     styleLoaded,
     effectiveChoice.kind,
     effectiveChoice.product,
-    effectiveChoice.opacity,
-    overlay,
-    site?.id,
-    site?.lat,
-    site?.lon,
+    site,
+    choice.fallback,
+    activeProduct,
+    setLayerLoading,
   ]);
 
   // Crossfade

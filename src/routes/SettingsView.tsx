@@ -7,6 +7,9 @@ import {
   Eye,
   Info,
   Layers,
+  Map as MapIcon,
+  Moon,
+  Palette,
   Ruler,
   Thermometer,
   Wind,
@@ -14,7 +17,9 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useSettings } from '../hooks/useSettings';
-import type { Settings } from '../types';
+import type { MapStyleId, Settings, ThemeId } from '../types';
+import { THEME_OPTIONS } from '../lib/theme';
+import { MAP_STYLES } from '../lib/mapStyles';
 
 type Section =
   | 'general'
@@ -27,6 +32,7 @@ type Section =
 
 const SECTIONS: Array<{ id: Section; label: string; icon: LucideIcon }> = [
   { id: 'general', label: 'General', icon: Eye },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'units', label: 'Units', icon: Ruler },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'layers', label: 'Layers', icon: Layers },
@@ -36,7 +42,7 @@ const SECTIONS: Array<{ id: Section; label: string; icon: LucideIcon }> = [
 
 export function SettingsView() {
   const { settings, update } = useSettings();
-  const [section, setSection] = useState<Section>('units');
+  const [section, setSection] = useState<Section>('appearance');
   const [alertsOn, setAlertsOn] = useState(true);
 
   return (
@@ -56,10 +62,10 @@ export function SettingsView() {
                 key={s.id}
                 type="button"
                 onClick={() => setSection(s.id)}
-                className={`mb-0.5 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${
+                className={`mb-0.5 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium transition-colors duration-[var(--t-fast)] ${
                   active
                     ? 'bg-[var(--accent)] text-white'
-                    : 'text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]'
+                    : 'text-[var(--ink-3)] hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]'
                 }`}
               >
                 <Icon className="h-4 w-4" strokeWidth={1.8} />
@@ -70,6 +76,70 @@ export function SettingsView() {
         </aside>
 
         <main className="overflow-y-auto p-5 sm:p-6">
+          {section === 'appearance' ? (
+            <div className="mx-auto max-w-lg space-y-5">
+              <div className="panel panel-padded space-y-3">
+                <div className="flex items-center gap-2">
+                  <Moon className="h-4 w-4 text-[var(--accent-2)]" strokeWidth={1.8} />
+                  <span className="font-medium text-[var(--ink-1)]">Theme</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {THEME_OPTIONS.map((opt) => {
+                    const active = settings.theme === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => update('theme', opt.id as ThemeId)}
+                        className={`rounded-xl border px-3 py-2.5 text-left transition-all duration-[var(--t-fast)] ${
+                          active
+                            ? 'border-[var(--accent)] bg-[var(--accent)]/15'
+                            : 'border-[var(--line-default)] hover:bg-[var(--hover-fill)]'
+                        }`}
+                      >
+                        <div className="text-[13px] font-semibold text-[var(--ink-1)]">
+                          {opt.label}
+                        </div>
+                        <div className="mt-0.5 text-[10px] leading-snug text-[var(--ink-3)]">
+                          {opt.description}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="panel panel-padded space-y-3">
+                <div className="flex items-center gap-2">
+                  <MapIcon className="h-4 w-4 text-[var(--accent-2)]" strokeWidth={1.8} />
+                  <span className="font-medium text-[var(--ink-1)]">Map style</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {MAP_STYLES.map((style) => {
+                    const active = settings.mapStyle === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => update('mapStyle', style.id as MapStyleId)}
+                        className={`min-w-[72px] rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors duration-[var(--t-fast)] ${
+                          active
+                            ? 'bg-[var(--accent)] text-white'
+                            : 'bg-[var(--hover-fill)] text-[var(--ink-3)] hover:text-[var(--ink-1)]'
+                        }`}
+                      >
+                        {style.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-[var(--ink-4)]">
+                  Also available from the Map control on the radar view.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
           {section === 'units' ? (
             <div className="mx-auto max-w-lg space-y-5">
               <UnitRow
@@ -132,7 +202,7 @@ export function SettingsView() {
                   aria-checked={alertsOn}
                   onClick={() => setAlertsOn((v) => !v)}
                   className={`relative h-7 w-12 rounded-full transition-colors ${
-                    alertsOn ? 'bg-[var(--accent)]' : 'bg-white/15'
+                    alertsOn ? 'bg-[var(--accent)]' : 'bg-[var(--track)]'
                   }`}
                 >
                   <span
@@ -149,7 +219,7 @@ export function SettingsView() {
             <div className="panel panel-padded mx-auto max-w-lg space-y-2 text-[13px] text-[var(--ink-3)]">
               <p>NOAA / NWS — forecasts, alerts, radar</p>
               <p>NOAA / SPC — convective & fire outlooks</p>
-              <p>Open-Meteo — global models & forecast</p>
+              <p>Open-Meteo — global models & forecast overlays</p>
               <p>Iowa State Mesonet — CONUS composite</p>
               <p>RainViewer — global radar / satellite</p>
               <p>OpenFreeMap — basemap</p>
@@ -173,8 +243,8 @@ export function SettingsView() {
                 </>
               ) : (
                 <p>
-                  Additional {section} preferences will expand here. Units and
-                  alerts are live now.
+                  Additional {section} preferences will expand here. Appearance,
+                  units, and alerts are live now.
                 </p>
               )}
             </div>
@@ -204,7 +274,7 @@ function UnitRow<T extends string>({
         <Icon className="h-4 w-4 text-[var(--accent-2)]" strokeWidth={1.8} />
         <span className="font-medium text-[var(--ink-1)]">{label}</span>
       </div>
-      <div className="flex rounded-full bg-white/8 p-1">
+      <div className="flex rounded-full bg-[var(--hover-fill)] p-1">
         {options.map((opt) => {
           const active = value === opt.value;
           return (

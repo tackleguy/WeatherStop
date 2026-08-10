@@ -18,14 +18,17 @@ const sideClasses: Record<NonNullable<Props['side']>, string> = {
   bottom: 'top-full left-1/2 -translate-x-1/2 mt-2 origin-top',
 };
 
+// `w-max` is load-bearing. With only `left`/`right` set, an absolutely
+// positioned box is shrink-to-fit against the space left in its containing
+// block — the 40px rail button — which collapsed multi-word tooltips to one
+// word per line. max-w then caps the line length.
 export function Tooltip({ content, side = 'right', children }: Props) {
   return (
     <div className="group relative">
       {children}
       <div
         role="tooltip"
-        className={`pointer-events-none absolute z-50 max-w-[220px] scale-95 rounded-md border border-[var(--line-default)] bg-[var(--glass-hi)] px-2.5 py-1.5 text-[12px] leading-snug text-[var(--ink-1)] opacity-0 backdrop-blur-md shadow-lg transition-all duration-[var(--t-fast)] group-hover:scale-100 group-hover:opacity-100 group-focus-within:scale-100 group-focus-within:opacity-100 ${sideClasses[side]}`}
-        style={{ whiteSpace: 'nowrap' }}
+        className={`pointer-events-none absolute z-50 w-max max-w-[240px] scale-95 rounded-md border border-[var(--line-default)] bg-[var(--glass-hi)] px-2.5 py-1.5 text-[12px] leading-snug text-[var(--ink-1)] opacity-0 backdrop-blur-md shadow-lg transition-all duration-[var(--t-fast)] group-hover:scale-100 group-hover:opacity-100 group-focus-within:scale-100 group-focus-within:opacity-100 ${sideClasses[side]}`}
       >
         {content}
       </div>

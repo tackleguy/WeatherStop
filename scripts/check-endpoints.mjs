@@ -7,9 +7,86 @@
  * Exit code 1 if any required probe fails.
  */
 
+import { createCanvas, loadImage } from '@napi-rs/canvas';
+
 const DAY = new Date().toISOString().slice(0, 10);
 const BBOX = '-11000000,3500000,-9000000,5500000';
+// Web Mercator metre boxes matching real viewports.
+const BBOX_CONUS = '-13914936,2753408,-7347086,6446276';
+const BBOX_CHICAGO = '-10130074,4721672,-9462157,5465442';
 const PROD = process.env.CHECK_BASE ?? 'https://weather-stop.vercel.app';
+
+/** Radar can legitimately be quiet, so this only catches a frame that is
+ *  entirely transparent — not one that is merely sparse. Actual coverage is
+ *  printed so a human can spot a suspicious drop. */
+const MIN_PAINTED = 0.0005;
+
+function isPng(buf) {
+  return (
+    buf.length >= 8 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  );
+}
+
+/** Fraction of pixels with a non-negligible alpha. */
+async function paintedFraction(buf) {
+  const img = await loadImage(buf);
+  const canvas = createCanvas(img.width, img.height);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const { data } = ctx.getImageData(0, 0, img.width, img.height);
+  let painted = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 8) painted++;
+  return {
+    painted: painted / (img.width * img.height),
+    dims: `${img.width}x${img.height}`,
+  };
+}
+
+/**
+ * Assert an endpoint returns a decodable PNG with something drawn in it.
+ * A 200 with a fully transparent body is the failure mode that made every
+ * image-source product look broken while every status check passed.
+ */
+async function probeImage(name, path) {
+  const t0 = Date.now();
+  try {
+    const res = await fetch(PROD + path, {
+      headers: {
+        Accept: 'image/png',
+        'User-Agent': 'weather-stop-check-endpoints/1.0 (contact@example.com)',
+      },
+    });
+    const buf = Buffer.from(await res.arrayBuffer());
+    const ms = Date.now() - t0;
+    const stamp = `${res.status} ${String(buf.length).padStart(7)}b ${String(ms).padStart(5)}ms`;
+
+    if (!res.ok) {
+      console.log(`FAIL ${stamp}  ${name}  (HTTP ${res.status})`);
+      return false;
+    }
+    if (!isPng(buf)) {
+      console.log(`FAIL ${stamp}  ${name}  (not a PNG)`);
+      return false;
+    }
+    const { painted, dims } = await paintedFraction(buf);
+    const pct = `${(painted * 100).toFixed(2)}%`;
+    if (painted < MIN_PAINTED) {
+      console.log(`FAIL ${stamp}  ${name}  ${dims} painted=${pct} (blank frame)`);
+      return false;
+    }
+    console.log(`OK   ${stamp}  ${name}  ${dims} painted=${pct}`);
+    return true;
+  } catch (err) {
+    console.log(
+      `FAIL ERR              ${name}  (${err instanceof Error ? err.message : err})`,
+    );
+    return false;
+  }
+}
 
 async function probe(name, url, { required = true, follow = true } = {}) {
   const t0 = Date.now();
@@ -153,6 +230,24 @@ async function main() {
       console.log(`FAIL ERR              ${name}  (${err instanceof Error ? err.message : err})`);
       results.push(false);
     }
+  }
+
+  console.log('\n--- Image content (PNG magic + painted pixels) ---');
+  for (const [name, path] of [
+    ['mosaic bvel CONUS', `/api/radar/mosaic?product=bvel&bbox=${BBOX_CONUS}&width=1024&height=1024`],
+    ['mosaic n0s CONUS', `/api/radar/mosaic?product=n0s&bbox=${BBOX_CONUS}&width=1024&height=1024`],
+    ['mosaic rot CONUS', `/api/radar/mosaic?product=rot&bbox=${BBOX_CONUS}&width=1024&height=1024`],
+    ['mosaic n0c CONUS', `/api/radar/mosaic?product=n0c&bbox=${BBOX_CONUS}&width=1024&height=1024`],
+    ['mosaic bvel regional', `/api/radar/mosaic?product=bvel&bbox=${BBOX_CHICAGO}&width=1024&height=1024`],
+    ['wms neet conus', `/api/radar/wms-site?site=conus&product=neet&bbox=${BBOX_CONUS}&width=1024&height=1024`],
+    ['wms pcpn conus', `/api/radar/wms-site?site=conus&product=pcpn&bbox=${BBOX_CONUS}&width=1024&height=1024`],
+    ['wms bref conus', `/api/radar/wms-site?site=conus&product=bref&bbox=${BBOX_CONUS}&width=1024&height=1024`],
+    ['wms bvel site', `/api/radar/wms-site?site=klot&product=bvel&bbox=${BBOX}&width=1024&height=1024`],
+    ['L3 N0S KTLX', '/api/radar/level3?site=KTLX&product=N0S'],
+    ['L3 ROT KTLX', '/api/radar/level3?site=KTLX&product=ROT'],
+    ['L3 N0C KTLX', '/api/radar/level3?site=KTLX&product=N0C'],
+  ]) {
+    results.push(await probeImage(name, path));
   }
 
   const failed = results.filter((r) => !r).length;

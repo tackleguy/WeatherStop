@@ -7,8 +7,13 @@ import {
 } from 'react-router-dom';
 import { SideNav } from './components/shell/SideNav';
 import { InstallPrompt } from './components/InstallPrompt';
+import { ThemeBoot } from './components/ThemeBoot';
 import { HomeView } from './routes/HomeView';
 import { MapProductRedirect } from './routes/MapProductRedirect';
+import { applyTheme, loadTheme } from './lib/theme';
+
+// Apply theme before first paint of lazy routes.
+applyTheme(loadTheme());
 
 const RadarView = lazy(() =>
   import('./routes/RadarView').then((m) => ({ default: m.RadarView })),
@@ -62,7 +67,8 @@ function RouteFallback() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="relative h-[100dvh] overflow-hidden bg-[var(--bg-deep)]">
+      <div className="relative h-[100dvh] overflow-hidden bg-[var(--bg-deep)] transition-colors duration-[var(--t-base)]">
+        <ThemeBoot />
         <SideNav />
         <div className="app-main">
           <Suspense fallback={<RouteFallback />}>

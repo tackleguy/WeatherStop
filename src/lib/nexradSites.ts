@@ -194,3 +194,19 @@ export function nearestNexradSites(
     .sort((a, b) => a.distanceKm - b.distanceKm)
     .slice(0, count);
 }
+
+/** Step to the next/previous site in the nearest-N ring around a point. */
+export function stepNexradSite(
+  current: NexradSite,
+  lon: number,
+  lat: number,
+  direction: 1 | -1,
+  ring = 12,
+): NexradSite {
+  const nearby = nearestNexradSites(lon, lat, ring);
+  if (nearby.length === 0) return current;
+  const idx = nearby.findIndex((n) => n.site.id === current.id);
+  const from = idx >= 0 ? idx : 0;
+  const next = (from + direction + nearby.length) % nearby.length;
+  return nearby[next].site;
+}

@@ -1,14 +1,27 @@
-// Exposes the available scrub frames as a stable list of unix-second
-// timestamps. We compute the rolling window client-side; the backend
-// /api/radar/frames endpoint is just there for parity and future
-// server-driven cached frames.
+// Scrub frames for the radar timeline.
+//
+// Radar / satellite products: rolling past hour (5-minute steps).
+// Wind / temperature: hourly Open-Meteo forecast (now → +47h), Windy-style.
 
 import { useEffect, useMemo, useState } from 'react';
-import { FRAME_COUNT, FRAME_INTERVAL_MIN } from '../store/useRadarStore';
+import {
+  FORECAST_FRAME_COUNT,
+  FRAME_COUNT,
+  FRAME_INTERVAL_MIN,
+  useRadarStore,
+} from '../store/useRadarStore';
 import { roundTo } from '../lib/time';
+import type { ProductId } from '../constants/products';
+
+export function isForecastProduct(product: ProductId): boolean {
+  return product === 'wind' || product === 'temperature';
+}
 
 export function useTimeFrames(): number[] {
-  const [now, setNow] = useState(() => roundTo(Math.floor(Date.now() / 1000), 600));
+  const product = useRadarStore((s) => s.activeProduct);
+  const [now, setNow] = useState(() =>
+    roundTo(Math.floor(Date.now() / 1000), 600),
+  );
 
   useEffect(() => {
     const id = window.setInterval(
@@ -19,11 +32,19 @@ export function useTimeFrames(): number[] {
   }, []);
 
   return useMemo(() => {
+    if (isForecastProduct(product)) {
+      // Snap to the top of the current UTC hour.
+      const hourStart = Math.floor(now / 3600) * 3600;
+      const frames: number[] = [];
+      for (let i = 0; i < FORECAST_FRAME_COUNT; i++) {
+        frames.push(hourStart + i * 3600);
+      }
+      return frames;
+    }
     const frames: number[] = [];
     for (let i = FRAME_COUNT - 1; i >= 0; i--) {
       frames.push(now - i * FRAME_INTERVAL_MIN * 60);
     }
-    // First entry = oldest (-60m), last entry = current (live).
     return frames;
-  }, [now]);
+  }, [now, product]);
 }

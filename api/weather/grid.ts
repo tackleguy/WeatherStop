@@ -1,22 +1,15 @@
-// Open-Meteo grid → forecast tile renderer. We don't have OpenWeatherMap
-// (no API key) so wind/temp overlays are built server-side: sample an
-// 8×8 grid of points across the requested slippy tile, batch them into
-// one Open-Meteo /v1/forecast call, then bilinearly interpolate the
-// values onto a 256² PNG.
+// Open-Meteo grid → forecast tile renderer. Sample an 8×8 grid across the
+// slippy tile, batch one Open-Meteo call, bilinearly interpolate onto 256² PNG.
 //
-// Each tile is 64 forecast points, so caching is the difference between
-// "works fine" and "rate-limited in 30 seconds." We key the cache by
-// {layer, z, x, y, 30-min-window} and store the rendered PNG in
-// Vercel Blob with a 30-minute TTL — forecast-grade data doesn't change
-// faster than that anyway.
+//   /api/weather/grid?z=6&x=10&y=22&layer=wind|temperature[&time=ISO-hour]
 //
-//   /api/weather/grid?z=6&x=10&y=22&layer=wind|temperature
+// Without `time`, samples current conditions. With `time` (UTC hour), samples
+// that forecast hour so the map scrubber can step forward like Windy.
 
 import { createCanvas } from '@napi-rs/canvas';
 import { put, list } from '@vercel/blob';
 
 export const config = {
-  // Vercel serverless — must be "nodejs" (not "nodejs20.x")
   runtime: 'nodejs',
   maxDuration: 30,
 };
@@ -27,8 +20,15 @@ interface OpenMeteoCurrent {
   wind_gusts_10m?: number;
   temperature_2m?: number;
 }
+interface OpenMeteoHourly {
+  time?: string[];
+  wind_speed_10m?: (number | null)[];
+  wind_gusts_10m?: (number | null)[];
+  temperature_2m?: (number | null)[];
+}
 interface OpenMeteoResponse {
   current?: OpenMeteoCurrent;
+  hourly?: OpenMeteoHourly;
 }
 
 type Color = [number, number, number, number];
@@ -47,10 +47,22 @@ function tileBboxLngLat(
   return { lonW, lonE, latN, latS };
 }
 
+/** Round an ISO / epoch input to a UTC hour key `YYYY-MM-DDTHH:00`. */
+function hourKey(raw: string | null): string | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return (
+    `${d.getUTCFullYear()}-` +
+    `${String(d.getUTCMonth() + 1).padStart(2, '0')}-` +
+    `${String(d.getUTCDate()).padStart(2, '0')}T` +
+    `${String(d.getUTCHours()).padStart(2, '0')}:00`
+  );
+}
+
 function windColor(mph: number): Color {
   if (Number.isNaN(mph)) return [0, 0, 0, 0];
   const t = Math.min(1, Math.max(0, mph / 60));
-  // Blue (calm) → green → yellow → orange → red (gale)
   if (t < 0.25) {
     return [
       Math.round(50 + t * 4 * 150),
@@ -80,7 +92,6 @@ function windColor(mph: number): Color {
 
 function tempColor(f: number): Color {
   if (Number.isNaN(f)) return [0, 0, 0, 0];
-  // -20°F (purple) → 120°F (magenta) — NWS-ish surface temp ramp.
   const stops: Array<[number, [number, number, number]]> = [
     [-20, [128, 0, 192]],
     [0, [50, 100, 220]],
@@ -114,14 +125,44 @@ function tempColor(f: number): Color {
   return [0, 0, 0, 0];
 }
 
-// Named GET export required for Node.js runtime — a default export that
-// returns Response is treated as (req, res) and the Response is ignored.
+function valueFromResponse(
+  r: OpenMeteoResponse | undefined,
+  layer: string,
+  hour: string | null,
+): number {
+  if (!r) return Number.NaN;
+  if (hour && r.hourly?.time?.length) {
+    const idx = r.hourly.time.findIndex((t) => t.startsWith(hour));
+    const i = idx >= 0 ? idx : 0;
+    if (layer === 'wind') {
+      const v = r.hourly.wind_speed_10m?.[i];
+      return typeof v === 'number' ? v : Number.NaN;
+    }
+    if (layer === 'gust') {
+      const v = r.hourly.wind_gusts_10m?.[i];
+      return typeof v === 'number' ? v : Number.NaN;
+    }
+    const v = r.hourly.temperature_2m?.[i];
+    return typeof v === 'number' ? v : Number.NaN;
+  }
+  const c = r.current;
+  if (!c) return Number.NaN;
+  if (layer === 'wind') {
+    return typeof c.wind_speed_10m === 'number' ? c.wind_speed_10m : Number.NaN;
+  }
+  if (layer === 'gust') {
+    return typeof c.wind_gusts_10m === 'number' ? c.wind_gusts_10m : Number.NaN;
+  }
+  return typeof c.temperature_2m === 'number' ? c.temperature_2m : Number.NaN;
+}
+
 export async function GET(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url, 'https://x');
   const zRaw = searchParams.get('z');
   const xRaw = searchParams.get('x');
   const yRaw = searchParams.get('y');
   const layer = searchParams.get('layer') ?? 'wind';
+  const hour = hourKey(searchParams.get('time'));
 
   if (!zRaw || !xRaw || !yRaw) {
     return new Response('missing z/x/y', { status: 400 });
@@ -135,13 +176,11 @@ export async function GET(req: Request): Promise<Response> {
   if (!Number.isFinite(z) || !Number.isFinite(x) || !Number.isFinite(y)) {
     return new Response('bad z/x/y', { status: 400 });
   }
-  // Don't try to render the entire planet from one tile — Open-Meteo
-  // would just return garbage and we'd still pay 64 calls.
   if (z < 2 || z > 12) {
     return new Response('zoom out of range (2-12)', { status: 400 });
   }
 
-  const win = Math.floor(Date.now() / (30 * 60_000));
+  const win = hour ?? `live-${Math.floor(Date.now() / (30 * 60_000))}`;
   const cacheKey = `grid/${layer}/${z}/${x}/${y}/${win}.png`;
   const hasBlob = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 
@@ -149,8 +188,6 @@ export async function GET(req: Request): Promise<Response> {
     try {
       const existing = await list({ prefix: cacheKey, limit: 1 });
       if (existing.blobs.length > 0) {
-        // Proxy the bytes instead of 302 — MapLibre tile loads break on
-        // cross-origin redirects to *.blob.vercel-storage.com.
         const upstream = await fetch(existing.blobs[0].url);
         if (upstream.ok) {
           return new Response(upstream.body, {
@@ -163,7 +200,7 @@ export async function GET(req: Request): Promise<Response> {
         }
       }
     } catch {
-      // Blob unavailable → fall through and render fresh.
+      // fall through
     }
   }
 
@@ -186,9 +223,20 @@ export async function GET(req: Request): Promise<Response> {
       : layer === 'gust'
         ? 'wind_gusts_10m'
         : 'temperature_2m';
-  const url =
-    `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
-    `&current=${fields}&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+
+  let url: string;
+  if (hour) {
+    // Single-hour slice — keeps the payload small for every scrub tick.
+    url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+      `&hourly=${fields}&start_hour=${encodeURIComponent(hour)}` +
+      `&end_hour=${encodeURIComponent(hour)}` +
+      `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=UTC`;
+  } else {
+    url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+      `&current=${fields}&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+  }
 
   let omResults: OpenMeteoResponse[];
   try {
@@ -209,18 +257,8 @@ export async function GET(req: Request): Promise<Response> {
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(SIZE, SIZE);
 
-  const sample = (gridX: number, gridY: number): number => {
-    const idx = gridY * GRID + gridX;
-    const r = omResults[idx]?.current;
-    if (!r) return Number.NaN;
-    if (layer === 'wind') {
-      return typeof r.wind_speed_10m === 'number' ? r.wind_speed_10m : Number.NaN;
-    }
-    if (layer === 'gust') {
-      return typeof r.wind_gusts_10m === 'number' ? r.wind_gusts_10m : Number.NaN;
-    }
-    return typeof r.temperature_2m === 'number' ? r.temperature_2m : Number.NaN;
-  };
+  const sample = (gridX: number, gridY: number): number =>
+    valueFromResponse(omResults[gridY * GRID + gridX], layer, hour);
 
   for (let py = 0; py < SIZE; py++) {
     for (let px = 0; px < SIZE; px++) {
@@ -265,17 +303,15 @@ export async function GET(req: Request): Promise<Response> {
         allowOverwrite: true,
       });
     } catch {
-      // Cache write is best-effort — still serve the PNG below.
+      // best-effort
     }
   }
 
-  // Always return the PNG body. MapLibre raster tiles often fail on
-  // cross-origin 302 redirects to blob storage.
   return new Response(new Uint8Array(png), {
     headers: {
       'Content-Type': 'image/png',
       'Cache-Control': 'public, max-age=1800',
-      'X-Source': 'open-meteo-grid-direct',
+      'X-Source': hour ? 'open-meteo-grid-forecast' : 'open-meteo-grid-direct',
     },
   });
 }

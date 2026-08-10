@@ -106,7 +106,7 @@ export function RadarLegend() {
 
   return (
     <div
-      className="radar-legend absolute bottom-[88px] right-4 z-10 w-[148px] rounded-xl border border-[var(--line-default)] p-3 backdrop-blur-[20px]"
+      className="radar-legend pointer-events-auto w-[148px] rounded-xl border border-[var(--line-default)] p-3 backdrop-blur-[20px]"
       style={{ background: 'var(--glass)' }}
     >
       <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--ink-2)]">

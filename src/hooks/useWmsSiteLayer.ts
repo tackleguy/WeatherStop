@@ -9,9 +9,15 @@
 // Mount/teardown only follows enabled/site/product. TIME and opacity
 // never remount — remounting blanked the map on every scrubber tick.
 
-import maplibregl from 'maplibre-gl';
+import type maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import { metersBboxFromLngLat } from '../lib/mercator';
+import {
+  createRetiringUrlSlot,
+  putImageLayer,
+  removeImageLayer,
+  type ImageCorners,
+} from '../lib/imageLayer';
 
 export const WMS_SOURCE_ID = 'wms-site-overlay';
 export const WMS_LAYER_ID = 'wms-site-layer';
@@ -66,12 +72,7 @@ function bboxFromMap(map: maplibregl.Map) {
       [b.getEast(), b.getNorth()],
       [b.getEast(), b.getSouth()],
       [b.getWest(), b.getSouth()],
-    ] as [
-      [number, number],
-      [number, number],
-      [number, number],
-      [number, number],
-    ],
+    ] as ImageCorners,
   };
 }
 
@@ -91,12 +92,7 @@ function bboxFromSite(lat: number, lon: number) {
       [east, north],
       [east, south],
       [west, south],
-    ] as [
-      [number, number],
-      [number, number],
-      [number, number],
-      [number, number],
-    ],
+    ] as ImageCorners,
   };
 }
 
@@ -176,8 +172,7 @@ export function useWmsSiteLayer({
 
     function teardown() {
       if (!map) return;
-      if (map.getLayer(WMS_LAYER_ID)) map.removeLayer(WMS_LAYER_ID);
-      if (map.getSource(WMS_SOURCE_ID)) map.removeSource(WMS_SOURCE_ID);
+      removeImageLayer(map, WMS_SOURCE_ID, WMS_LAYER_ID);
     }
 
     if (!enabled || !site) {
@@ -190,7 +185,7 @@ export function useWmsSiteLayer({
     let cancelled = false;
     let seq = 0;
     let abort: AbortController | null = null;
-    let lastObjUrl: string | null = null;
+    const urls = createRetiringUrlSlot();
 
     const apply = () => {
       if (cancelled || !map) return;
@@ -213,9 +208,14 @@ export function useWmsSiteLayer({
       if (t) params.set('time', t);
       const url = `/api/radar/wms-site?${params.toString()}`;
 
+      // A superseded response is only worth dropping once something is
+      // already painted; otherwise a pan during the fetch means the layer
+      // never mounts at all.
+      const stale = () => mySeq !== seq && Boolean(map?.getLayer(WMS_LAYER_ID));
+
       void fetch(url, { signal: abort.signal })
         .then(async (res) => {
-          if (cancelled || mySeq !== seq || !map) return;
+          if (cancelled || stale() || !map) return;
           if (!res.ok) {
             onStatusRef.current?.({
               ok: false,
@@ -226,7 +226,7 @@ export function useWmsSiteLayer({
             return;
           }
           const buf = await res.arrayBuffer();
-          if (cancelled || mySeq !== seq || !map) return;
+          if (cancelled || stale() || !map) return;
           if (!isPngMagic(buf)) {
             onStatusRef.current?.({
               ok: false,
@@ -244,45 +244,20 @@ export function useWmsSiteLayer({
             });
             return;
           }
-          if (cancelled || mySeq !== seq || !map) return;
+          if (cancelled || stale() || !map) return;
 
-          const objUrl = URL.createObjectURL(blob);
-          if (lastObjUrl) URL.revokeObjectURL(lastObjUrl);
-          lastObjUrl = objUrl;
           onStatusRef.current?.({ ok: true, url });
-
-          const existing = map.getSource(WMS_SOURCE_ID) as
-            | maplibregl.ImageSource
-            | undefined;
-          if (existing) {
-            existing.updateImage({ url: objUrl, coordinates: coords });
-            if (map.getLayer(WMS_LAYER_ID)) {
-              map.setPaintProperty(
-                WMS_LAYER_ID,
-                'raster-opacity',
-                opacityRef.current,
-              );
-            }
-            return;
-          }
-          map.addSource(WMS_SOURCE_ID, {
-            type: 'image',
-            url: objUrl,
-            coordinates: coords,
-          });
-          map.addLayer({
-            id: WMS_LAYER_ID,
-            type: 'raster',
-            source: WMS_SOURCE_ID,
-            paint: {
-              'raster-opacity': opacityRef.current,
-              'raster-fade-duration': 0,
-              'raster-resampling': 'nearest',
-            },
-          });
+          putImageLayer(
+            map,
+            WMS_SOURCE_ID,
+            WMS_LAYER_ID,
+            urls.next(blob),
+            coords,
+            opacityRef.current,
+          );
         })
         .catch((err: unknown) => {
-          if (cancelled || mySeq !== seq) return;
+          if (cancelled) return;
           if (err instanceof DOMException && err.name === 'AbortError') return;
           onStatusRef.current?.({
             ok: false,
@@ -312,7 +287,7 @@ export function useWmsSiteLayer({
       if (!useSiteFootprint) map.off('moveend', debouncedApply);
       refreshRef.current = null;
       teardown();
-      if (lastObjUrl) URL.revokeObjectURL(lastObjUrl);
+      urls.dispose();
     };
   }, [
     map,

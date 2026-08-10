@@ -5,13 +5,13 @@ import { useRadarLayers } from '../../hooks/useRadarLayers';
 import { useAlerts } from '../../hooks/useAlerts';
 import { useRainViewer } from '../../hooks/useRainViewer';
 import { useTimeFrames } from '../../hooks/useTimeFrames';
+import { useSettings } from '../../hooks/useSettings';
+import { mapStyleUrl } from '../../lib/mapStyles';
 import {
   categorizeAlertEvent,
   type AlertCategory,
   useRadarStore,
 } from '../../store/useRadarStore';
-
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/dark';
 const ALERTS_SOURCE = 'nws-alerts';
 const ALERTS_FILL = 'nws-alerts-fill';
 const ALERTS_LINE = 'nws-alerts-line';
@@ -55,6 +55,9 @@ export function RadarMap({ onMapReady }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [styleLoaded, setStyleLoaded] = useState(false);
+  const { settings } = useSettings();
+  const styleUrl = mapStyleUrl(settings.mapStyle);
+  const styleUrlRef = useRef(styleUrl);
 
   const activeProduct = useRadarStore((s) => s.activeProduct);
   const currentFrameIdx = useRadarStore((s) => s.currentFrameIdx);
@@ -142,7 +145,7 @@ export function RadarMap({ onMapReady }: Props) {
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: STYLE_URL,
+      style: styleUrlRef.current,
       center: [-95, 39],
       zoom: 4,
       minZoom: 2,
@@ -167,6 +170,11 @@ export function RadarMap({ onMapReady }: Props) {
       setStyleLoaded(true);
       updateViewport();
       onMapReady?.(map);
+      // Handle for console debugging and scripts/verify-layers.mjs, which
+      // asserts that each product's overlay actually paints pixels.
+      if (import.meta.env.DEV) {
+        (window as unknown as Record<string, unknown>).__wsMap = map;
+      }
     });
     map.on('moveend', updateViewport);
     map.on('zoom', () => setMapZoom(map.getZoom()));
@@ -177,6 +185,17 @@ export function RadarMap({ onMapReady }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Swap basemap without destroying the map. Overlay effects remount when
+  // styleLoaded flips false → true after style.load.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || styleUrlRef.current === styleUrl) return;
+    styleUrlRef.current = styleUrl;
+    setStyleLoaded(false);
+    map.setStyle(styleUrl);
+    map.once('style.load', () => setStyleLoaded(true));
+  }, [styleUrl]);
 
   const manualSite = useRadarStore((s) => s.manualSite);
   const sourcePlan = useRadarLayers({

@@ -196,7 +196,7 @@ export const PRODUCTS: Product[] = [
     shortLabel: 'WIND',
     icon: Wind,
     legend: 'wind',
-    description: 'Surface wind speed (forecast)',
+    description: 'Surface wind forecast (scrub +48h)',
     group: 'surface',
   },
   {
@@ -205,7 +205,7 @@ export const PRODUCTS: Product[] = [
     shortLabel: 'TEMP',
     icon: Thermometer,
     legend: 'temp',
-    description: 'Surface temperature (forecast)',
+    description: 'Surface temperature forecast (scrub +48h)',
     group: 'surface',
   },
 ];

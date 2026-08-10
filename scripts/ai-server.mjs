@@ -7,7 +7,7 @@
  *
  *   AI_PROVIDER=ollama|lmstudio|openai-compatible
  *   AI_BASE_URL=http://127.0.0.1:11434   # or :1234 for LM Studio
- *   AI_MODEL=llama3.2
+ *   AI_MODEL=llama3.1:8b
  *   AI_API_KEY=optional
  *   AI_SERVER_PORT=8787
  *

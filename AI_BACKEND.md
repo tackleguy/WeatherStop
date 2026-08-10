@@ -10,15 +10,16 @@ Pick one:
 1. **Ollama** — install from https://ollama.com, then:
    ```bash
    ollama serve
-   ollama pull llama3.2
+   ollama pull llama3.1:8b
    ```
 2. **LM Studio** — load a model and enable the local server (default port `1234`).
+
+Default model is **`llama3.1:8b`** (strong general-purpose chat on ~16GB RAM). Override with `AI_MODEL` if you prefer something lighter (`llama3.2:3b`) or larger.
 
 ## Run the backend
 
 ```bash
-# defaults: AI_PROVIDER=ollama, AI_BASE_URL=http://127.0.0.1:11434
-npm run ai:server
+AI_MODEL=llama3.1:8b npm run ai:server
 ```
 
 Optional env (see `.env.example`):
@@ -27,7 +28,7 @@ Optional env (see `.env.example`):
 |---|---|
 | `AI_PROVIDER` | `ollama` \| `lmstudio` \| `openai-compatible` |
 | `AI_BASE_URL` | Upstream origin (no `/v1`) |
-| `AI_MODEL` | Default model id |
+| `AI_MODEL` | Default model id (`llama3.1:8b` recommended) |
 | `AI_API_KEY` | Optional Bearer token |
 | `AI_SERVER_PORT` | Local proxy port (default `8787`) |
 

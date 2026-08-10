@@ -136,7 +136,7 @@ export function HomeView() {
   });
 
   return (
-    <div className="relative h-full overflow-y-auto">
+    <div className="home-root relative h-full overflow-y-auto">
       <DynamicBackground gradient={gradient} weatherCode={code} isDay={isDay} />
 
       {/* Top breathing room beside the sidebar rail */}

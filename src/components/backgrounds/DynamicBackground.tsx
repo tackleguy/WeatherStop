@@ -93,7 +93,7 @@ export function DynamicBackground({ gradient, weatherCode, isDay }: Props) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 1.2 }}
-          className={`fixed inset-0 -z-10 bg-gradient-to-b ${GRADIENTS[gradient]}`}
+          className={`home-atmosphere fixed inset-0 -z-10 bg-gradient-to-b ${GRADIENTS[gradient]}`}
         />
       </AnimatePresence>
 
@@ -110,6 +110,11 @@ export function DynamicBackground({ gradient, weatherCode, isDay }: Props) {
       {/* Subtle vignette to keep cards legible at the bottom of bright skies. */}
       <div
         className="pointer-events-none fixed inset-0 -z-[8] bg-gradient-to-b from-black/0 via-black/0 to-black/25"
+        aria-hidden
+      />
+
+      <div
+        className="home-atmosphere-wash pointer-events-none fixed inset-0 -z-[6]"
         aria-hidden
       />
 

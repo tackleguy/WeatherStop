@@ -210,6 +210,71 @@ body::before {
   color: var(--ink-2) !important;
 }
 
+/* Home: dark type on light/sand; keep white on dark themes. */
+html[data-theme='light'] .home-atmosphere,
+html[data-theme='sand'] .home-atmosphere {
+  filter: saturate(0.5) brightness(1.35);
+  opacity: 0.42;
+}
+
+html[data-theme='light'] .home-atmosphere-wash,
+html[data-theme='sand'] .home-atmosphere-wash {
+  background: color-mix(in srgb, var(--bg-deep) 82%, transparent);
+}
+
+html[data-theme='light'] .home-root,
+html[data-theme='sand'] .home-root {
+  color: var(--ink-1);
+}
+
+html[data-theme='light'] .home-root .text-white,
+html[data-theme='sand'] .home-root .text-white {
+  color: var(--ink-1) !important;
+}
+
+html[data-theme='light'] .home-root .text-white\/95,
+html[data-theme='light'] .home-root .text-white\/90,
+html[data-theme='light'] .home-root .text-white\/85,
+html[data-theme='light'] .home-root .text-white\/80,
+html[data-theme='light'] .home-root .text-white\/75,
+html[data-theme='light'] .home-root .text-white\/70,
+html[data-theme='sand'] .home-root .text-white\/95,
+html[data-theme='sand'] .home-root .text-white\/90,
+html[data-theme='sand'] .home-root .text-white\/85,
+html[data-theme='sand'] .home-root .text-white\/80,
+html[data-theme='sand'] .home-root .text-white\/75,
+html[data-theme='sand'] .home-root .text-white\/70 {
+  color: var(--ink-2) !important;
+}
+
+html[data-theme='light'] .home-root .text-white\/65,
+html[data-theme='light'] .home-root .text-white\/60,
+html[data-theme='light'] .home-root .text-white\/55,
+html[data-theme='light'] .home-root .text-white\/50,
+html[data-theme='sand'] .home-root .text-white\/65,
+html[data-theme='sand'] .home-root .text-white\/60,
+html[data-theme='sand'] .home-root .text-white\/55,
+html[data-theme='sand'] .home-root .text-white\/50 {
+  color: var(--ink-3) !important;
+}
+
+html[data-theme='light'] .home-root .text-white\/45,
+html[data-theme='light'] .home-root .text-white\/40,
+html[data-theme='light'] .home-root .text-white\/30,
+html[data-theme='sand'] .home-root .text-white\/45,
+html[data-theme='sand'] .home-root .text-white\/40,
+html[data-theme='sand'] .home-root .text-white\/30 {
+  color: var(--ink-4) !important;
+}
+
+/* Severe alert strip stays light-on-red for contrast. */
+html[data-theme='light'] .home-root [data-keep-contrast] .text-white,
+html[data-theme='sand'] .home-root [data-keep-contrast] .text-white,
+html[data-theme='light'] .home-root [data-keep-contrast] [class*='text-white'],
+html[data-theme='sand'] .home-root [data-keep-contrast] [class*='text-white'] {
+  color: #fff !important;
+}
+
 .hero-temp {
   font-size: clamp(96px, 18vw, 168px);
   font-weight: 300;
@@ -386,6 +451,28 @@ canvas.radar-canvas {
   image-rendering: crisp-edges;
   image-rendering: -webkit-crisp-edges;
   -ms-interpolation-mode: nearest-neighbor;
+}
+
+/* Glass chips / fills on Home stay readable on light paper. */
+html[data-theme='light'] .home-root .bg-white\/10,
+html[data-theme='light'] .home-root .bg-white\/12,
+html[data-theme='light'] .home-root .bg-white\/15,
+html[data-theme='sand'] .home-root .bg-white\/10,
+html[data-theme='sand'] .home-root .bg-white\/12,
+html[data-theme='sand'] .home-root .bg-white\/15 {
+  background-color: var(--hover-fill) !important;
+}
+
+html[data-theme='light'] .home-root .border-white\/10,
+html[data-theme='light'] .home-root .border-white\/15,
+html[data-theme='sand'] .home-root .border-white\/10,
+html[data-theme='sand'] .home-root .border-white\/15 {
+  border-color: var(--border-default) !important;
+}
+
+html[data-theme='light'] .home-root .placeholder-white\/55::placeholder,
+html[data-theme='sand'] .home-root .placeholder-white\/55::placeholder {
+  color: var(--ink-4) !important;
 }
 
 /* App shell: content sits beside the left rail */

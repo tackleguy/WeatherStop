@@ -90,6 +90,7 @@ export function AlertsBanner({ alerts }: Props) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
       className="rounded-2xl border border-red-400/40 bg-red-500/25 px-4 py-3 backdrop-blur-xl"
+      data-keep-contrast
     >
       {/* Collapsed header */}
       <div className="flex items-center gap-2">

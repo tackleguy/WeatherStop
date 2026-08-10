@@ -57,13 +57,16 @@ export function ClickInspector() {
     const fields =
       activeProduct === 'wind'
         ? 'wind_speed_10m,wind_direction_10m'
-        : 'temperature_2m';
+        : activeProduct === 'rain-forecast'
+          ? 'precipitation'
+          : 'temperature_2m';
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}` +
       `&longitude=${lon.toFixed(4)}&hourly=${fields}` +
       `&start_hour=${encodeURIComponent(hourIso)}` +
       `&end_hour=${encodeURIComponent(hourIso)}` +
-      `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=UTC`;
+      `&temperature_unit=fahrenheit&wind_speed_unit=mph` +
+      `&precipitation_unit=inch&timezone=UTC`;
 
     void fetch(url)
       .then(async (res) => {
@@ -74,6 +77,7 @@ export function ClickInspector() {
             wind_speed_10m?: (number | null)[];
             wind_direction_10m?: (number | null)[];
             temperature_2m?: (number | null)[];
+            precipitation?: (number | null)[];
           };
         };
         if (cancelled) return;
@@ -93,6 +97,17 @@ export function ClickInspector() {
           setSurface({
             label: `Wind · ${formatTime(ts)}`,
             value: `${Math.round(mph)} mph${compass ? ` ${compass}` : ''}`,
+          });
+        } else if (activeProduct === 'rain-forecast') {
+          const inch = json.hourly?.precipitation?.[0];
+          if (typeof inch !== 'number') {
+            setSurface(null);
+            return;
+          }
+          setSurface({
+            label: `Rain · ${formatTime(ts)}`,
+            value:
+              inch < 0.005 ? 'Dry' : `${inch < 0.1 ? inch.toFixed(2) : inch.toFixed(1)} in`,
           });
         } else {
           const f = json.hourly?.temperature_2m?.[0];
@@ -152,7 +167,11 @@ export function ClickInspector() {
           <div className="mt-3 rounded-lg border border-[var(--line-subtle)] bg-[var(--hover-fill)] px-3 py-2">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-3)]">
               {surface?.label ??
-                (activeProduct === 'wind' ? 'Wind forecast' : 'Temp forecast')}
+                (activeProduct === 'wind'
+                  ? 'Wind forecast'
+                  : activeProduct === 'rain-forecast'
+                    ? 'Rain forecast'
+                    : 'Temp forecast')}
             </div>
             <div data-num className="mt-0.5 text-[18px] font-light text-[var(--ink-1)]">
               {surfaceLoading ? '…' : (surface?.value ?? '—')}

@@ -189,8 +189,11 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   activeProduct: DEFAULT_PRODUCT,
   setActiveProduct: (id) => {
     const wasForecast =
-      get().activeProduct === 'wind' || get().activeProduct === 'temperature';
-    const isForecast = id === 'wind' || id === 'temperature';
+      get().activeProduct === 'wind' ||
+      get().activeProduct === 'temperature' ||
+      get().activeProduct === 'rain-forecast';
+    const isForecast =
+      id === 'wind' || id === 'temperature' || id === 'rain-forecast';
     // Radar scrubber ends on LIVE; forecast scrubber starts at NOW (idx 0).
     const frame =
       wasForecast === isForecast

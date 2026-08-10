@@ -97,7 +97,7 @@ export const WIND_STOPS: ScalarStop[] = [
   { value: 60, color: '#ff0000' },
 ];
 
-// Surface temperature palette (°F). Mirrors `tempColor` in api/weather/grid.ts.
+// Surface temperature palette (°F). Mirrors `tempColor` in api/weather/field.ts.
 export const TEMP_STOPS: ScalarStop[] = [
   { value: -20, color: '#8000c0' },
   { value: 0, color: '#3264dc' },
@@ -106,6 +106,15 @@ export const TEMP_STOPS: ScalarStop[] = [
   { value: 80, color: '#ffdc3c' },
   { value: 100, color: '#f0503c' },
   { value: 120, color: '#f050c8' },
+];
+
+/** Hourly rain forecast (in/h) — Open-Meteo precipitation. */
+export const RAIN_FCST_STOPS: ScalarStop[] = [
+  { value: 0.01, color: '#2864dc' },
+  { value: 0.05, color: '#28c850' },
+  { value: 0.15, color: '#e0dc28' },
+  { value: 0.4, color: '#f05028' },
+  { value: 1.0, color: '#c828c8' },
 ];
 
 /** Echo tops (kft) — approximate MRMS style ramp. */

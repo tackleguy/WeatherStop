@@ -43,6 +43,7 @@ const OVERLAY_LAYERS = [
   'gibs-layer',
   'iowa-goes-layer',
   'open-meteo-grid-layer',
+  'open-meteo-field-layer',
   'wms-site-layer',
 ];
 
@@ -63,6 +64,7 @@ const PRODUCTS = [
   'Satellite (Visible)',
   'Wind',
   'Temperature',
+  'Rain Forecast',
 ];
 
 /** Products that need a closer view than the default CONUS framing. */

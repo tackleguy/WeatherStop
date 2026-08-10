@@ -14,7 +14,11 @@ import { roundTo } from '../lib/time';
 import type { ProductId } from '../constants/products';
 
 export function isForecastProduct(product: ProductId): boolean {
-  return product === 'wind' || product === 'temperature';
+  return (
+    product === 'wind' ||
+    product === 'temperature' ||
+    product === 'rain-forecast'
+  );
 }
 
 export function useTimeFrames(): number[] {

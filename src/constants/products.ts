@@ -33,7 +33,8 @@ export type ProductId =
   | 'satellite-ir'
   | 'satellite-vis'
   | 'wind'
-  | 'temperature';
+  | 'temperature'
+  | 'rain-forecast';
 
 export type ProductGroup = 'radar' | 'satellite' | 'surface';
 
@@ -45,6 +46,7 @@ export type LegendKind =
   | 'echo'
   | 'ptype'
   | 'rain'
+  | 'rain-fcst'
   | 'hhc'
   | 'satellite'
   | 'wind'
@@ -196,7 +198,7 @@ export const PRODUCTS: Product[] = [
     shortLabel: 'WIND',
     icon: Wind,
     legend: 'wind',
-    description: 'Surface wind forecast (scrub +48h)',
+    description: 'Surface wind forecast + particles (scrub +48h)',
     group: 'surface',
   },
   {
@@ -206,6 +208,15 @@ export const PRODUCTS: Product[] = [
     icon: Thermometer,
     legend: 'temp',
     description: 'Surface temperature forecast (scrub +48h)',
+    group: 'surface',
+  },
+  {
+    id: 'rain-forecast',
+    label: 'Rain Forecast',
+    shortLabel: 'RAIN',
+    icon: CloudRain,
+    legend: 'rain-fcst',
+    description: 'Hourly precipitation forecast (scrub +48h)',
     group: 'surface',
   },
 ];

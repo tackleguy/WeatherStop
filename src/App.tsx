@@ -82,6 +82,18 @@ export default function App() {
                 element={<MapProductRedirect product="wind" to="/radar" />}
               />
               <Route
+                path="/temperature"
+                element={
+                  <MapProductRedirect product="temperature" to="/radar" />
+                }
+              />
+              <Route
+                path="/rain"
+                element={
+                  <MapProductRedirect product="rain-forecast" to="/radar" />
+                }
+              />
+              <Route
                 path="/satellite"
                 element={
                   <MapProductRedirect product="satellite-ir" to="/radar" />

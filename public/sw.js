@@ -8,7 +8,7 @@
 // This is intentionally simple — no Workbox dependency, no precache
 // manifest. Vite's hashed asset filenames give us cache-busting for free.
 
-const VERSION = 'weatherstop-v11';
+const VERSION = 'weatherstop-v12';
 const STATIC_CACHE = `${VERSION}-static`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const APP_SHELL = ['/manifest.webmanifest', '/icon.svg'];
@@ -23,7 +23,7 @@ const CACHED_AT_HEADER = 'x-sw-cached-at';
 // megabytes a frame, so the cache would grow without ever being hit.
 // These already carry their own Cache-Control, so leave them to the HTTP
 // cache and keep the service worker out of the image path entirely.
-const BYPASS_CACHE = /^\/api\/(?:radar\/|weather\/grid)/;
+const BYPASS_CACHE = /^\/api\/(?:radar\/|weather\/(?:grid|field|wind-grid))/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

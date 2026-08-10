@@ -287,10 +287,13 @@ export function resolveSource(
   }
 
   if (product === 'wind') {
-    return { kind: 'open-meteo-grid', product: 'wind', opacity: 0.72 };
+    return { kind: 'open-meteo-grid', product: 'wind', opacity: 0.55 };
   }
   if (product === 'temperature') {
-    return { kind: 'open-meteo-grid', product: 'temperature', opacity: 0.72 };
+    return { kind: 'open-meteo-grid', product: 'temperature', opacity: 0.7 };
+  }
+  if (product === 'rain-forecast') {
+    return { kind: 'open-meteo-grid', product: 'precipitation', opacity: 0.75 };
   }
 
   return UNAVAILABLE;

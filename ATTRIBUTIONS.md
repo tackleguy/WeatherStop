@@ -19,7 +19,7 @@ attribution chip and the map's `attributionControl`.
 | **Unidata NEXRAD Level 3** — `unidata-nexrad-level3` AWS Open Data | Storm-relative velocity / rotation (server-rendered) | Public domain. Cite "NOAA / Unidata". |
 | **NASA GIBS** — gibs.earthdata.nasa.gov | GOES IR / visible satellite WMTS | Free public imagery; cite NASA GIBS / GOES. |
 | **NOAA / NHC** — mapservices.weather.noaa.gov tropical | Tropical cones, tracks, watches, GTWO | Public domain. Cite "NOAA / National Hurricane Center". |
-| **Open-Meteo** — api.open-meteo.com | Forecast data outside the US | CC BY 4.0 (`https://open-meteo.com/en/license`). Attribution shown in the home view. |
+| **Open-Meteo** — api.open-meteo.com | Forecasts, model compare, seamless wind/temp/rain map fields + wind particles | CC BY 4.0 (`https://open-meteo.com/en/license`). Attribution shown in-app. |
 | **RainViewer** — tilecache.rainviewer.com | Global radar / satellite raster tiles | Free for non-commercial use; attribution required (`https://www.rainviewer.com/api.html`). |
 | **Iowa State Mesonet** — mesonet.agron.iastate.edu | NEXRAD CONUS composite tiles | Free with attribution (`https://mesonet.agron.iastate.edu/`). |
 | **OpenFreeMap** — tiles.openfreemap.org | Vector basemap | Free; OpenStreetMap data © OpenStreetMap contributors (ODbL). |

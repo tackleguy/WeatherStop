@@ -7,6 +7,7 @@ import {
   SHEAR_STOPS,
   WIND_STOPS,
   TEMP_STOPS,
+  RAIN_FCST_STOPS,
   ECHO_STOPS,
   PTYPE_STOPS,
   RAIN_STOPS,
@@ -50,7 +51,9 @@ export function RadarLegend() {
       ? { stops: WIND_STOPS, low: '0', high: '60+', unit: 'mph' }
       : product.legend === 'temp'
         ? { stops: TEMP_STOPS, low: '−20°', high: '120°', unit: '°F' }
-        : null;
+        : product.legend === 'rain-fcst'
+          ? { stops: RAIN_FCST_STOPS, low: 'trace', high: '1"+', unit: 'in/h' }
+          : null;
 
   const rows: SwatchRow[] | null = (() => {
     if (continuous) return null;
@@ -120,7 +123,9 @@ export function RadarLegend() {
                       ? 'Wind'
                       : product.legend === 'temp'
                         ? 'Temperature'
-                        : product.legend === 'satellite'
+                        : product.legend === 'rain-fcst'
+                          ? 'Rain (in/h)'
+                          : product.legend === 'satellite'
                           ? 'Satellite'
                           : product.label;
 

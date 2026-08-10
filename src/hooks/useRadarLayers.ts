@@ -19,6 +19,7 @@ import {
 } from '../lib/nexradSites';
 import { useRadarStore } from '../store/useRadarStore';
 import { useWmsSiteLayer, WMS_LAYER_ID, WMS_SOURCE_ID } from './useWmsSiteLayer';
+import { useWindParticles } from './useWindParticles';
 import { detectRegionForViewport } from '../lib/regionDetect';
 import {
   createRetiringUrlSlot,
@@ -54,8 +55,8 @@ export const GIBS_SOURCE = 'gibs-tiles';
 export const GIBS_LAYER = 'gibs-layer';
 export const IOWA_GOES_SOURCE = 'iowa-goes-tiles';
 export const IOWA_GOES_LAYER = 'iowa-goes-layer';
-export const GRID_SOURCE = 'open-meteo-grid';
-export const GRID_LAYER = 'open-meteo-grid-layer';
+export const GRID_SOURCE = 'open-meteo-field';
+export const GRID_LAYER = 'open-meteo-field-layer';
 export const MOSAIC_SOURCE = 'radar-mosaic';
 export const MOSAIC_LAYER = 'radar-mosaic-layer';
 
@@ -326,9 +327,9 @@ function labelFor(
       : `${sector} · Visible (Iowa)`;
   }
   if (kind === 'open-meteo-grid') {
-    return productId === 'wind'
-      ? 'Wind (Open-Meteo, forecast)'
-      : 'Temperature (Open-Meteo, forecast)';
+    if (productId === 'wind') return 'Wind (Open-Meteo, forecast)';
+    if (productId === 'rain-forecast') return 'Rain forecast (Open-Meteo)';
+    return 'Temperature (Open-Meteo, forecast)';
   }
   return 'Reflectivity';
 }
@@ -551,41 +552,116 @@ export function useRadarLayers({
     };
   }, [effectiveChoice.kind, effectiveChoice.product, choice.fallback]);
 
-  // Open-Meteo wind / temp grid — scrubber drives the forecast hour.
+  // Seamless Open-Meteo forecast field (wind / temp / rain) — one image for
+  // the whole viewport so there are no slippy-tile seams.
   useEffect(() => {
     if (!map || !styleLoaded) return;
-    const layer =
-      effectiveChoice.kind === 'open-meteo-grid'
-        ? effectiveChoice.product
-        : 'wind';
-    // Round scrubber ts to the UTC hour the tile API keys on.
-    const hourIso = new Date(Math.floor(ts / 3600) * 3600 * 1000)
-      .toISOString()
-      .slice(0, 13);
-    const url =
-      `/api/weather/grid?z={z}&x={x}&y={y}&layer=${layer}` +
-      (effectiveChoice.kind === 'open-meteo-grid'
-        ? `&time=${encodeURIComponent(hourIso)}`
-        : '');
-    const opacity =
-      effectiveChoice.kind === 'open-meteo-grid'
-        ? effectiveChoice.opacity * overlay
-        : 0;
-    ensureRasterSource(map, GRID_SOURCE, GRID_LAYER, url, {
-      minzoom: 2,
-      maxzoom: 12,
-      opacity,
-      resampling: 'linear',
-    });
+    if (effectiveChoice.kind !== 'open-meteo-grid') {
+      removeImageLayer(map, GRID_SOURCE, GRID_LAYER);
+      return;
+    }
+
+    let timer: number | undefined;
+    let cancelled = false;
+    let seq = 0;
+    const urls = createRetiringUrlSlot();
+    const layer = effectiveChoice.product;
+    const label = labelFor(
+      'open-meteo-grid',
+      layer,
+      activeProduct,
+      undefined,
+    );
+
+    const refresh = () => {
+      if (cancelled || !map) return;
+      const mySeq = ++seq;
+      const { bbox4326, coords } = bboxFromMap(map);
+      const hourIso = new Date(Math.floor(ts / 3600) * 3600 * 1000)
+        .toISOString()
+        .slice(0, 13);
+      const cssW = map.getCanvas().clientWidth || 1024;
+      const cssH = map.getCanvas().clientHeight || 640;
+      const width = Math.min(1280, Math.max(512, Math.round(cssW)));
+      const height = Math.min(900, Math.max(320, Math.round(cssH)));
+      const url =
+        `/api/weather/field?layer=${encodeURIComponent(layer)}` +
+        `&bbox=${encodeURIComponent(bbox4326)}` +
+        `&width=${width}&height=${height}` +
+        `&time=${encodeURIComponent(hourIso)}`;
+      setLayerLoading(label);
+
+      void fetch(url)
+        .then(async (res) => {
+          if (cancelled) return;
+          if (!res.ok) return;
+          const blob = await res.blob();
+          if (cancelled || !map) return;
+          if (mySeq !== seq && map.getLayer(GRID_LAYER)) return;
+          putImageLayer(
+            map,
+            GRID_SOURCE,
+            GRID_LAYER,
+            urls.next(blob),
+            coords,
+            targetOpacityRef.current,
+          );
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled && mySeq === seq) setLayerLoading(null);
+        });
+    };
+
+    const debounced = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, 320);
+    };
+
+    refresh();
+    map.on('moveend', debounced);
+    return () => {
+      cancelled = true;
+      setLayerLoading(null);
+      if (timer !== undefined) window.clearTimeout(timer);
+      map.off('moveend', debounced);
+      removeImageLayer(map, GRID_SOURCE, GRID_LAYER);
+      urls.dispose();
+    };
   }, [
     map,
     styleLoaded,
     effectiveChoice.kind,
     effectiveChoice.product,
+    activeProduct,
+    ts,
+    setLayerLoading,
+  ]);
+
+  useEffect(() => {
+    if (!map || !styleLoaded) return;
+    if (effectiveChoice.kind !== 'open-meteo-grid') return;
+    setRasterOpacity(map, GRID_LAYER, effectiveChoice.opacity * overlay);
+  }, [
+    map,
+    styleLoaded,
+    effectiveChoice.kind,
     effectiveChoice.opacity,
     overlay,
-    ts,
   ]);
+
+  const forecastHourIso =
+    effectiveChoice.kind === 'open-meteo-grid'
+      ? new Date(Math.floor(ts / 3600) * 3600 * 1000).toISOString().slice(0, 13)
+      : null;
+
+  useWindParticles({
+    map,
+    styleLoaded,
+    enabled: effectiveChoice.kind === 'open-meteo-grid' && activeProduct === 'wind',
+    timeIso: forecastHourIso,
+    opacity: 0.95,
+  });
 
   // DWD
   useEffect(() => {

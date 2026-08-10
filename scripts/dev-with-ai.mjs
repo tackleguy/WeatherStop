@@ -10,9 +10,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 const AI_PORT = process.env.AI_SERVER_PORT || '8787';
 const healthUrl = `http://127.0.0.1:${AI_PORT}/api/ai/health`;
 
-const ai = spawn(process.execPath, ['scripts/ai-server.mjs'], {
+const ai = spawn('npx', ['tsx', 'scripts/ai-server.ts'], {
   stdio: 'inherit',
   env: process.env,
+  shell: true,
 });
 
 let vite = null;

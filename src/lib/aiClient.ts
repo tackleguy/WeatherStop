@@ -92,3 +92,33 @@ export async function chatText(opts: AiChatOptions): Promise<string> {
   if (!text) throw new Error('Empty AI response');
   return text;
 }
+
+export interface StormAnalysisRequest {
+  bbox: [number, number, number, number];
+  alerts: Array<{
+    id: string;
+    event: string;
+    severity: string;
+    headline: string;
+    description: string;
+    areaDesc: string;
+    geometry: GeoJSON.Geometry | null;
+  }>;
+  model?: string;
+  heuristicOnly?: boolean;
+  signal?: AbortSignal;
+}
+
+export async function analyzeStorms(
+  opts: StormAnalysisRequest,
+): Promise<import('./stormAnalysis').StormAnalysisResult> {
+  const { signal, ...body } = opts;
+  const res = await fetch('/api/ai/storm-analysis', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return (await res.json()) as import('./stormAnalysis').StormAnalysisResult;
+}

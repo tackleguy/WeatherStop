@@ -45,19 +45,29 @@ AI_PROVIDER=lmstudio AI_BASE_URL=http://127.0.0.1:1234 npm run ai:server
 | `GET` | `/api/ai/health` | Upstream reachability + model list |
 | `GET` | `/api/ai/models` | OpenAI-style model list |
 | `POST` | `/api/ai/chat` | Chat completions (`messages[]`, optional `stream`) |
+| `POST` | `/api/ai/storm-analysis` | Identify storms → boxes, paths, severe / tornado spots |
 
-Example chat:
+### Storm analysis
+
+`POST /api/ai/storm-analysis` builds MapLibre GeoJSON from NWS severe/tornado
+alerts in the viewport, then enriches labels with the local LLM:
 
 ```bash
-curl -s http://127.0.0.1:8787/api/ai/chat \
+curl -s http://127.0.0.1:8787/api/ai/storm-analysis \
   -H 'Content-Type: application/json' \
-  -d '{
-    "messages": [
-      {"role": "system", "content": "You are a concise weather assistant."},
-      {"role": "user", "content": "Explain what a cold front is in one sentence."}
-    ]
-  }'
+  -d '{"bbox":[-100,30,-90,40],"alerts":[]}'
 ```
+
+Feature `kind` values drawn on the radar map:
+
+| kind | Geometry | Meaning |
+|---|---|---|
+| `box` | Polygon | Identification box around the storm |
+| `path` | LineString | Projected 30/60‑min motion track |
+| `severe` | Point | Potential severe-weather spot |
+| `tornado` | Point | Tornado formation / indicated + path end |
+
+On the radar UI, open **AI Storms** (bottom-right) to toggle the overlay.
 
 ## Dev + production
 

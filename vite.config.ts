@@ -5,8 +5,12 @@ import path from 'node:path';
 // Set DEV_API_PROXY to a deployed origin to exercise the real radar
 // endpoints against local client code, e.g.
 //   DEV_API_PROXY=https://weather-stop.vercel.app npm run dev
-// Without it /api is stubbed (see devApiStub).
+// Without it /api is stubbed (see devApiStub), except /api/ai which
+// proxies to the local AI server (Ollama / LM Studio via npm run ai:server).
 const API_PROXY = process.env.DEV_API_PROXY;
+const AI_SERVER_PORT = process.env.AI_SERVER_PORT || '8787';
+const AI_SERVER_ORIGIN =
+  process.env.AI_SERVER_ORIGIN || `http://127.0.0.1:${AI_SERVER_PORT}`;
 
 // `npm run dev` doesn't execute the Vercel Edge Functions in /api — those
 // only run under `vercel dev` or in production. Without this plugin the
@@ -15,6 +19,9 @@ const API_PROXY = process.env.DEV_API_PROXY;
 // plugin and fails noisily on the query string. Returning a 503 makes
 // SWR back off cleanly and matches what the user sees in production
 // when WINDY_KEY isn't configured.
+//
+// /api/ai/* is excluded: it is proxied to scripts/ai-server.mjs so local
+// Ollama / LM Studio work during `npm run dev`.
 function devApiStub(): Plugin {
   return {
     name: 'weatherstop-dev-api-stub',
@@ -24,6 +31,7 @@ function devApiStub(): Plugin {
       server.middlewares.use((req, res, next) => {
         if (!req.url) return next();
         if (!req.url.startsWith('/api/')) return next();
+        if (req.url.startsWith('/api/ai')) return next();
         res.statusCode = 503;
         res.setHeader('content-type', 'application/json');
         res.end(
@@ -40,7 +48,12 @@ function devApiStub(): Plugin {
 
 const apiProxyConfig = API_PROXY
   ? { '/api': { target: API_PROXY, changeOrigin: true, secure: true } }
-  : undefined;
+  : {
+      '/api/ai': {
+        target: AI_SERVER_ORIGIN,
+        changeOrigin: true,
+      },
+    };
 
 export default defineConfig({
   plugins: [react(), devApiStub()],

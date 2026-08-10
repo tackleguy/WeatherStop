@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:ai": "node scripts/dev-with-ai.mjs",
+    "ai:server": "node scripts/ai-server.mjs",
     "prebuild": "npm run verify:licenses",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

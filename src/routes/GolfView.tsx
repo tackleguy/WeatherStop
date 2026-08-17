@@ -92,12 +92,18 @@ export function GolfView() {
   const searchLat = course?.lat ?? loc.lat;
   const searchLon = course?.lon ?? loc.lon;
 
-  const { courses, loading: coursesLoading, error: coursesError } =
-    useGolfCourses(loc.lat, loc.lon);
-  const { holes, loading: holesLoading, error: holesError } = useGolfHoles(
-    course?.lat ?? null,
-    course?.lon ?? null,
-  );
+  const {
+    courses,
+    loading: coursesLoading,
+    error: coursesError,
+    retry: retryCourses,
+  } = useGolfCourses(loc.lat, loc.lon);
+  const {
+    holes,
+    loading: holesLoading,
+    error: holesError,
+    retry: retryHoles,
+  } = useGolfHoles(course?.lat ?? null, course?.lon ?? null, course?.bbox);
 
   // Filter locally — never re-query Overpass on every keystroke.
   const filteredCourses = useMemo(() => {
@@ -216,7 +222,21 @@ export function GolfView() {
             </div>
           )}
           {coursesError && (
-            <p className="px-2 py-2 text-xs text-red-300">{coursesError}</p>
+            <div className="px-2 py-2">
+              <p className="text-xs text-red-300">
+                OpenStreetMap is busy right now.
+              </p>
+              <p className="mt-0.5 text-[10px] text-[var(--ink-4)]">
+                {coursesError}
+              </p>
+              <button
+                type="button"
+                onClick={retryCourses}
+                className="mt-1.5 rounded-md bg-white/10 px-2 py-1 text-[11px] font-medium text-[var(--ink-1)] hover:bg-white/15"
+              >
+                Try again
+              </button>
+            </div>
           )}
           {!coursesLoading && !courses.length && (
             <p className="px-2 py-3 text-xs text-[var(--ink-3)]">
@@ -394,11 +414,20 @@ export function GolfView() {
                     {holesLoading
                       ? 'Loading hole geometry…'
                       : holesError
-                        ? holesError
+                        ? 'OpenStreetMap is busy — hole data unavailable'
                         : holes.length
                           ? `${holes.length} holes from OSM · yards & bearing`
-                          : 'No hole tags nearby — try another course'}
+                          : 'This course has no hole tags in OSM yet'}
                   </div>
+                  {holesError && (
+                    <button
+                      type="button"
+                      onClick={retryHoles}
+                      className="mt-1.5 rounded-md bg-white/10 px-2 py-1 text-[11px] font-medium text-[var(--ink-1)] hover:bg-white/15"
+                    >
+                      Retry holes
+                    </button>
+                  )}
                 </div>
 
                 {activeBrief && (

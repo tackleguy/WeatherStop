@@ -1,4 +1,9 @@
-// Nearby golf courses — race Nominatim (fast POI search) vs Overpass OSM.
+// Nearby golf courses.
+//
+// Photon (komoot) reverse search with an OSM tag filter is the primary source:
+// it answers in ~200–900 ms worldwide and returns the OSM id + extent we need
+// to scope hole geometry. Overpass is the fallback — authoritative for tags
+// like `holes`/`par`, but its public instances are frequently overloaded.
 
 import {
   centerOf,
@@ -19,11 +24,15 @@ export interface GolfCourseSummary {
   name: string;
   lat: number;
   lon: number;
+  /** Course bounds as [south, west, north, east] when known. */
+  bbox?: [number, number, number, number];
   holes?: number;
   par?: number;
   website?: string;
   distanceMi?: number;
 }
+
+const MI_PER_KM = 0.621371;
 
 function haversineMi(
   aLat: number,
@@ -41,100 +50,87 @@ function haversineMi(
   return 2 * R * Math.asin(Math.sqrt(A));
 }
 
-interface NominatimItem {
-  osm_type?: string;
-  osm_id?: number;
-  display_name?: string;
-  name?: string;
-  lat: string;
-  lon: string;
-  class?: string;
-  type?: string;
-  namedetails?: { name?: string };
+interface PhotonFeature {
+  properties?: {
+    name?: string;
+    osm_type?: string;
+    osm_id?: number;
+    website?: string;
+    /** [minLon, maxLat, maxLon, minLat] */
+    extent?: number[];
+  };
+  geometry?: { coordinates?: number[] };
 }
 
-function fromNominatim(
-  items: NominatimItem[],
-  originLat: number,
-  originLon: number,
-): GolfCourseSummary[] {
-  const out: GolfCourseSummary[] = [];
-  const seen = new Set<string>();
-  for (const it of items) {
-    const lat = Number(it.lat);
-    const lon = Number(it.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    // Prefer leisure=golf_course; allow golf named places as soft matches.
-    const isGolf =
-      it.type === 'golf_course' ||
-      it.class === 'leisure' ||
-      /golf/i.test(it.display_name ?? '') ||
-      /golf/i.test(it.name ?? '');
-    if (!isGolf) continue;
-    const osmType = (it.osm_type ?? 'node') as 'way' | 'relation' | 'node';
-    const osmId = it.osm_id ?? 0;
-    const id = osmId ? `${osmType}/${osmId}` : `nom/${lat.toFixed(5)},${lon.toFixed(5)}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const name =
-      it.namedetails?.name?.trim() ||
-      it.name?.trim() ||
-      (it.display_name ?? 'Golf course').split(',')[0]?.trim() ||
-      'Golf course';
-    out.push({
-      id,
-      osmType,
-      osmId,
-      name,
-      lat,
-      lon,
-      distanceMi: haversineMi(originLat, originLon, lat, lon),
-    });
-  }
-  return out;
+function photonOsmType(t: string | undefined): 'way' | 'relation' | 'node' {
+  if (t === 'W') return 'way';
+  if (t === 'R') return 'relation';
+  return 'node';
 }
 
-async function nominatimCourses(
+async function photonCourses(
   lat: number,
   lon: number,
   radiusM: number,
   limit: number,
   signal: AbortSignal,
 ): Promise<GolfCourseSummary[]> {
-  const dLat = radiusM / 111_320;
-  const dLon = radiusM / (111_320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
-  const viewbox = [
-    lon - dLon,
-    lat + dLat,
-    lon + dLon,
-    lat - dLat,
-  ]
-    .map((n) => n.toFixed(5))
-    .join(',');
-
   const params = new URLSearchParams({
-    format: 'jsonv2',
-    q: 'golf course',
-    limit: String(Math.min(limit * 2, 40)),
-    viewbox,
-    bounded: '1',
-    addressdetails: '0',
-    namedetails: '1',
+    lat: String(lat),
+    lon: String(lon),
+    radius: String(Math.max(1, Math.round(radiusM / 1000))),
+    limit: String(Math.min(limit * 2, 50)),
+    lang: 'en',
   });
+  params.append('osm_tag', 'leisure:golf_course');
 
-  const res = await fetch(
-    `https://nominatim.openstreetmap.org/search?${params}`,
-    {
-      headers: {
-        'User-Agent': UA,
-        Accept: 'application/json',
-      },
-      signal,
-    },
-  );
-  if (!res.ok) throw new Error(`nominatim ${res.status}`);
-  const items = (await res.json()) as NominatimItem[];
-  return fromNominatim(items, lat, lon);
+  const res = await fetch(`https://photon.komoot.io/reverse?${params}`, {
+    headers: { 'User-Agent': UA, Accept: 'application/json' },
+    signal,
+  });
+  if (!res.ok) throw new Error(`photon ${res.status}`);
+  const gj = (await res.json()) as { features?: PhotonFeature[] };
+
+  const radiusMi = (radiusM / 1000) * MI_PER_KM;
+  const out: GolfCourseSummary[] = [];
+  const seen = new Set<string>();
+  for (const f of gj.features ?? []) {
+    const coords = f.geometry?.coordinates;
+    const p = f.properties;
+    if (!coords || coords.length < 2 || !p) continue;
+    const cLon = coords[0]!;
+    const cLat = coords[1]!;
+    if (!Number.isFinite(cLat) || !Number.isFinite(cLon)) continue;
+    const distanceMi = haversineMi(lat, lon, cLat, cLon);
+    // Photon's radius is a soft bias, so enforce the range ourselves.
+    if (distanceMi > radiusMi * 1.2) continue;
+    const osmType = photonOsmType(p.osm_type);
+    const osmId = p.osm_id ?? 0;
+    const id = `${osmType}/${osmId}`;
+    if (!osmId || seen.has(id)) continue;
+    seen.add(id);
+    const e = p.extent;
+    out.push({
+      id,
+      osmType,
+      osmId,
+      name: p.name?.trim() || 'Unnamed golf course',
+      lat: cLat,
+      lon: cLon,
+      bbox:
+        e && e.length === 4
+          ? [
+              Math.min(e[1]!, e[3]!),
+              Math.min(e[0]!, e[2]!),
+              Math.max(e[1]!, e[3]!),
+              Math.max(e[0]!, e[2]!),
+            ]
+          : undefined,
+      website: p.website,
+      distanceMi,
+    });
+  }
+  return out;
 }
 
 async function overpassCourses(
@@ -143,26 +139,26 @@ async function overpassCourses(
   originLat: number,
   originLon: number,
   radiusM: number,
-  signal: AbortSignal,
 ): Promise<GolfCourseSummary[]> {
-  // Lightweight: tags + center only. Race mirrors with a hard deadline.
   const query = `
-[out:json][timeout:8];
+[out:json][timeout:25];
 nwr["leisure"="golf_course"](around:${radiusM},${lat},${lon});
-out center tags;
+out center tags bb;
 `.trim();
 
-  // overpass() has its own abort; also honor outer signal.
-  const data = await Promise.race([
-    overpass(query, { timeoutMs: 8_000 }),
-    new Promise<never>((_, reject) => {
-      signal.addEventListener('abort', () => reject(new Error('aborted')), {
-        once: true,
-      });
-    }),
-  ]);
+  const raw = (await overpass(query, { timeoutMs: 16_000 })) as {
+    elements?: Array<
+      OsmElement & {
+        bounds?: {
+          minlat: number;
+          minlon: number;
+          maxlat: number;
+          maxlon: number;
+        };
+      }
+    >;
+  };
 
-  const raw = data as { elements?: OsmElement[] };
   const courses: GolfCourseSummary[] = [];
   for (const el of raw.elements ?? []) {
     const c = centerOf(el);
@@ -170,13 +166,15 @@ out center tags;
     const tags = el.tags ?? {};
     const holes = tags.holes ? Number(tags.holes) : undefined;
     const par = tags.par ? Number(tags.par) : undefined;
+    const b = el.bounds;
     courses.push({
       id: `${el.type}/${el.id}`,
-      osmType: el.type,
+      osmType: el.type as 'way' | 'relation' | 'node',
       osmId: el.id,
       name: tags.name?.trim() || 'Unnamed golf course',
       lat: c.lat,
       lon: c.lon,
+      bbox: b ? [b.minlat, b.minlon, b.maxlat, b.maxlon] : undefined,
       holes: Number.isFinite(holes) ? holes : undefined,
       par: Number.isFinite(par) ? par : undefined,
       website: tags.website || tags['contact:website'],
@@ -191,10 +189,13 @@ export default async function handler(req: Request): Promise<Response> {
   const rawLat = Number(searchParams.get('lat'));
   const rawLon = Number(searchParams.get('lon'));
   const radiusM = Math.min(
-    Math.max(Number(searchParams.get('radius') ?? 20000), 2000),
-    50000,
+    Math.max(Number(searchParams.get('radius') ?? 30_000), 2000),
+    60_000,
   );
-  const limit = Math.min(Math.max(Number(searchParams.get('limit') ?? 24), 1), 40);
+  const limit = Math.min(
+    Math.max(Number(searchParams.get('limit') ?? 24), 1),
+    40,
+  );
 
   if (!Number.isFinite(rawLat) || !Number.isFinite(rawLon)) {
     return errResponse('lat and lon required', 400);
@@ -203,73 +204,44 @@ export default async function handler(req: Request): Promise<Response> {
   const lat = quantizeCoord(rawLat, 3);
   const lon = quantizeCoord(rawLon, 3);
   const ac = new AbortController();
-  const hardStop = setTimeout(() => ac.abort(), 9_000);
+  const hardStop = setTimeout(() => ac.abort(), 8_000);
+  const failures: string[] = [];
 
-  try {
-    // Prefer whichever source returns a usable list first.
-    // Nominatim is usually 200–800ms; Overpass can be 1–8s depending on load.
-    const settled = await Promise.any([
-      nominatimCourses(rawLat, rawLon, radiusM, limit, ac.signal).then(
-        (courses) => {
-          if (!courses.length) throw new Error('nominatim empty');
-          return { source: 'nominatim' as const, courses };
-        },
-      ),
-      overpassCourses(lat, lon, rawLat, rawLon, radiusM, ac.signal).then(
-        (courses) => {
-          if (!courses.length) throw new Error('overpass empty');
-          return { source: 'overpass' as const, courses };
-        },
-      ),
-    ]);
-    ac.abort();
-
-    const courses = settled.courses
-      .sort((a, b) => (a.distanceMi ?? 0) - (b.distanceMi ?? 0))
-      .slice(0, limit);
-
-    return jsonResponse(
+  const finish = (
+    courses: GolfCourseSummary[],
+    source: 'photon' | 'overpass',
+  ) =>
+    jsonResponse(
       {
-        courses,
-        source: settled.source,
-        attribution:
-          settled.source === 'nominatim'
-            ? '© OpenStreetMap / Nominatim'
-            : '© OpenStreetMap contributors (ODbL)',
+        courses: courses
+          .sort((a, b) => (a.distanceMi ?? 0) - (b.distanceMi ?? 0))
+          .slice(0, limit),
+        source,
+        attribution: '© OpenStreetMap contributors (ODbL)',
       },
       1800,
       86_400,
     );
-  } catch {
-    // Absolute last resort: fresh Overpass attempt (outer race may have aborted).
-    try {
-      const courses = (
-        await overpassCourses(
-          lat,
-          lon,
-          rawLat,
-          rawLon,
-          radiusM,
-          new AbortController().signal,
-        )
-      )
-        .sort((a, b) => (a.distanceMi ?? 0) - (b.distanceMi ?? 0))
-        .slice(0, limit);
-      return jsonResponse(
-        {
-          courses,
-          source: 'overpass',
-          attribution: '© OpenStreetMap contributors (ODbL)',
-        },
-        1800,
-        86_400,
-      );
-    } catch (err) {
-      return errResponse(
-        err instanceof Error ? err.message : 'courses failed',
-      );
-    }
+
+  try {
+    const courses = await photonCourses(rawLat, rawLon, radiusM, limit, ac.signal);
+    if (courses.length) return finish(courses, 'photon');
+    failures.push('photon: no golf courses in range');
+  } catch (err) {
+    failures.push(err instanceof Error ? err.message : 'photon failed');
   } finally {
     clearTimeout(hardStop);
   }
+
+  try {
+    const courses = await overpassCourses(lat, lon, rawLat, rawLon, radiusM);
+    // An empty Overpass answer here is trustworthy: nothing is mapped nearby.
+    return finish(courses, 'overpass');
+  } catch (err) {
+    failures.push(err instanceof Error ? err.message : 'overpass failed');
+  }
+
+  // Never report "no courses" when the lookup itself failed — the client shows
+  // a retry instead of telling the user their city has no golf.
+  return errResponse(failures.join(' · '));
 }

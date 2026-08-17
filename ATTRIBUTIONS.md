@@ -25,7 +25,8 @@ attribution chip and the map's `attributionControl`.
 | **RainViewer** — tilecache.rainviewer.com | Global radar / satellite raster tiles | Free for non-commercial use; attribution required (`https://www.rainviewer.com/api.html`). |
 | **Iowa State Mesonet** — mesonet.agron.iastate.edu | NEXRAD CONUS composite tiles | Free with attribution (`https://mesonet.agron.iastate.edu/`). |
 | **OpenFreeMap** — tiles.openfreemap.org | Vector basemap | Free; OpenStreetMap data © OpenStreetMap contributors (ODbL). |
-| **OpenStreetMap** — overpass-api.de | Golf courses / hole geometry (Golf section) | ODbL; cite © OpenStreetMap contributors. |
+| **OpenStreetMap** — overpass-api.de (+ kumi.systems, private.coffee mirrors) | Golf courses / hole geometry (Golf section) | ODbL; cite © OpenStreetMap contributors. Public instances are rate-limited — cache aggressively and never use regional extracts (`overpass.osm.ch`, `overpass.osm.jp`) which silently return empty results outside their country. |
+| **Photon** — photon.komoot.io | Golf course lookup (Golf section) | Free geocoder over OpenStreetMap data (ODbL) by komoot; keep usage light and cache results. |
 | **Esri World Imagery** — server.arcgisonline.com | High-detail satellite basemap (Golf section) | Cite Esri, Maxar, Earthstar Geographics, and the GIS User Community. Terms: Esri attribution requirements. |
 | **Windy Webcams** — api.windy.com/webcams | Live cameras card | Requires API key; non-commercial use. |
 

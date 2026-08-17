@@ -1,62 +1,129 @@
 // Shared Overpass helpers for OSM golf course / hole geometry.
-// Races several public mirrors so a slow/queued instance does not stall Golf.
+//
+// Overpass instances rate-limit aggressive clients, so we never fan out to
+// every mirror at once. Instead we hedge: start one mirror, and only add the
+// next if it has not answered within `hedgeMs`. That keeps median latency low
+// while using ~1 query per request in the common case.
 
+// Planet-wide instances only. Regional extracts (overpass.osm.ch,
+// overpass.osm.jp) answer 200 with zero elements outside their country, which
+// looks exactly like "no golf here" — never add them.
 const OVERPASS_URLS = [
-  'https://overpass.private.coffee/api/interpreter',
-  'https://lz4.overpass-api.de/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
 export const UA =
   process.env.NWS_USER_AGENT ??
   'weather-stop/1.0 (golf; contact@example.com)';
 
-/**
- * Hit mirrors in parallel; first 200 + JSON wins. Others are aborted.
- * OSM golf data rarely changes, so callers should set long Cache-Control.
- */
+/** Rotate the starting mirror so load spreads across instances. */
+let cursor = 0;
+
+interface OverpassOpts {
+  /** Overall deadline for the whole hedged attempt. */
+  timeoutMs?: number;
+  /** How long to wait before bringing another mirror into the race. */
+  hedgeMs?: number;
+}
+
+async function askMirror(
+  url: string,
+  query: string,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const host = new URL(url).host;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': UA,
+      Accept: 'application/json',
+    },
+    body: `data=${encodeURIComponent(query)}`,
+    signal,
+  });
+  // 429 = rate limited, 504 = query timed out, 502/503 = instance busy.
+  if (!res.ok) throw new Error(`overpass ${res.status} @ ${host}`);
+
+  const data = (await res.json()) as {
+    remark?: string;
+    elements?: unknown[];
+  };
+  // A loaded instance answers 200 with a `remark` and empty/partial elements.
+  // Treating that as success is what made whole cities look course-less.
+  if (data.remark && /error|timed out|too (many|much)/i.test(data.remark)) {
+    throw new Error(`overpass busy @ ${host}`);
+  }
+  return data;
+}
+
 export async function overpass(
   query: string,
-  opts?: { timeoutMs?: number },
+  opts?: OverpassOpts,
 ): Promise<unknown> {
   const timeoutMs = opts?.timeoutMs ?? 14_000;
+  const hedgeMs = opts?.hedgeMs ?? 2_500;
+
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  const deadline = setTimeout(() => ac.abort(), timeoutMs);
+  const start = Date.now();
+  const attempts: Array<Promise<unknown>> = [];
   const errors: string[] = [];
+  const order = OVERPASS_URLS.map(
+    (_, i) => OVERPASS_URLS[(cursor + i) % OVERPASS_URLS.length]!,
+  );
+  cursor = (cursor + 1) % OVERPASS_URLS.length;
 
   try {
-    const winner = await Promise.any(
-      OVERPASS_URLS.map(async (url) => {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': UA,
-            Accept: 'application/json',
-          },
-          body: `data=${encodeURIComponent(query)}`,
-          signal: ac.signal,
-        });
-        if (!res.ok) {
-          const msg = `overpass ${res.status} @ ${new URL(url).host}`;
+    for (let i = 0; i < order.length; i += 1) {
+      attempts.push(
+        askMirror(order[i]!, query, ac.signal).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : 'overpass failed';
           errors.push(msg);
-          throw new Error(msg);
-        }
-        const data = await res.json();
-        // Cancel siblings as soon as one payload lands.
-        ac.abort();
-        return data;
-      }),
-    );
-    return winner;
-  } catch (err) {
-    if (err instanceof AggregateError) {
-      throw new Error(errors[0] ?? 'overpass failed on all mirrors');
+          throw err;
+        }),
+      );
+
+      const remaining = timeoutMs - (Date.now() - start);
+      if (remaining <= 0) break;
+      const isLast = i === order.length - 1;
+      const inFlight = [...attempts];
+
+      // Three ways to leave the wait: someone answered, everyone in flight
+      // failed (advance immediately), or the hedge window elapsed (add one).
+      const success = Promise.any(inFlight).then((data) => ({ data }));
+      const allFailed = Promise.allSettled(inFlight).then(() => 'advance' as const);
+      const hedge = new Promise<'advance'>((resolve) => {
+        setTimeout(() => resolve('advance'), Math.min(hedgeMs, remaining));
+      });
+
+      const outcome = await Promise.race(
+        isLast ? [success, allFailed] : [success, allFailed, hedge],
+      ).catch(() => 'advance' as const);
+
+      if (typeof outcome === 'object' && 'data' in outcome) {
+        ac.abort(); // cancel any still-pending mirrors
+        return outcome.data;
+      }
+      // 'advance' → next loop iteration brings another mirror into the race.
     }
-    throw err instanceof Error ? err : new Error('overpass failed');
+
+    // Everything queued has now been given a chance.
+    try {
+      const data = await Promise.any(attempts);
+      ac.abort();
+      return data;
+    } catch {
+      throw new Error(
+        errors[0] ?? 'every OpenStreetMap mirror is busy right now',
+      );
+    }
   } finally {
-    clearTimeout(timer);
+    clearTimeout(deadline);
   }
 }
 
@@ -65,7 +132,7 @@ export interface OsmTags {
 }
 
 export interface OsmElement {
-  type: 'node' | 'way' | 'relation';
+  type: 'node' | 'way' | 'relation' | 'area';
   id: number;
   lat?: number;
   lon?: number;
@@ -116,14 +183,15 @@ export function jsonResponse(
     headers: {
       'Content-Type': 'application/json',
       // Browser keeps a warm copy; Vercel CDN keeps a longer shared copy.
-      'Cache-Control': `public, max-age=${maxAge}, s-maxage=${sMaxAge}, stale-while-revalidate=86400`,
-      'CDN-Cache-Control': `public, s-maxage=${sMaxAge}, stale-while-revalidate=86400`,
-      'Vercel-CDN-Cache-Control': `public, s-maxage=${sMaxAge}, stale-while-revalidate=86400`,
+      // stale-if-error keeps Golf usable while Overpass is overloaded.
+      'Cache-Control': `public, max-age=${maxAge}, s-maxage=${sMaxAge}, stale-while-revalidate=86400, stale-if-error=604800`,
+      'CDN-Cache-Control': `public, s-maxage=${sMaxAge}, stale-while-revalidate=86400, stale-if-error=604800`,
+      'Vercel-CDN-Cache-Control': `public, s-maxage=${sMaxAge}, stale-while-revalidate=86400, stale-if-error=604800`,
     },
   });
 }
 
-export function errResponse(message: string, status = 500): Response {
+export function errResponse(message: string, status = 502): Response {
   return new Response(JSON.stringify({ error: message }), {
     status,
     headers: {

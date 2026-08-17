@@ -12,6 +12,7 @@ export function useGolfCourses(lat: number | null, lon: number | null) {
   const [courses, setCourses] = useState<GolfCourseSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (lat == null || lon == null) return;
@@ -29,15 +30,27 @@ export function useGolfCourses(lat: number | null, lon: number | null) {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [lat, lon]);
+  }, [lat, lon, attempt]);
 
-  return { courses, loading, error };
+  return {
+    courses,
+    loading,
+    error,
+    retry: () => setAttempt((n) => n + 1),
+  };
 }
 
-export function useGolfHoles(lat: number | null, lon: number | null) {
+export function useGolfHoles(
+  lat: number | null,
+  lon: number | null,
+  bbox?: [number, number, number, number],
+) {
   const [holes, setHoles] = useState<GolfHole[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  const bboxKey = bbox?.join(',') ?? '';
 
   useEffect(() => {
     if (lat == null || lon == null) return;
@@ -45,7 +58,10 @@ export function useGolfHoles(lat: number | null, lon: number | null) {
     setHoles([]);
     setLoading(true);
     setError(null);
-    fetchGolfHoles(lat, lon, { signal: ac.signal })
+    const bounds = bboxKey
+      ? (bboxKey.split(',').map(Number) as [number, number, number, number])
+      : undefined;
+    fetchGolfHoles(lat, lon, { bbox: bounds, signal: ac.signal })
       .then(setHoles)
       .catch((err) => {
         if (ac.signal.aborted) return;
@@ -56,9 +72,14 @@ export function useGolfHoles(lat: number | null, lon: number | null) {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [lat, lon]);
+  }, [lat, lon, bboxKey, attempt]);
 
-  return { holes, loading, error };
+  return {
+    holes,
+    loading,
+    error,
+    retry: () => setAttempt((n) => n + 1),
+  };
 }
 
 export function useGolfEnsemble(

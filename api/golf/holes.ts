@@ -1,5 +1,8 @@
-// Hole geometry (yards + bearing) from OSM golf tags around a course.
-// Fast path: hole centerlines only. Tee/green pairing only if needed.
+// Hole geometry (yards + bearing) from OSM golf tags.
+//
+// Preferred path: bind to the course polygon via its OSM id, so we get that
+// course's holes and never a neighbour's. Falls back to a radius search for
+// courses mapped as a bare node or with a broken polygon.
 
 import { bearingDeg, haversineYards, pathLengthYards } from './_lib/geo';
 import {
@@ -49,7 +52,7 @@ function centroid(
   return { lat: lat / pts.length, lon: lon / pts.length };
 }
 
-/** Keep tee, green, and a few midpoints — enough for map draw, tiny payload. */
+/** Keep tee, green, and a few midpoints — enough to draw, tiny payload. */
 function slimPath(
   geom: Array<{ lat: number; lon: number }>,
   maxPts = 8,
@@ -64,16 +67,21 @@ function slimPath(
   return out;
 }
 
-function holesFromWays(els: OsmElement[]): GolfHole[] {
+function pointOf(el: OsmElement): { lat: number; lon: number } | null {
+  return centerOf(el) ?? (el.geometry?.length ? centroid(el.geometry) : null);
+}
+
+const MAX_HOLES = 27;
+
+function buildHoles(els: OsmElement[]): GolfHole[] {
   const holes: GolfHole[] = [];
   const usedRefs = new Set<number>();
-  const holeWays = els.filter(
-    (e) => e.type === 'way' && e.tags?.golf === 'hole' && e.geometry?.length,
-  );
 
-  for (const way of holeWays) {
-    const geom = way.geometry!;
-    if (geom.length < 2) continue;
+  // 1. golf=hole centerlines carry both length and direction.
+  for (const way of els) {
+    if (way.type !== 'way' || way.tags?.golf !== 'hole') continue;
+    const geom = way.geometry;
+    if (!geom || geom.length < 2) continue;
     const num = parseRef(way.tags) ?? holes.length + 1;
     if (usedRefs.has(num)) continue;
     const tee = geom[0]!;
@@ -95,44 +103,55 @@ function holesFromWays(els: OsmElement[]): GolfHole[] {
     });
     usedRefs.add(num);
   }
-  holes.sort((a, b) => a.number - b.number);
-  return holes;
-}
 
-function holesFromTeeGreen(els: OsmElement[], existing: GolfHole[]): GolfHole[] {
-  const holes = [...existing];
-  const usedRefs = new Set(existing.map((h) => h.number));
-  const tees = els.filter((e) => e.tags?.golf === 'tee');
-  const greens = els.filter(
-    (e) => e.tags?.golf === 'green' || e.tags?.golf === 'pin',
-  );
+  // A full set of centerlines is authoritative — pairing loose tees on top of
+  // it just invents duplicate holes (multiple tee boxes per hole).
+  if (holes.length >= 9) {
+    holes.sort((a, b) => a.number - b.number);
+    return holes.slice(0, MAX_HOLES);
+  }
 
+  // 2. Pair tees to greens for courses without centerlines.
   const teePts: Array<{
     ref: number | null;
     pt: { lat: number; lon: number };
     par?: number;
   }> = [];
-  for (const t of tees) {
-    const c = centerOf(t) ?? (t.geometry ? centroid(t.geometry) : null);
-    if (!c) continue;
-    teePts.push({
-      ref: parseRef(t.tags),
-      pt: c,
-      par: t.tags?.par ? Number(t.tags.par) : undefined,
-    });
-  }
   const greenPts: Array<{
     ref: number | null;
     pt: { lat: number; lon: number };
   }> = [];
-  for (const g of greens) {
-    const c = centerOf(g) ?? (g.geometry ? centroid(g.geometry) : null);
-    if (!c) continue;
-    greenPts.push({ ref: parseRef(g.tags), pt: c });
+  for (const el of els) {
+    const golf = el.tags?.golf;
+    if (golf === 'tee') {
+      const pt = pointOf(el);
+      if (pt) {
+        teePts.push({
+          ref: parseRef(el.tags),
+          pt,
+          par: el.tags?.par ? Number(el.tags.par) : undefined,
+        });
+      }
+    } else if (golf === 'green' || golf === 'pin') {
+      const pt = pointOf(el);
+      if (pt) greenPts.push({ ref: parseRef(el.tags), pt });
+    }
   }
+
+  // Courses tag several tee boxes per hole; keep one per playing corridor.
+  const claimedTees: Array<{ lat: number; lon: number }> = holes.map(
+    (h) => h.tee,
+  );
 
   for (const tee of teePts) {
     if (tee.ref != null && usedRefs.has(tee.ref)) continue;
+    if (
+      claimedTees.some(
+        (t) => haversineYards(t.lat, t.lon, tee.pt.lat, tee.pt.lon) < 60,
+      )
+    ) {
+      continue;
+    }
     let best: { pt: { lat: number; lon: number }; d: number } | null = null;
     for (const g of greenPts) {
       if (tee.ref != null && g.ref != null && tee.ref !== g.ref) continue;
@@ -163,18 +182,49 @@ function holesFromTeeGreen(els: OsmElement[], existing: GolfHole[]): GolfHole[] 
       source: 'tee-green',
     });
     usedRefs.add(num);
+    claimedTees.push(tee.pt);
+    if (holes.length >= MAX_HOLES) break;
   }
+
   holes.sort((a, b) => a.number - b.number);
-  return holes;
+  return holes.slice(0, MAX_HOLES);
+}
+
+const GOLF_FEATURES = (scope: string) => `
+(
+  way["golf"="hole"](${scope});
+  nwr["golf"="tee"](${scope});
+  nwr["golf"="green"](${scope});
+  nwr["golf"="pin"](${scope});
+);
+out body geom;
+`.trim();
+
+/** Parse `bbox=south,west,north,east`, padded slightly to catch edge tees. */
+function parseBbox(raw: string | null): string | null {
+  if (!raw) return null;
+  const parts = raw.split(',').map(Number);
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
+  const [s, w, n, e] = parts as [number, number, number, number];
+  if (n <= s || e <= w) return null;
+  const pad = 0.0015; // ~165 m
+  return [
+    quantizeCoord(s - pad, 4),
+    quantizeCoord(w - pad, 4),
+    quantizeCoord(n + pad, 4),
+    quantizeCoord(e + pad, 4),
+  ].join(',');
 }
 
 export default async function handler(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const rawLat = Number(searchParams.get('lat'));
   const rawLon = Number(searchParams.get('lon'));
+  const bbox = parseBbox(searchParams.get('bbox'));
+  // Big country clubs span well over a mile; keep the default generous.
   const radiusM = Math.min(
-    Math.max(Number(searchParams.get('radius') ?? 800), 300),
-    1800,
+    Math.max(Number(searchParams.get('radius') ?? 1600), 400),
+    3000,
   );
 
   if (!Number.isFinite(rawLat) || !Number.isFinite(rawLon)) {
@@ -184,48 +234,43 @@ export default async function handler(req: Request): Promise<Response> {
   const lat = quantizeCoord(rawLat, 4);
   const lon = quantizeCoord(rawLon, 4);
 
-  // Fast path — hole centerlines alone cover most well-mapped courses.
-  const holeQuery = `
-[out:json][timeout:10];
-way["golf"="hole"](around:${radiusM},${lat},${lon});
-out geom;
-`.trim();
+  // Course bounds beat a radius: they cover sprawling layouts without pulling
+  // in the neighbouring course's holes.
+  const scopes: Array<{ name: 'course-bbox' | 'radius'; query: string }> = [];
+  if (bbox) {
+    scopes.push({
+      name: 'course-bbox',
+      query: `[out:json][timeout:25];\n${GOLF_FEATURES(bbox)}`,
+    });
+  }
+  scopes.push({
+    name: 'radius',
+    query: `[out:json][timeout:25];\n${GOLF_FEATURES(`around:${radiusM},${lat},${lon}`)}`,
+  });
 
-  try {
-    const raw = (await overpass(holeQuery, { timeoutMs: 10_000 })) as {
-      elements?: OsmElement[];
-    };
-    let holes = holesFromWays(raw.elements ?? []);
+  let lastError: string | null = null;
 
-    // Only pull tees/greens when the course is sparsely tagged.
-    if (holes.length < 9) {
-      const fallbackQuery = `
-[out:json][timeout:10];
-(
-  node["golf"="tee"](around:${radiusM},${lat},${lon});
-  way["golf"="tee"](around:${radiusM},${lat},${lon});
-  node["golf"="green"](around:${radiusM},${lat},${lon});
-  way["golf"="green"](around:${radiusM},${lat},${lon});
-  node["golf"="pin"](around:${radiusM},${lat},${lon});
-);
-out center tags;
-`.trim();
-      const extra = (await overpass(fallbackQuery, { timeoutMs: 10_000 })) as {
+  for (const scope of scopes) {
+    try {
+      const raw = (await overpass(scope.query, { timeoutMs: 16_000 })) as {
         elements?: OsmElement[];
       };
-      holes = holesFromTeeGreen(extra.elements ?? [], holes);
+      const holes = buildHoles(raw.elements ?? []);
+      if (!holes.length && scope !== scopes[scopes.length - 1]) continue;
+      return jsonResponse(
+        {
+          holes,
+          count: holes.length,
+          scope: scope.name,
+          attribution: '© OpenStreetMap contributors (ODbL)',
+        },
+        3600,
+        604_800,
+      );
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'overpass failed';
     }
-
-    return jsonResponse(
-      {
-        holes,
-        count: holes.length,
-        attribution: '© OpenStreetMap contributors (ODbL)',
-      },
-      3600,
-      604_800,
-    );
-  } catch (err) {
-    return errResponse(err instanceof Error ? err.message : 'holes failed');
   }
+
+  return errResponse(lastError ?? 'hole lookup failed');
 }

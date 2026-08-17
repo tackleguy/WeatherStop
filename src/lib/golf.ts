@@ -8,6 +8,8 @@ export interface GolfCourseSummary {
   name: string;
   lat: number;
   lon: number;
+  /** Course bounds as [south, west, north, east] when OSM knows them. */
+  bbox?: [number, number, number, number];
   holes?: number;
   par?: number;
   website?: string;
@@ -112,6 +114,36 @@ function sessionSet(key: string, data: unknown): void {
   }
 }
 
+/**
+ * Public Overpass instances answer 504/429 whenever they are busy, and a
+ * different mirror usually succeeds moments later, so retry briefly.
+ */
+async function fetchWithRetry(
+  url: string,
+  signal: AbortSignal | undefined,
+  attempts = 3,
+): Promise<Response> {
+  let lastErr: unknown = null;
+  for (let i = 0; i < attempts; i += 1) {
+    if (i > 0) {
+      await new Promise((r) => setTimeout(r, 900 * i));
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    }
+    try {
+      const res = await fetch(url, { signal });
+      // 5xx means upstream OSM trouble; anything else is final.
+      if (res.ok || res.status < 500) return res;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error('OpenStreetMap request failed');
+}
+
 export async function fetchGolfCourses(
   lat: number,
   lon: number,
@@ -131,10 +163,16 @@ export async function fetchGolfCourses(
     lon: String(lon),
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
-  const res = await fetch(`/api/golf/courses?${params}`, {
-    signal: opts?.signal,
-  });
-  if (!res.ok) throw new Error(`courses ${res.status}`);
+  const res = await fetchWithRetry(
+    `/api/golf/courses?${params}`,
+    opts?.signal,
+  );
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(detail?.error ?? `courses ${res.status}`);
+  }
   const data = (await res.json()) as { courses: GolfCourseSummary[] };
   const courses = data.courses ?? [];
   memSet(key, courses);
@@ -145,9 +183,14 @@ export async function fetchGolfCourses(
 export async function fetchGolfHoles(
   lat: number,
   lon: number,
-  opts?: { radius?: number; signal?: AbortSignal },
+  opts?: {
+    radius?: number;
+    bbox?: [number, number, number, number];
+    signal?: AbortSignal;
+  },
 ): Promise<GolfHole[]> {
-  const key = `golf:holes:${q4(lat)}:${q4(lon)}:${opts?.radius ?? ''}`;
+  const bbox = opts?.bbox?.map((n) => q4(n)).join(',') ?? '';
+  const key = `golf:holes:${q4(lat)}:${q4(lon)}:${bbox}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
     sessionGet<GolfHole[]>(key, HOLES_TTL_MS);
@@ -161,10 +204,15 @@ export async function fetchGolfHoles(
     lon: String(lon),
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
-  const res = await fetch(`/api/golf/holes?${params}`, {
-    signal: opts?.signal,
-  });
-  if (!res.ok) throw new Error(`holes ${res.status}`);
+  // Scopes the lookup to this course's footprint instead of a blind radius.
+  if (bbox) params.set('bbox', bbox);
+  const res = await fetchWithRetry(`/api/golf/holes?${params}`, opts?.signal);
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(detail?.error ?? `holes ${res.status}`);
+  }
   const data = (await res.json()) as { holes: GolfHole[] };
   const holes = data.holes ?? [];
   memSet(key, holes);

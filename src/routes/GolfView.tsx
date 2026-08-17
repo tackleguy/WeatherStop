@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { GolfMap } from '../components/golf/GolfMap';
+import { GolfMapBoundary } from '../components/golf/GolfMapBoundary';
 import { GolfSetup } from '../components/golf/GolfSetup';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { SearchBar } from '../components/radar/SearchBar';
@@ -30,6 +31,7 @@ import {
 } from '../hooks/useGolf';
 import type { GolfCourseSummary, HoleBrief } from '../lib/golf';
 import {
+  DEFAULT_PROFILE,
   loadGolfProfile,
   type GolfPlayerProfile,
 } from '../lib/golfProfile';
@@ -93,8 +95,8 @@ const MOBILE_FIT_PADDING = { top: 88, right: 28, bottom: 196, left: 28 };
 
 export function GolfView() {
   const isMobile = useIsMobile();
-  const [profile, setProfile] = useState<GolfPlayerProfile | null>(
-    loadGolfProfile,
+  const [profile, setProfile] = useState<GolfPlayerProfile>(
+    () => loadGolfProfile() ?? DEFAULT_PROFILE,
   );
   const [setupOpen, setSetupOpen] = useState(false);
   const [loc, setLoc] = useState<Loc>(defaultLoc);
@@ -202,7 +204,7 @@ export function GolfView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [activeHole, stepHole]);
 
-  if (!profile || setupOpen) {
+  if (setupOpen) {
     return (
       <GolfSetup
         initial={profile}
@@ -211,6 +213,7 @@ export function GolfView() {
           setSetupOpen(false);
           if (next.commonCourses[0]) setCourseFilter(next.commonCourses[0]);
         }}
+        onCancel={() => setSetupOpen(false)}
       />
     );
   }
@@ -252,7 +255,7 @@ export function GolfView() {
   ) : null;
 
   return (
-    <div className="absolute inset-0 flex min-h-0 flex-col lg:flex-row">
+    <div className="absolute inset-0 flex min-h-0 flex-col md:flex-row">
       {/* Course picker — full screen on phones until a course is chosen. */}
       <aside
         className={
@@ -335,7 +338,7 @@ export function GolfView() {
             value={courseFilter}
             onChange={(e) => setCourseFilter(e.target.value)}
             placeholder="City courses & private clubs…"
-            className="w-full rounded-lg border border-[var(--line-default)] bg-black/20 px-3 py-2.5 text-base text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)] lg:py-1.5 lg:text-xs"
+            className="w-full rounded-lg border border-[var(--line-default)] bg-black/20 px-3 py-2.5 text-base text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)] md:py-1.5 md:text-xs"
           />
         </div>
 
@@ -346,7 +349,7 @@ export function GolfView() {
                 key={name}
                 type="button"
                 onClick={() => setCourseFilter(name)}
-                className="shrink-0 rounded-full border border-[var(--line-subtle)] bg-black/15 px-3 py-1.5 text-[12px] text-[var(--ink-3)] hover:border-[var(--accent)]/50 hover:text-[var(--ink-1)] lg:px-2 lg:py-1 lg:text-[10px]"
+                className="shrink-0 rounded-full border border-[var(--line-subtle)] bg-black/15 px-3 py-1.5 text-[12px] text-[var(--ink-3)] hover:border-[var(--accent)]/50 hover:text-[var(--ink-1)] md:px-2 md:py-1 md:text-[10px]"
               >
                 {name}
               </button>
@@ -399,7 +402,7 @@ export function GolfView() {
                     type="button"
                     onClick={() => pickCourse(c)}
                     className={[
-                      'w-full rounded-xl px-3 py-3 text-left transition-colors lg:py-2.5',
+                      'w-full rounded-xl px-3 py-3 text-left transition-colors md:py-2.5',
                       active
                         ? 'bg-[var(--accent)]/20 ring-1 ring-[var(--accent)]/50'
                         : 'hover:bg-white/5',
@@ -444,45 +447,53 @@ export function GolfView() {
       {/* Map + hole board */}
       <div
         className={[
-          'relative h-full min-h-0 flex-1',
+          'relative min-h-0 flex-1 overflow-hidden',
           isMobile && !course ? 'hidden' : '',
         ].join(' ')}
       >
         {course ? (
           <>
-            <GolfMap
-              lat={searchLat}
-              lon={searchLon}
-              holes={holes}
-              activeHole={activeHole}
-              onSelectHole={setActiveHole}
-              windFromDeg={ensemble?.ensemble.windFromDeg ?? null}
-              windMph={ensemble?.ensemble.windMph ?? null}
-              headwindMph={activeBrief?.headwindMph ?? null}
-              crosswindMph={activeBrief?.crosswindMph ?? null}
-              holeUp={holeUp}
-              compactControls={isMobile}
-              showWindLegend={!isMobile}
-              fitPadding={isMobile ? MOBILE_FIT_PADDING : 60}
-              legendClassName="left-3 top-16"
-            />
+            <GolfMapBoundary
+              fallback={
+                <div className="flex h-full items-center justify-center bg-[var(--surface-0)] px-6 text-center text-sm text-[var(--ink-3)]">
+                  Satellite map couldn’t start on this device. Hole wind is
+                  still available in the panel.
+                </div>
+              }
+            >
+              <GolfMap
+                lat={searchLat}
+                lon={searchLon}
+                holes={holes}
+                activeHole={activeHole}
+                onSelectHole={setActiveHole}
+                windFromDeg={ensemble?.ensemble.windFromDeg ?? null}
+                windMph={ensemble?.ensemble.windMph ?? null}
+                headwindMph={activeBrief?.headwindMph ?? null}
+                crosswindMph={activeBrief?.crosswindMph ?? null}
+                holeUp={holeUp}
+                compactControls={isMobile}
+                showWindLegend={!isMobile}
+                fitPadding={isMobile ? MOBILE_FIT_PADDING : 60}
+                legendClassName="left-3 top-16"
+              />
+            </GolfMapBoundary>
 
             {/* Hole-by-hole walkthrough + course switcher */}
             {(isMobile || holes.length > 0) && (
-              <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3 lg:right-[352px] lg:left-3 lg:inset-x-auto lg:justify-start">
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3 md:right-[352px] md:left-3 md:inset-x-auto md:justify-start">
                 <GlassPanel
                   variant="high"
-                  className="pointer-events-auto flex max-w-full items-center gap-1 px-1.5 py-1.5 shadow-xl"
+                  className="pointer-events-auto flex max-w-full items-center gap-0.5 px-1 py-1 shadow-xl"
                 >
                   {isMobile ? (
                     <button
                       type="button"
                       onClick={() => setPickerOpen(true)}
                       aria-label="Change course"
-                      title={course.name}
-                      className="max-w-[7.5rem] truncate rounded-lg px-2 py-1.5 text-[11px] font-medium text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink-1)]"
+                      className="shrink-0 rounded-lg px-2 py-2 text-[11px] font-medium text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink-1)]"
                     >
-                      {course.name}
+                      Courses
                     </button>
                   ) : null}
                   {holes.length > 0 ? (
@@ -492,9 +503,9 @@ export function GolfView() {
                         onClick={() => stepHole(-1)}
                         disabled={activeIdx <= 0}
                         aria-label="Previous hole"
-                        className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30 lg:p-1.5"
+                        className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30 md:p-1.5"
                       >
-                        <ChevronLeft className="h-5 w-5 lg:h-4 lg:w-4" />
+                        <ChevronLeft className="h-5 w-5 md:h-4 md:w-4" />
                       </button>
                       <button
                         type="button"
@@ -503,7 +514,7 @@ export function GolfView() {
                             activeHole == null ? holes[0].number : null,
                           )
                         }
-                        className="min-w-[104px] rounded-lg px-2 py-0.5 text-center transition-colors hover:bg-white/10"
+                        className="min-w-[96px] rounded-lg px-2 py-0.5 text-center transition-colors hover:bg-white/10"
                         title={
                           activeHole == null
                             ? 'Start the walkthrough'
@@ -524,9 +535,9 @@ export function GolfView() {
                         onClick={() => stepHole(1)}
                         disabled={activeIdx >= holes.length - 1}
                         aria-label="Next hole"
-                        className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30 lg:p-1.5"
+                        className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30 md:p-1.5"
                       >
-                        <ChevronRight className="h-5 w-5 lg:h-4 lg:w-4" />
+                        <ChevronRight className="h-5 w-5 md:h-4 md:w-4" />
                       </button>
                       <span className="mx-0.5 h-6 w-px bg-[var(--line-subtle)]" />
                       <button
@@ -535,13 +546,13 @@ export function GolfView() {
                         aria-pressed={holeUp}
                         title="Rotate map so the hole plays up the screen"
                         className={[
-                          'rounded-lg p-2 transition-colors lg:p-1.5',
+                          'rounded-lg p-2 transition-colors md:p-1.5',
                           holeUp
                             ? 'bg-[var(--accent)]/25 text-[var(--ink-1)]'
                             : 'text-[var(--ink-3)] hover:bg-white/10',
                         ].join(' ')}
                       >
-                        <Compass className="h-5 w-5 lg:h-4 lg:w-4" />
+                        <Compass className="h-5 w-5 md:h-4 md:w-4" />
                       </button>
                     </>
                   ) : null}
@@ -553,7 +564,7 @@ export function GolfView() {
               className={
                 isMobile
                   ? 'pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3'
-                  : 'pointer-events-none absolute inset-x-0 bottom-0 p-3 lg:inset-x-auto lg:right-3 lg:top-3 lg:bottom-3 lg:w-[320px]'
+                  : 'pointer-events-none absolute inset-x-0 bottom-0 p-3 md:inset-x-auto md:right-3 md:top-3 md:bottom-3 md:w-[320px]'
               }
             >
               <GlassPanel
@@ -561,8 +572,8 @@ export function GolfView() {
                   'pointer-events-auto flex flex-col overflow-hidden p-0 shadow-xl',
                   isMobile
                     ? sheetExpanded
-                      ? 'max-h-[min(70dvh,32rem)]'
-                      : ''
+                      ? 'max-h-[min(58dvh,26rem)]'
+                      : 'max-h-[9.5rem]'
                     : 'max-h-full',
                 ].join(' ')}
               >
@@ -633,18 +644,15 @@ export function GolfView() {
                         {aspectLabel(activeBrief.aspect)}
                       </span>
                     </div>
-                    <p
-                      className={[
-                        'mt-1 text-[12px] leading-snug text-[var(--ink-2)]',
-                        isMobile && !sheetExpanded ? 'line-clamp-2' : '',
-                      ].join(' ')}
-                    >
-                      {activeBrief.tip}
-                    </p>
                     {(!isMobile || sheetExpanded) && (
-                      <p className="mt-1 text-[11px] text-[var(--accent)]">
-                        {activeBrief.clubHint}
-                      </p>
+                      <>
+                        <p className="mt-1 text-[12px] leading-snug text-[var(--ink-2)]">
+                          {activeBrief.tip}
+                        </p>
+                        <p className="mt-1 text-[11px] text-[var(--accent)]">
+                          {activeBrief.clubHint}
+                        </p>
+                      </>
                     )}
                     <div className="mt-2 grid grid-cols-4 gap-1 text-center">
                       <div className="rounded-md bg-black/25 px-1 py-1">
@@ -677,7 +685,7 @@ export function GolfView() {
                         <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
                           Plays
                         </div>
-                        <div className="text-[11px] font-semibold tabular-nums text-[var(--ink-1)]">
+                        <div className="text-[12px] font-semibold tabular-nums text-[var(--ink-1)]">
                           {activeBrief.playsLikeYards} yd
                         </div>
                       </div>
@@ -701,7 +709,7 @@ export function GolfView() {
                                 if (isMobile) setSheetExpanded(false);
                               }}
                               className={[
-                                'flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors lg:py-2',
+                                'flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors md:py-2',
                                 on ? 'bg-white/10' : 'hover:bg-white/5',
                               ].join(' ')}
                             >

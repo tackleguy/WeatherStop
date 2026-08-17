@@ -145,19 +145,23 @@ export function GolfMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const container = containerRef.current;
-    const map = new maplibregl.Map({
-      container,
-      style: GOLF_SATELLITE_STYLE as maplibregl.StyleSpecification,
-      center: [lon, lat],
-      zoom: 15.2,
-      attributionControl: { compact: true },
-      pitchWithRotate: false,
-      touchPitch: false,
-      maxPitch: 0,
-      // Flex layouts often mount at 0×0 on phones; we resize once the
-      // container has a real size (see ResizeObserver below).
-      trackResize: true,
-    });
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container,
+        style: GOLF_SATELLITE_STYLE as maplibregl.StyleSpecification,
+        center: [lon, lat],
+        zoom: 15.2,
+        attributionControl: { compact: true },
+        pitchWithRotate: false,
+        touchPitch: false,
+        maxPitch: 0,
+        trackResize: true,
+      });
+    } catch (err) {
+      console.error('Golf map failed to start', err);
+      return;
+    }
     if (!compactControls) {
       map.addControl(
         new maplibregl.NavigationControl({ visualizePitch: false }),
@@ -174,9 +178,18 @@ export function GolfMap({
         // Map already removed.
       }
     };
+    let lastW = 0;
+    let lastH = 0;
     const ro =
       typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => resize())
+        ? new ResizeObserver((entries) => {
+            const cr = entries[0]?.contentRect;
+            if (!cr) return;
+            if (cr.width === lastW && cr.height === lastH) return;
+            lastW = cr.width;
+            lastH = cr.height;
+            resize();
+          })
         : null;
     ro?.observe(container);
     window.addEventListener('resize', resize);

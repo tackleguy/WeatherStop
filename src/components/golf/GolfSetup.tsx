@@ -14,6 +14,7 @@ import {
 interface Props {
   initial?: GolfPlayerProfile | null;
   onComplete: (profile: GolfPlayerProfile) => void;
+  onCancel?: () => void;
 }
 
 const MISS_OPTIONS: Array<{ value: MissBias; hint: string }> = [
@@ -23,7 +24,7 @@ const MISS_OPTIONS: Array<{ value: MissBias; hint: string }> = [
   { value: 'straight', hint: 'Rarely offline' },
 ];
 
-export function GolfSetup({ initial, onComplete }: Props) {
+export function GolfSetup({ initial, onComplete, onCancel }: Props) {
   const [commonText, setCommonText] = useState(
     (initial?.commonCourses ?? []).join(', '),
   );
@@ -230,6 +231,15 @@ export function GolfSetup({ initial, onComplete }: Props) {
         >
           Save &amp; find courses
         </button>
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="mt-2 w-full rounded-xl px-4 py-3 text-[13px] font-medium text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
+          >
+            Back to courses
+          </button>
+        ) : null}
       </div>
     </div>
   );

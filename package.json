@@ -17,6 +17,7 @@
     "verify:licenses": "node scripts/verify-licenses.mjs"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.84",
     "@napi-rs/canvas": "^0.1.65",
     "@vercel/blob": "^2.4.0",
     "framer-motion": "^11.11.17",

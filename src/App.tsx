@@ -48,6 +48,9 @@ const DashboardView = lazy(() =>
 const TropicalView = lazy(() =>
   import('./routes/TropicalView').then((m) => ({ default: m.TropicalView })),
 );
+const GolfView = lazy(() =>
+  import('./routes/GolfView').then((m) => ({ default: m.GolfView })),
+);
 
 function RouteFallback() {
   return (
@@ -108,6 +111,7 @@ export default function App() {
               <Route path="/outlooks" element={<OutlooksView />} />
               <Route path="/tropical" element={<TropicalView />} />
               <Route path="/models" element={<ModelsView />} />
+              <Route path="/golf" element={<GolfView />} />
               <Route path="/cities" element={<CitiesView />} />
               <Route path="/compare" element={<CompareView />} />
               <Route path="/dashboard" element={<DashboardView />} />

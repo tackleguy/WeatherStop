@@ -8,7 +8,11 @@ import {
   type GolfHole,
 } from '../lib/golf';
 
-export function useGolfCourses(lat: number | null, lon: number | null) {
+export function useGolfCourses(
+  lat: number | null,
+  lon: number | null,
+  query = '',
+) {
   const [courses, setCourses] = useState<GolfCourseSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,18 +23,32 @@ export function useGolfCourses(lat: number | null, lon: number | null) {
     const ac = new AbortController();
     setLoading(true);
     setError(null);
-    fetchGolfCourses(lat, lon, { signal: ac.signal })
-      .then(setCourses)
-      .catch((err) => {
-        if (ac.signal.aborted) return;
-        setError(err instanceof Error ? err.message : 'Failed to load courses');
-        setCourses([]);
-      })
-      .finally(() => {
-        if (!ac.signal.aborted) setLoading(false);
-      });
-    return () => ac.abort();
-  }, [lat, lon, attempt]);
+    const nationalQuery = query.trim().length >= 2 ? query.trim() : undefined;
+    const timer = window.setTimeout(
+      () => {
+        fetchGolfCourses(lat, lon, {
+          q: nationalQuery,
+          signal: ac.signal,
+        })
+          .then(setCourses)
+          .catch((err) => {
+            if (ac.signal.aborted) return;
+            setError(
+              err instanceof Error ? err.message : 'Failed to load courses',
+            );
+            setCourses([]);
+          })
+          .finally(() => {
+            if (!ac.signal.aborted) setLoading(false);
+          });
+      },
+      nationalQuery ? 300 : 0,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [lat, lon, query, attempt]);
 
   return {
     courses,

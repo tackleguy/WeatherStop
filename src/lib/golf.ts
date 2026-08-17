@@ -13,6 +13,9 @@ export interface GolfCourseSummary {
   holes?: number;
   par?: number;
   website?: string;
+  region?: string;
+  /** Best-effort public / private / resort label. */
+  access?: 'public' | 'private' | 'resort' | 'unknown';
   distanceMi?: number;
 }
 
@@ -147,9 +150,12 @@ async function fetchWithRetry(
 export async function fetchGolfCourses(
   lat: number,
   lon: number,
-  opts?: { radius?: number; signal?: AbortSignal },
+  opts?: { q?: string; radius?: number; signal?: AbortSignal },
 ): Promise<GolfCourseSummary[]> {
-  const key = `golf:courses:${q3(lat)}:${q3(lon)}:${opts?.radius ?? ''}`;
+  const q = opts?.q?.trim().toLowerCase() ?? '';
+  // v2 invalidates empty results cached by the retired Nominatim/Overpass
+  // discovery path.
+  const key = `golf:v4:courses:${q3(lat)}:${q3(lon)}:${q}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfCourseSummary[]>(key, COURSES_TTL_MS) ??
     sessionGet<GolfCourseSummary[]>(key, COURSES_TTL_MS);
@@ -161,7 +167,9 @@ export async function fetchGolfCourses(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
+    v: '2',
   });
+  if (q) params.set('q', q);
   if (opts?.radius) params.set('radius', String(opts.radius));
   const res = await fetchWithRetry(
     `/api/golf/courses?${params}`,
@@ -190,7 +198,7 @@ export async function fetchGolfHoles(
   },
 ): Promise<GolfHole[]> {
   const bbox = opts?.bbox?.map((n) => q4(n)).join(',') ?? '';
-  const key = `golf:holes:${q4(lat)}:${q4(lon)}:${bbox}:${opts?.radius ?? ''}`;
+  const key = `golf:v2:holes:${q4(lat)}:${q4(lon)}:${bbox}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
     sessionGet<GolfHole[]>(key, HOLES_TTL_MS);
@@ -202,6 +210,7 @@ export async function fetchGolfHoles(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
+    v: '2',
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
   // Scopes the lookup to this course's footprint instead of a blind radius.

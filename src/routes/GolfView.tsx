@@ -97,7 +97,7 @@ export function GolfView() {
     loading: coursesLoading,
     error: coursesError,
     retry: retryCourses,
-  } = useGolfCourses(loc.lat, loc.lon);
+  } = useGolfCourses(loc.lat, loc.lon, courseFilter);
   const {
     holes,
     loading: holesLoading,
@@ -105,10 +105,12 @@ export function GolfView() {
     retry: retryHoles,
   } = useGolfHoles(course?.lat ?? null, course?.lon ?? null, course?.bbox);
 
-  // Filter locally — never re-query Overpass on every keystroke.
+  // One character filters the nearby list; two or more searches the
+  // nationwide 1,000+ public and private course catalog through Photon.
   const filteredCourses = useMemo(() => {
     const q = courseFilter.trim().toLowerCase();
     if (!q) return courses;
+    if (q.length >= 2) return courses;
     return courses.filter((c) => c.name.toLowerCase().includes(q));
   }, [courses, courseFilter]);
   const {
@@ -175,7 +177,7 @@ export function GolfView() {
               Golf Wind
             </h1>
             <p className="truncate text-[11px] text-[var(--ink-3)]">
-              OSM courses · multi-model ensemble
+              1,000+ public &amp; private · multi-model wind
             </p>
           </div>
           <button
@@ -210,7 +212,7 @@ export function GolfView() {
           <input
             value={courseFilter}
             onChange={(e) => setCourseFilter(e.target.value)}
-            placeholder="Filter courses…"
+            placeholder="City courses & private clubs…"
             className="w-full rounded-lg border border-[var(--line-default)] bg-black/20 px-2.5 py-1.5 text-xs text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)]"
           />
         </div>
@@ -218,7 +220,10 @@ export function GolfView() {
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {coursesLoading && (
             <div className="flex items-center gap-2 px-2 py-3 text-xs text-[var(--ink-3)]">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching OSM…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />{' '}
+              {courseFilter.trim().length >= 2
+                ? 'Searching 1,000+ U.S. courses…'
+                : 'Finding nearby courses…'}
             </div>
           )}
           {coursesError && (
@@ -269,10 +274,26 @@ export function GolfView() {
                     <div className="truncate text-[13px] font-medium text-[var(--ink-1)]">
                       {c.name}
                     </div>
-                    <div className="mt-0.5 flex gap-2 text-[10px] text-[var(--ink-3)]">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--ink-3)]">
+                      {c.access === 'public' && (
+                        <span className="rounded bg-emerald-500/20 px-1 py-px font-medium text-emerald-200">
+                          Public
+                        </span>
+                      )}
+                      {c.access === 'private' && (
+                        <span className="rounded bg-amber-500/20 px-1 py-px font-medium text-amber-100">
+                          Private
+                        </span>
+                      )}
+                      {c.access === 'resort' && (
+                        <span className="rounded bg-sky-500/20 px-1 py-px font-medium text-sky-100">
+                          Resort
+                        </span>
+                      )}
                       {c.distanceMi != null && (
                         <span>{c.distanceMi.toFixed(1)} mi</span>
                       )}
+                      {c.region && <span className="truncate">{c.region}</span>}
                       {c.holes != null && <span>{c.holes} holes</span>}
                       {c.par != null && <span>par {c.par}</span>}
                     </div>

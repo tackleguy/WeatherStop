@@ -1,6 +1,8 @@
 // Client types + fetchers for the Golf section.
 // Memory + sessionStorage cache so reopening a course / city is instant.
 
+import type { GolfPlayerProfile } from './golfProfile';
+
 export interface GolfCourseSummary {
   id: string;
   osmType: 'way' | 'relation' | 'node';
@@ -27,6 +29,8 @@ export interface GolfHole {
   bearingDeg: number;
   tee: { lat: number; lon: number };
   green: { lat: number; lon: number };
+  teeElevationM?: number;
+  greenElevationM?: number;
   path?: Array<{ lat: number; lon: number }>;
   source: 'hole-way' | 'tee-green';
 }
@@ -44,10 +48,15 @@ export interface HoleBrief {
   crosswindMph: number;
   /** Estimated lateral drift at the green, yards; positive = right. */
   driftYards: number;
+  /** Elevation contribution to plays-like; positive is uphill. */
+  slopeYards: number;
+  elevationChangeFt: number;
+  windAdjustmentYards: number;
   playsLikeYards: number;
   aspect: string;
   tip: string;
   clubHint: string;
+  recommendedClub: string;
   modelAgreement: number;
 }
 
@@ -167,7 +176,7 @@ export async function fetchGolfCourses(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
-    v: '2',
+    v: '3',
   });
   if (q) params.set('q', q);
   if (opts?.radius) params.set('radius', String(opts.radius));
@@ -198,7 +207,7 @@ export async function fetchGolfHoles(
   },
 ): Promise<GolfHole[]> {
   const bbox = opts?.bbox?.map((n) => q4(n)).join(',') ?? '';
-  const key = `golf:v2:holes:${q4(lat)}:${q4(lon)}:${bbox}:${opts?.radius ?? ''}`;
+  const key = `golf:v3:holes:${q4(lat)}:${q4(lon)}:${bbox}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
     sessionGet<GolfHole[]>(key, HOLES_TTL_MS);
@@ -210,7 +219,7 @@ export async function fetchGolfHoles(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
-    v: '2',
+    v: '3',
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
   // Scopes the lookup to this course's footprint instead of a blind radius.
@@ -232,14 +241,26 @@ export async function fetchGolfHoles(
 export async function fetchGolfEnsemble(
   lat: number,
   lon: number,
-  holes: Array<Pick<GolfHole, 'number' | 'yards' | 'bearingDeg' | 'par' | 'name'>>,
+  holes: Array<
+    Pick<
+      GolfHole,
+      | 'number'
+      | 'yards'
+      | 'bearingDeg'
+      | 'par'
+      | 'name'
+      | 'teeElevationM'
+      | 'greenElevationM'
+    >
+  >,
   hour = 0,
+  player?: GolfPlayerProfile | null,
   signal?: AbortSignal,
 ): Promise<GolfEnsemble> {
   const res = await fetch('/api/golf/ensemble', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lat, lon, hour, holes }),
+    body: JSON.stringify({ lat, lon, hour, holes, player }),
     signal,
   });
   if (!res.ok) throw new Error(`ensemble ${res.status}`);

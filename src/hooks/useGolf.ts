@@ -7,6 +7,7 @@ import {
   type GolfEnsemble,
   type GolfHole,
 } from '../lib/golf';
+import type { GolfPlayerProfile } from '../lib/golfProfile';
 
 export function useGolfCourses(
   lat: number | null,
@@ -105,14 +106,21 @@ export function useGolfEnsemble(
   lon: number | null,
   holes: GolfHole[],
   hour: number,
+  player: GolfPlayerProfile | null,
 ) {
   const [data, setData] = useState<GolfEnsemble | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const holeKey = holes
-    .map((h) => `${h.number}:${h.yards}:${h.bearingDeg}`)
+    .map(
+      (h) =>
+        `${h.number}:${h.yards}:${h.bearingDeg}:${h.teeElevationM ?? ''}:${h.greenElevationM ?? ''}`,
+    )
     .join('|');
+  const playerKey = player
+    ? `${player.handicap}:${player.miss}:${player.sevenIronYards}:${player.driverYards}`
+    : '';
 
   useEffect(() => {
     if (lat == null || lon == null) return;
@@ -128,8 +136,11 @@ export function useGolfEnsemble(
         bearingDeg: h.bearingDeg,
         par: h.par,
         name: h.name,
+        teeElevationM: h.teeElevationM,
+        greenElevationM: h.greenElevationM,
       })),
       hour,
+      player,
       ac.signal,
     )
       .then(setData)
@@ -144,7 +155,7 @@ export function useGolfEnsemble(
     return () => ac.abort();
     // holeKey captures hole geometry changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lat, lon, hour, holeKey]);
+  }, [lat, lon, hour, holeKey, playerKey]);
 
   return { data, loading, error };
 }

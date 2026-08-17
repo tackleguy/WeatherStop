@@ -20,7 +20,7 @@ attribution chip and the map's `attributionControl`.
 | **Supercell Wx** — [supercellwx.net](https://supercellwx.net/) / [dpaulat/supercell-wx](https://github.com/dpaulat/supercell-wx) | Companion desktop radar (inspiration; tiny in-app download/docs links) | MIT. We do **not** redistribute the desktop binary. In-app radar uses the same public NOAA NEXRAD Open Data streams Supercell visualizes. |
 | **NASA GIBS** — gibs.earthdata.nasa.gov | GOES IR / visible satellite WMTS | Free public imagery; cite NASA GIBS / GOES. |
 | **NOAA / NHC** — mapservices.weather.noaa.gov tropical | Tropical cones, tracks, watches, GTWO | Public domain. Cite "NOAA / National Hurricane Center". |
-| **Open-Meteo** — api.open-meteo.com | Home/forecast cards, model compare | CC BY 4.0 (`https://open-meteo.com/en/license`). Attribution shown in-app. |
+| **Open-Meteo** — api.open-meteo.com | Home/forecast cards, model compare, Golf wind ensemble and elevation | CC BY 4.0 (`https://open-meteo.com/en/license`). Attribution shown in-app. |
 | **Earth Nullschool** — earth.nullschool.net | Wind / temperature / rain map visualization (embedded deep-link) | Proprietary visualization © Nullschool Technologies Inc. We deep-link/embed only; do not redistribute their app. Contact `inquiries@nullschool.net` for commercial licensing. Data shown is primarily GFS / NOAA (public). |
 | **RainViewer** — tilecache.rainviewer.com | Global radar / satellite raster tiles | Free for non-commercial use; attribution required (`https://www.rainviewer.com/api.html`). |
 | **Iowa State Mesonet** — mesonet.agron.iastate.edu | NEXRAD CONUS composite tiles | Free with attribution (`https://mesonet.agron.iastate.edu/`). |

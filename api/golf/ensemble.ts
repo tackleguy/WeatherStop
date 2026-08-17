@@ -40,6 +40,15 @@ interface HoleIn {
   bearingDeg: number;
   par?: number;
   name?: string;
+  teeElevationM?: number;
+  greenElevationM?: number;
+}
+
+interface PlayerIn {
+  handicap: number;
+  miss: 'left' | 'right' | 'both' | 'straight';
+  sevenIronYards: number;
+  driverYards: number;
 }
 
 type WindAspect = 'head' | 'tail' | 'cross-L' | 'cross-R' | 'quarter-head' | 'quarter-tail';
@@ -57,11 +66,16 @@ interface HoleBrief {
   crosswindMph: number;
   /** Estimated lateral drift at the green, yards; positive = right. */
   driftYards: number;
-  /** Wind-adjusted distance the hole plays to. */
+  /** Elevation adjustment in yards; positive = uphill. */
+  slopeYards: number;
+  elevationChangeFt: number;
+  windAdjustmentYards: number;
+  /** Wind + slope adjusted distance the hole plays to. */
   playsLikeYards: number;
   aspect: WindAspect;
   tip: string;
   clubHint: string;
+  recommendedClub: string;
   modelAgreement: number;
 }
 
@@ -108,18 +122,79 @@ function aspectFor(relDeg: number): WindAspect {
   return relDeg > 0 ? 'cross-L' : 'cross-R';
 }
 
-function playsLike(yards: number, headwindMph: number): number {
-  // Rough: ~1 club (~10 yd) per 6 mph of headwind on full shots.
-  const adj = Math.round(headwindMph / 6) * 10;
-  return Math.max(60, yards + adj);
+function windAdjustment(headwindMph: number): number {
+  // Roughly one club (~10 yd) per 6 mph, kept continuous for useful totals.
+  return Math.round(headwindMph * (10 / 6));
 }
 
-function clubHint(yards: number, headwindMph: number): string {
-  const playAs = playsLike(yards, headwindMph);
-  const adj = playAs - yards;
-  if (Math.abs(adj) < 8) return `Play ≈${yards} yds`;
-  if (adj > 0) return `Play ≈${playAs} yds (into wind +${adj})`;
-  return `Play ≈${playAs} yds (downwind ${adj})`;
+function slopeFor(hole: HoleIn): {
+  slopeYards: number;
+  elevationChangeFt: number;
+} {
+  if (
+    !Number.isFinite(hole.teeElevationM) ||
+    !Number.isFinite(hole.greenElevationM)
+  ) {
+    return { slopeYards: 0, elevationChangeFt: 0 };
+  }
+  const deltaM = hole.greenElevationM! - hole.teeElevationM!;
+  // Common playing rule: one yard of distance per yard of elevation change.
+  return {
+    slopeYards: Math.round(deltaM * 1.09361),
+    elevationChangeFt: Math.round(deltaM * 3.28084),
+  };
+}
+
+function bagFor(player: PlayerIn): Array<{ label: string; yards: number }> {
+  const gap = Math.max(8, Math.min(14, player.sevenIronYards * 0.075));
+  return [
+    { label: 'Driver', yards: player.driverYards },
+    { label: '3W', yards: Math.round(player.driverYards * 0.9) },
+    { label: '5W', yards: Math.round(player.driverYards * 0.82) },
+    { label: '4i', yards: Math.round(player.sevenIronYards + gap * 3) },
+    { label: '5i', yards: Math.round(player.sevenIronYards + gap * 2) },
+    { label: '6i', yards: Math.round(player.sevenIronYards + gap) },
+    { label: '7i', yards: player.sevenIronYards },
+    { label: '8i', yards: Math.round(player.sevenIronYards - gap) },
+    { label: '9i', yards: Math.round(player.sevenIronYards - gap * 2) },
+    { label: 'PW', yards: Math.round(player.sevenIronYards - gap * 3) },
+    { label: 'GW', yards: Math.round(player.sevenIronYards - gap * 4) },
+    { label: 'SW', yards: Math.max(45, Math.round(player.sevenIronYards - gap * 5)) },
+  ];
+}
+
+function nearestClub(
+  yards: number,
+  player: PlayerIn,
+): { label: string; yards: number } {
+  return bagFor(player).reduce((best, club) =>
+    Math.abs(club.yards - yards) < Math.abs(best.yards - yards) ? club : best,
+  );
+}
+
+function clubPlan(
+  hole: HoleIn,
+  playsLikeYards: number,
+  player: PlayerIn,
+): { hint: string; recommended: string } {
+  if ((hole.par ?? 3) <= 3 || playsLikeYards <= player.driverYards * 0.78) {
+    const club = nearestClub(playsLikeYards, player);
+    return {
+      recommended: club.label,
+      hint: `${club.label} stock ${club.yards} yd · plays ${playsLikeYards}`,
+    };
+  }
+
+  const conservative = player.handicap >= 20 && hole.yards < player.driverYards * 1.55;
+  const teeClub = conservative
+    ? nearestClub(player.driverYards * 0.88, player)
+    : { label: 'Driver', yards: player.driverYards };
+  const remaining = Math.max(40, playsLikeYards - teeClub.yards);
+  const approach = nearestClub(remaining, player);
+  return {
+    recommended: `${teeClub.label} → ${approach.label}`,
+    hint: `${teeClub.label} ${teeClub.yards}, then ${approach.label} from ~${Math.round(remaining)} yd`,
+  };
 }
 
 function tipFor(
@@ -129,6 +204,8 @@ function tipFor(
   head: number,
   cross: number,
   driftYards: number,
+  slopeYards: number,
+  player: PlayerIn,
   agreement: number,
 ): string {
   const conf =
@@ -142,24 +219,43 @@ function tipFor(
   const aimSide = cross >= 0 ? 'left' : 'right';
   const crossAbs = Math.abs(cross);
   const driftAbs = Math.abs(Math.round(driftYards));
+  const missAim =
+    player.miss === 'right'
+      ? 'Favor the left-center for your right miss.'
+      : player.miss === 'left'
+        ? 'Favor the right-center for your left miss.'
+        : player.miss === 'both'
+          ? 'Choose the widest target and avoid the short side.'
+          : 'Use your normal start line.';
+  const slope =
+    Math.abs(slopeYards) >= 3
+      ? ` It plays ${Math.abs(slopeYards)} yd ${slopeYards > 0 ? 'uphill' : 'downhill'}.`
+      : '';
 
   if (windMph < 4) {
-    return `${conf}: nearly calm on #${hole.number} — swing your normal ${hole.yards}-yd club.`;
+    return `${conf}: nearly calm on #${hole.number}.${slope} ${missAim}`;
   }
 
+  let windTip: string;
   switch (aspect) {
     case 'head':
-      return `${conf}: solid headwind (~${Math.round(head)} mph) on #${hole.number}. Club up and keep the flight low.`;
+      windTip = `solid headwind (~${Math.round(head)} mph). Club up and flight it lower.`;
+      break;
     case 'tail':
-      return `${conf}: helping tailwind (~${Math.round(Math.abs(head))} mph). Club down; expect extra run on landing.`;
+      windTip = `helping tailwind (~${Math.round(Math.abs(head))} mph). Expect extra release.`;
+      break;
     case 'cross-L':
     case 'cross-R':
-      return `${conf}: ${Math.round(crossAbs)} mph cross pushing the ball ${pushSide} ~${driftAbs} yds. Start it ${aimSide} of the target.`;
+      windTip = `${Math.round(crossAbs)} mph crosswind pushes it ${pushSide} ~${driftAbs} yd; start ${aimSide}.`;
+      break;
     case 'quarter-head':
-      return `${conf}: quartering into you — ~${Math.round(head)} mph hold-up plus ~${driftAbs} yds of ${pushSide} drift. Aim ${aimSide} and club up.`;
+      windTip = `quartering into you: ~${Math.round(head)} mph hold-up and ~${driftAbs} yd ${pushSide} drift.`;
+      break;
     case 'quarter-tail':
-      return `${conf}: quartering downwind — it carries, and rides ~${driftAbs} yds ${pushSide}. Aim ${aimSide}.`;
+      windTip = `quartering downwind with ~${driftAbs} yd ${pushSide} drift; start ${aimSide}.`;
+      break;
   }
+  return `${conf}: ${windTip}${slope} ${missAim}`;
 }
 
 async function fetchModelHour(
@@ -242,6 +338,12 @@ export default async function handler(req: Request): Promise<Response> {
   let lon: number;
   let hour = 0;
   let holes: HoleIn[] = [];
+  let player: PlayerIn = {
+    handicap: 18,
+    miss: 'right',
+    sevenIronYards: 150,
+    driverYards: 225,
+  };
 
   if (req.method === 'POST') {
     const body = (await req.json().catch(() => null)) as {
@@ -249,6 +351,7 @@ export default async function handler(req: Request): Promise<Response> {
       lon?: number;
       hour?: number;
       holes?: HoleIn[];
+      player?: PlayerIn;
     } | null;
     if (!body) {
       return new Response(JSON.stringify({ error: 'invalid JSON' }), {
@@ -260,6 +363,14 @@ export default async function handler(req: Request): Promise<Response> {
     lon = Number(body.lon);
     hour = Number(body.hour ?? 0);
     holes = Array.isArray(body.holes) ? body.holes : [];
+    if (
+      body.player &&
+      Number.isFinite(body.player.handicap) &&
+      Number.isFinite(body.player.sevenIronYards) &&
+      Number.isFinite(body.player.driverYards)
+    ) {
+      player = body.player;
+    }
   } else {
     const sp = new URL(req.url).searchParams;
     lat = Number(sp.get('lat'));
@@ -321,6 +432,13 @@ export default async function handler(req: Request): Promise<Response> {
     const crosswindMph = -windMph * Math.sin(rad);
     // ~10 mph of cross over 200 yds ≈ 24 yds of drift.
     const driftYards = crosswindMph * (hole.yards / 100) * 1.2;
+    const windAdjustmentYards = windAdjustment(headwindMph);
+    const { slopeYards, elevationChangeFt } = slopeFor(hole);
+    const playsLikeYards = Math.max(
+      40,
+      Math.round(hole.yards + windAdjustmentYards + slopeYards),
+    );
+    const plan = clubPlan(hole, playsLikeYards, player);
     const aspect = aspectFor(rel);
     return {
       number: hole.number,
@@ -332,7 +450,10 @@ export default async function handler(req: Request): Promise<Response> {
       headwindMph: Math.round(headwindMph * 10) / 10,
       crosswindMph: Math.round(crosswindMph * 10) / 10,
       driftYards: Math.round(driftYards),
-      playsLikeYards: playsLike(hole.yards, headwindMph),
+      slopeYards,
+      elevationChangeFt,
+      windAdjustmentYards,
+      playsLikeYards,
       aspect,
       tip: tipFor(
         hole,
@@ -341,9 +462,12 @@ export default async function handler(req: Request): Promise<Response> {
         headwindMph,
         crosswindMph,
         driftYards,
+        slopeYards,
+        player,
         agreement,
       ),
-      clubHint: clubHint(hole.yards, headwindMph),
+      clubHint: plan.hint,
+      recommendedClub: plan.recommended,
       modelAgreement: Math.round(agreement * 100) / 100,
     };
   });

@@ -11,9 +11,11 @@ import {
   Navigation,
   RefreshCw,
   Search,
+  Settings2,
   Sparkles,
 } from 'lucide-react';
 import { GolfMap } from '../components/golf/GolfMap';
+import { GolfSetup } from '../components/golf/GolfSetup';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { SearchBar } from '../components/radar/SearchBar';
 import { INITIAL_SEED } from '../constants/cities';
@@ -24,6 +26,10 @@ import {
   useGolfHoles,
 } from '../hooks/useGolf';
 import type { GolfCourseSummary, HoleBrief } from '../lib/golf';
+import {
+  loadGolfProfile,
+  type GolfPlayerProfile,
+} from '../lib/golfProfile';
 
 interface Loc {
   name: string;
@@ -81,6 +87,10 @@ function aspectLabel(aspect: string): string {
 }
 
 export function GolfView() {
+  const [profile, setProfile] = useState<GolfPlayerProfile | null>(
+    loadGolfProfile,
+  );
+  const [setupOpen, setSetupOpen] = useState(false);
   const [loc, setLoc] = useState<Loc>(defaultLoc);
   const [course, setCourse] = useState<GolfCourseSummary | null>(null);
   const [activeHole, setActiveHole] = useState<number | null>(null);
@@ -122,6 +132,7 @@ export function GolfView() {
     course?.lon ?? null,
     holes,
     hour,
+    profile,
   );
 
   const briefByHole = useMemo(() => {
@@ -166,6 +177,19 @@ export function GolfView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [activeHole, stepHole]);
 
+  if (!profile || setupOpen) {
+    return (
+      <GolfSetup
+        initial={profile}
+        onComplete={(next) => {
+          setProfile(next);
+          setSetupOpen(false);
+          if (next.commonCourses[0]) setCourseFilter(next.commonCourses[0]);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="relative flex h-full min-h-0 flex-col lg:flex-row">
       {/* Sidebar */}
@@ -180,6 +204,15 @@ export function GolfView() {
               1,000+ public &amp; private · multi-model wind
             </p>
           </div>
+          <button
+            type="button"
+            className="rounded-lg p-2 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
+            aria-label="Edit golf profile"
+            title={`Edit profile · HCP ${profile.handicap}`}
+            onClick={() => setSetupOpen(true)}
+          >
+            <Settings2 className="h-4 w-4" />
+          </button>
           <button
             type="button"
             className="rounded-lg p-2 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
@@ -216,6 +249,21 @@ export function GolfView() {
             className="w-full rounded-lg border border-[var(--line-default)] bg-black/20 px-2.5 py-1.5 text-xs text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)]"
           />
         </div>
+
+        {profile.commonCourses.length > 0 && (
+          <div className="flex gap-1.5 overflow-x-auto px-3 pb-2">
+            {profile.commonCourses.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => setCourseFilter(name)}
+                className="shrink-0 rounded-full border border-[var(--line-subtle)] bg-black/15 px-2 py-1 text-[10px] text-[var(--ink-3)] hover:border-[var(--accent)]/50 hover:text-[var(--ink-1)]"
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {coursesLoading && (
@@ -437,7 +485,7 @@ export function GolfView() {
                       : holesError
                         ? 'OpenStreetMap is busy — hole data unavailable'
                         : holes.length
-                          ? `${holes.length} holes from OSM · yards & bearing`
+                          ? `${holes.length} holes · yardage, bearing & elevation`
                           : 'This course has no hole tags in OSM yet'}
                   </div>
                   {holesError && (
@@ -467,7 +515,7 @@ export function GolfView() {
                     <p className="mt-1 text-[11px] text-[var(--accent)]">
                       {activeBrief.clubHint}
                     </p>
-                    <div className="mt-2 grid grid-cols-3 gap-1.5 text-center">
+                    <div className="mt-2 grid grid-cols-4 gap-1 text-center">
                       <div className="rounded-md bg-black/25 px-1 py-1">
                         <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
                           {activeBrief.headwindMph >= 0 ? 'Into' : 'Helping'}
@@ -478,9 +526,18 @@ export function GolfView() {
                       </div>
                       <div className="rounded-md bg-black/25 px-1 py-1">
                         <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
+                          Slope
+                        </div>
+                        <div className="text-[11px] font-semibold tabular-nums text-[var(--ink-1)]">
+                          {activeBrief.slopeYards > 0 ? '+' : ''}
+                          {activeBrief.slopeYards} yd
+                        </div>
+                      </div>
+                      <div className="rounded-md bg-black/25 px-1 py-1">
+                        <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
                           Drift
                         </div>
-                        <div className="text-[12px] font-semibold tabular-nums text-[var(--ink-1)]">
+                        <div className="text-[11px] font-semibold tabular-nums text-[var(--ink-1)]">
                           {Math.abs(activeBrief.driftYards)} yd{' '}
                           {activeBrief.driftYards >= 0 ? 'R' : 'L'}
                         </div>
@@ -489,7 +546,7 @@ export function GolfView() {
                         <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
                           Plays
                         </div>
-                        <div className="text-[12px] font-semibold tabular-nums text-[var(--ink-1)]">
+                        <div className="text-[11px] font-semibold tabular-nums text-[var(--ink-1)]">
                           {activeBrief.playsLikeYards} yd
                         </div>
                       </div>
@@ -531,11 +588,10 @@ export function GolfView() {
                             </span>
                             {brief && (
                               <span className="mt-0.5 block truncate text-[10px] text-[var(--ink-3)]">
-                                {aspectLabel(brief.aspect)} ·{' '}
-                                {Math.round(brief.windMph)} mph · H{' '}
-                                {brief.headwindMph > 0 ? '+' : ''}
-                                {brief.headwindMph} · X{' '}
-                                {brief.crosswindMph.toFixed(0)}
+                                Plays {brief.playsLikeYards} ·{' '}
+                                {brief.recommendedClub} · slope{' '}
+                                {brief.slopeYards > 0 ? '+' : ''}
+                                {brief.slopeYards} · {Math.round(brief.windMph)} mph
                               </span>
                             )}
                           </span>
@@ -553,8 +609,8 @@ export function GolfView() {
 
                 {ensemble && (
                   <div className="border-t border-[var(--line-subtle)] px-3 py-2 text-[10px] text-[var(--ink-4)]">
-                    {ensemble.ensemble.modelsUsed.length} models · OSM + Esri
-                    imagery
+                    {ensemble.ensemble.modelsUsed.length} models · OSM +
+                    Open-Meteo elevation · Esri imagery
                   </div>
                 )}
               </GlassPanel>

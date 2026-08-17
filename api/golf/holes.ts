@@ -25,8 +25,43 @@ export interface GolfHole {
   bearingDeg: number;
   tee: { lat: number; lon: number };
   green: { lat: number; lon: number };
+  teeElevationM?: number;
+  greenElevationM?: number;
   path?: Array<{ lat: number; lon: number }>;
   source: 'hole-way' | 'tee-green';
+}
+
+/** Add tee/green elevations in one request so plays-like can include slope. */
+async function addElevations(holes: GolfHole[]): Promise<GolfHole[]> {
+  if (!holes.length) return holes;
+  const points = holes.flatMap((hole) => [hole.tee, hole.green]);
+  const params = new URLSearchParams({
+    latitude: points.map((p) => p.lat.toFixed(6)).join(','),
+    longitude: points.map((p) => p.lon.toFixed(6)).join(','),
+  });
+  try {
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/elevation?${params}`,
+    );
+    if (!res.ok) return holes;
+    const body = (await res.json()) as { elevation?: Array<number | null> };
+    const elevations = body.elevation ?? [];
+    return holes.map((hole, index) => {
+      const tee = elevations[index * 2];
+      const green = elevations[index * 2 + 1];
+      return {
+        ...hole,
+        teeElevationM:
+          typeof tee === 'number' && Number.isFinite(tee) ? tee : undefined,
+        greenElevationM:
+          typeof green === 'number' && Number.isFinite(green)
+            ? green
+            : undefined,
+      };
+    });
+  } catch {
+    return holes;
+  }
 }
 
 function parseRef(
@@ -257,10 +292,11 @@ export default async function handler(req: Request): Promise<Response> {
       };
       const holes = buildHoles(raw.elements ?? []);
       if (!holes.length && scope !== scopes[scopes.length - 1]) continue;
+      const holesWithElevation = await addElevations(holes);
       return jsonResponse(
         {
-          holes,
-          count: holes.length,
+          holes: holesWithElevation,
+          count: holesWithElevation.length,
           scope: scope.name,
           attribution: '© OpenStreetMap contributors (ODbL)',
         },

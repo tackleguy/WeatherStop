@@ -8,11 +8,7 @@ import {
   type GolfHole,
 } from '../lib/golf';
 
-export function useGolfCourses(
-  lat: number | null,
-  lon: number | null,
-  q = '',
-) {
+export function useGolfCourses(lat: number | null, lon: number | null) {
   const [courses, setCourses] = useState<GolfCourseSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +18,7 @@ export function useGolfCourses(
     const ac = new AbortController();
     setLoading(true);
     setError(null);
-    fetchGolfCourses(lat, lon, { q: q || undefined, signal: ac.signal })
+    fetchGolfCourses(lat, lon, { signal: ac.signal })
       .then(setCourses)
       .catch((err) => {
         if (ac.signal.aborted) return;
@@ -33,7 +29,7 @@ export function useGolfCourses(
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [lat, lon, q]);
+  }, [lat, lon]);
 
   return { courses, loading, error };
 }
@@ -46,6 +42,7 @@ export function useGolfHoles(lat: number | null, lon: number | null) {
   useEffect(() => {
     if (lat == null || lon == null) return;
     const ac = new AbortController();
+    setHoles([]);
     setLoading(true);
     setError(null);
     fetchGolfHoles(lat, lon, { signal: ac.signal })

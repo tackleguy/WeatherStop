@@ -1,4 +1,5 @@
 // Client types + fetchers for the Golf section.
+// Memory + sessionStorage cache so reopening a course / city is instant.
 
 export interface GolfCourseSummary {
   id: string;
@@ -63,23 +64,82 @@ export interface GolfEnsemble {
   attribution: string;
 }
 
+const MEM = new Map<string, { at: number; data: unknown }>();
+const COURSES_TTL_MS = 30 * 60_000;
+const HOLES_TTL_MS = 6 * 60 * 60_000;
+
+function q3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+function q4(n: number): number {
+  return Math.round(n * 10_000) / 10_000;
+}
+
+function memGet<T>(key: string, ttl: number): T | null {
+  const hit = MEM.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > ttl) {
+    MEM.delete(key);
+    return null;
+  }
+  return hit.data as T;
+}
+
+function memSet(key: string, data: unknown): void {
+  MEM.set(key, { at: Date.now(), data });
+}
+
+function sessionGet<T>(key: string, ttl: number): T | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at: number; data: T };
+    if (Date.now() - parsed.at > ttl) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function sessionSet(key: string, data: unknown): void {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data }));
+  } catch {
+    // quota / private mode — memory cache still helps
+  }
+}
+
 export async function fetchGolfCourses(
   lat: number,
   lon: number,
-  opts?: { q?: string; radius?: number; signal?: AbortSignal },
+  opts?: { radius?: number; signal?: AbortSignal },
 ): Promise<GolfCourseSummary[]> {
+  const key = `golf:courses:${q3(lat)}:${q3(lon)}:${opts?.radius ?? ''}`;
+  const cached =
+    memGet<GolfCourseSummary[]>(key, COURSES_TTL_MS) ??
+    sessionGet<GolfCourseSummary[]>(key, COURSES_TTL_MS);
+  if (cached) {
+    memSet(key, cached);
+    return cached;
+  }
+
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
   });
-  if (opts?.q) params.set('q', opts.q);
   if (opts?.radius) params.set('radius', String(opts.radius));
   const res = await fetch(`/api/golf/courses?${params}`, {
     signal: opts?.signal,
   });
   if (!res.ok) throw new Error(`courses ${res.status}`);
   const data = (await res.json()) as { courses: GolfCourseSummary[] };
-  return data.courses ?? [];
+  const courses = data.courses ?? [];
+  memSet(key, courses);
+  sessionSet(key, courses);
+  return courses;
 }
 
 export async function fetchGolfHoles(
@@ -87,6 +147,15 @@ export async function fetchGolfHoles(
   lon: number,
   opts?: { radius?: number; signal?: AbortSignal },
 ): Promise<GolfHole[]> {
+  const key = `golf:holes:${q4(lat)}:${q4(lon)}:${opts?.radius ?? ''}`;
+  const cached =
+    memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
+    sessionGet<GolfHole[]>(key, HOLES_TTL_MS);
+  if (cached) {
+    memSet(key, cached);
+    return cached;
+  }
+
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
@@ -97,7 +166,10 @@ export async function fetchGolfHoles(
   });
   if (!res.ok) throw new Error(`holes ${res.status}`);
   const data = (await res.json()) as { holes: GolfHole[] };
-  return data.holes ?? [];
+  const holes = data.holes ?? [];
+  memSet(key, holes);
+  sessionSet(key, holes);
+  return holes;
 }
 
 export async function fetchGolfEnsemble(

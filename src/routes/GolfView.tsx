@@ -93,11 +93,18 @@ export function GolfView() {
   const searchLon = course?.lon ?? loc.lon;
 
   const { courses, loading: coursesLoading, error: coursesError } =
-    useGolfCourses(loc.lat, loc.lon, courseFilter);
+    useGolfCourses(loc.lat, loc.lon);
   const { holes, loading: holesLoading, error: holesError } = useGolfHoles(
     course?.lat ?? null,
     course?.lon ?? null,
   );
+
+  // Filter locally — never re-query Overpass on every keystroke.
+  const filteredCourses = useMemo(() => {
+    const q = courseFilter.trim().toLowerCase();
+    if (!q) return courses;
+    return courses.filter((c) => c.name.toLowerCase().includes(q));
+  }, [courses, courseFilter]);
   const {
     data: ensemble,
     loading: ensLoading,
@@ -216,8 +223,13 @@ export function GolfView() {
               No golf courses found nearby. Try another city.
             </p>
           )}
+          {!coursesLoading && courses.length > 0 && !filteredCourses.length && (
+            <p className="px-2 py-3 text-xs text-[var(--ink-3)]">
+              No courses match “{courseFilter}”.
+            </p>
+          )}
           <ul className="space-y-1">
-            {courses.map((c) => {
+            {filteredCourses.map((c) => {
               const active = course?.id === c.id;
               return (
                 <li key={c.id}>

@@ -70,7 +70,7 @@ export function GolfSetup({ initial, onComplete }: Props) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col items-center overflow-y-auto bg-[var(--surface-0)] px-4 py-8">
+    <div className="absolute inset-0 flex min-h-0 flex-col items-center overflow-y-auto overscroll-contain bg-[var(--surface-0)] px-4 py-6 pb-8">
       <div className="w-full max-w-lg">
         <div className="mb-6 flex items-start gap-3">
           <div className="mt-0.5 grid h-10 w-10 place-items-center rounded-xl bg-[var(--accent)]/20 text-[var(--accent)]">
@@ -95,7 +95,7 @@ export function GolfSetup({ initial, onComplete }: Props) {
             value={commonText}
             onChange={(e) => setCommonText(e.target.value)}
             placeholder="e.g. Torrey Pines, Rancho Park, Riviera"
-            className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-2.5 text-[13px] text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)]"
+            className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-3 text-base text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)] lg:py-2.5 lg:text-[13px]"
           />
           <span className="mt-1 block text-[11px] text-[var(--ink-4)]">
             Comma-separated — shown as quick picks in search.
@@ -114,7 +114,7 @@ export function GolfSetup({ initial, onComplete }: Props) {
               step={0.1}
               value={handicap}
               onChange={(e) => setHandicap(Number(e.target.value))}
-              className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-2.5 text-[13px] tabular-nums text-[var(--ink-1)] outline-none focus:border-[var(--accent)]"
+              className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-3 text-base tabular-nums text-[var(--ink-1)] outline-none focus:border-[var(--accent)] lg:py-2.5 lg:text-[13px]"
             />
           </label>
           <div>
@@ -163,7 +163,7 @@ export function GolfSetup({ initial, onComplete }: Props) {
                 max={220}
                 value={sevenIronYards}
                 onChange={(e) => setSevenIronYards(Number(e.target.value))}
-                className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-2.5 pr-10 text-[13px] tabular-nums text-[var(--ink-1)] outline-none focus:border-[var(--accent)]"
+                className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-3 pr-10 text-base tabular-nums text-[var(--ink-1)] outline-none focus:border-[var(--accent)] lg:py-2.5 lg:text-[13px]"
               />
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[var(--ink-4)]">
                 yd
@@ -181,7 +181,7 @@ export function GolfSetup({ initial, onComplete }: Props) {
                 max={360}
                 value={driverYards}
                 onChange={(e) => setDriverYards(Number(e.target.value))}
-                className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-2.5 pr-10 text-[13px] tabular-nums text-[var(--ink-1)] outline-none focus:border-[var(--accent)]"
+                className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-3 pr-10 text-base tabular-nums text-[var(--ink-1)] outline-none focus:border-[var(--accent)] lg:py-2.5 lg:text-[13px]"
               />
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[var(--ink-4)]">
                 yd

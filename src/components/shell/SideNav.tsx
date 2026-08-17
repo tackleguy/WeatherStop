@@ -56,7 +56,7 @@ const SECONDARY: Tab[] = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
-function NavItem({ tab }: { tab: Tab }) {
+function NavItem({ tab, labeled = false }: { tab: Tab; labeled?: boolean }) {
   const loc = useLocation();
   const Icon = tab.icon;
   const isHome = loc.pathname === '/' || loc.pathname.startsWith('/city/');
@@ -73,7 +73,10 @@ function NavItem({ tab }: { tab: Tab }) {
           (tab.to === '/' && isHome) ||
           (tab.match?.(loc.pathname) ?? false);
         return [
-          'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-[var(--t-fast)]',
+          'group relative flex items-center justify-center rounded-xl transition-all duration-[var(--t-fast)]',
+          labeled
+            ? 'min-w-[3.15rem] flex-col gap-0.5 px-1 py-1'
+            : 'h-10 w-10',
           active
             ? 'text-white shadow-[0_0_18px_var(--accent-glow)]'
             : 'text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]',
@@ -88,9 +91,15 @@ function NavItem({ tab }: { tab: Tab }) {
       }}
     >
       <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
-      <span className="pointer-events-none absolute left-full ml-2 hidden whitespace-nowrap rounded-md bg-[var(--glass-hi)] px-2 py-1 text-[11px] font-medium text-[var(--ink-1)] opacity-0 shadow-lg ring-1 ring-white/10 transition-opacity group-hover:opacity-100 lg:block">
-        {tab.label}
-      </span>
+      {labeled ? (
+        <span className="max-w-[3.5rem] truncate text-[9px] font-medium leading-none">
+          {tab.label}
+        </span>
+      ) : (
+        <span className="pointer-events-none absolute left-full ml-2 hidden whitespace-nowrap rounded-md bg-[var(--glass-hi)] px-2 py-1 text-[11px] font-medium text-[var(--ink-1)] opacity-0 shadow-lg ring-1 ring-white/10 transition-opacity group-hover:opacity-100 lg:block">
+          {tab.label}
+        </span>
+      )}
     </NavLink>
   );
 }
@@ -100,11 +109,11 @@ export function SideNav() {
 
   if (isMobile) {
     const mobileTabs = [
-      PRIMARY[0],
-      PRIMARY[1],
-      PRIMARY[4],
-      PRIMARY[5],
-      PRIMARY[8],
+      PRIMARY.find((t) => t.to === '/')!,
+      PRIMARY.find((t) => t.to === '/radar')!,
+      PRIMARY.find((t) => t.to === '/forecast')!,
+      PRIMARY.find((t) => t.to === '/alerts')!,
+      PRIMARY.find((t) => t.to === '/golf')!,
       SECONDARY[1],
     ];
     return (
@@ -114,7 +123,7 @@ export function SideNav() {
         style={{ background: 'var(--glass)' }}
       >
         {mobileTabs.map((t) => (
-          <NavItem key={t.to} tab={t} />
+          <NavItem key={t.to} tab={t} labeled />
         ))}
       </nav>
     );

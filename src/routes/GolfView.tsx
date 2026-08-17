@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Compass,
   Flag,
   Loader2,
@@ -19,6 +21,7 @@ import { GolfSetup } from '../components/golf/GolfSetup';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { SearchBar } from '../components/radar/SearchBar';
 import { INITIAL_SEED } from '../constants/cities';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { bearingCompass } from '../lib/geo';
 import {
   useGolfCourses,
@@ -86,7 +89,10 @@ function aspectLabel(aspect: string): string {
   }
 }
 
+const MOBILE_FIT_PADDING = { top: 88, right: 28, bottom: 196, left: 28 };
+
 export function GolfView() {
+  const isMobile = useIsMobile();
   const [profile, setProfile] = useState<GolfPlayerProfile | null>(
     loadGolfProfile,
   );
@@ -98,9 +104,12 @@ export function GolfView() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [courseFilter, setCourseFilter] = useState('');
   const [holeUp, setHoleUp] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(true);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
 
   const searchLat = course?.lat ?? loc.lat;
   const searchLon = course?.lon ?? loc.lon;
+  const showPicker = !isMobile || pickerOpen || !course;
 
   const {
     courses,
@@ -151,6 +160,16 @@ export function GolfView() {
     activeHole != null ? briefByHole.get(activeHole) : undefined;
   const activeIdx = holes.findIndex((h) => h.number === activeHole);
 
+  const pickCourse = useCallback(
+    (next: GolfCourseSummary) => {
+      setCourse(next);
+      setActiveHole(null);
+      setSheetExpanded(false);
+      if (isMobile) setPickerOpen(false);
+    },
+    [isMobile],
+  );
+
   const stepHole = useCallback(
     (delta: number) => {
       if (!holes.length) return;
@@ -196,10 +215,59 @@ export function GolfView() {
     );
   }
 
+  const hourSlider = course ? (
+    <div className={isMobile ? 'px-3 pb-2' : 'border-t border-[var(--line-subtle)] p-3'}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--ink-3)]">
+          Forecast hour
+        </span>
+        <span className="text-[11px] tabular-nums text-[var(--ink-2)]">
+          +{hour}h
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={24}
+        value={hour}
+        onChange={(e) => setHour(Number(e.target.value))}
+        className="w-full accent-[var(--accent)]"
+      />
+      {ensemble && (
+        <p className="mt-2 text-[11px] leading-snug text-[var(--ink-2)]">
+          <Sparkles className="mr-1 inline h-3 w-3 text-[var(--accent)]" />
+          {ensemble.summary}
+        </p>
+      )}
+      {ensLoading && (
+        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--ink-3)]">
+          <RefreshCw className="h-3 w-3 animate-spin" />
+          Blending models…
+        </p>
+      )}
+      {ensError && (
+        <p className="mt-2 text-[11px] text-red-300">{ensError}</p>
+      )}
+    </div>
+  ) : null;
+
   return (
-    <div className="relative flex h-full min-h-0 flex-col lg:flex-row">
-      {/* Sidebar */}
-      <aside className="z-10 flex max-h-[46%] w-full shrink-0 flex-col border-b border-[var(--line-subtle)] lg:max-h-none lg:h-full lg:w-[360px] lg:border-b-0 lg:border-r">
+    <div className="absolute inset-0 flex min-h-0 flex-col lg:flex-row">
+      {/* Course picker — full screen on phones until a course is chosen. */}
+      <aside
+        className={
+          isMobile
+            ? [
+                'z-20 flex min-h-0 flex-col bg-[var(--surface-0)]',
+                showPicker
+                  ? course
+                    ? 'absolute inset-0'
+                    : 'relative h-full'
+                  : 'hidden',
+              ].join(' ')
+            : 'z-10 flex h-full w-[360px] shrink-0 flex-col border-r border-[var(--line-subtle)]'
+        }
+      >
         <div className="flex items-center gap-2 px-3 py-3">
           <Flag className="h-4 w-4 text-[var(--accent)]" strokeWidth={1.8} />
           <div className="min-w-0 flex-1">
@@ -210,9 +278,18 @@ export function GolfView() {
               1,000+ public &amp; private · multi-model wind
             </p>
           </div>
+          {isMobile && course ? (
+            <button
+              type="button"
+              className="rounded-lg px-2 py-2 text-[12px] font-medium text-[var(--ink-2)] hover:bg-white/5 hover:text-[var(--ink-1)]"
+              onClick={() => setPickerOpen(false)}
+            >
+              Map
+            </button>
+          ) : null}
           <button
             type="button"
-            className="rounded-lg p-2 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
+            className="rounded-lg p-2.5 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
             aria-label="Edit golf profile"
             title={`Edit profile · HCP ${profile.handicap}`}
             onClick={() => setSetupOpen(true)}
@@ -221,9 +298,9 @@ export function GolfView() {
           </button>
           <button
             type="button"
-            className="rounded-lg p-2 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
+            className="rounded-lg p-2.5 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
             aria-label="Change location"
-            onClick={() => setSearchOpen(true)}
+            onClick={() => setSearchOpen((v) => !v)}
           >
             <Search className="h-4 w-4" />
           </button>
@@ -241,6 +318,7 @@ export function GolfView() {
                 setLoc({ name: p.label, lat: p.lat, lon: p.lon });
                 setCourse(null);
                 setActiveHole(null);
+                setPickerOpen(true);
                 setSearchOpen(false);
               }}
             />
@@ -249,10 +327,15 @@ export function GolfView() {
 
         <div className="px-3 pb-2">
           <input
+            type="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
             value={courseFilter}
             onChange={(e) => setCourseFilter(e.target.value)}
             placeholder="City courses & private clubs…"
-            className="w-full rounded-lg border border-[var(--line-default)] bg-black/20 px-2.5 py-1.5 text-xs text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)]"
+            className="w-full rounded-lg border border-[var(--line-default)] bg-black/20 px-3 py-2.5 text-base text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)] lg:py-1.5 lg:text-xs"
           />
         </div>
 
@@ -263,7 +346,7 @@ export function GolfView() {
                 key={name}
                 type="button"
                 onClick={() => setCourseFilter(name)}
-                className="shrink-0 rounded-full border border-[var(--line-subtle)] bg-black/15 px-2 py-1 text-[10px] text-[var(--ink-3)] hover:border-[var(--accent)]/50 hover:text-[var(--ink-1)]"
+                className="shrink-0 rounded-full border border-[var(--line-subtle)] bg-black/15 px-3 py-1.5 text-[12px] text-[var(--ink-3)] hover:border-[var(--accent)]/50 hover:text-[var(--ink-1)] lg:px-2 lg:py-1 lg:text-[10px]"
               >
                 {name}
               </button>
@@ -271,7 +354,7 @@ export function GolfView() {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2">
           {coursesLoading && (
             <div className="flex items-center gap-2 px-2 py-3 text-xs text-[var(--ink-3)]">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />{' '}
@@ -314,12 +397,9 @@ export function GolfView() {
                 <li key={c.id}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setCourse(c);
-                      setActiveHole(null);
-                    }}
+                    onClick={() => pickCourse(c)}
                     className={[
-                      'w-full rounded-xl px-3 py-2.5 text-left transition-colors',
+                      'w-full rounded-xl px-3 py-3 text-left transition-colors lg:py-2.5',
                       active
                         ? 'bg-[var(--accent)]/20 ring-1 ring-[var(--accent)]/50'
                         : 'hover:bg-white/5',
@@ -358,45 +438,16 @@ export function GolfView() {
           </ul>
         </div>
 
-        {course && (
-          <div className="border-t border-[var(--line-subtle)] p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--ink-3)]">
-                Forecast hour
-              </span>
-              <span className="text-[11px] tabular-nums text-[var(--ink-2)]">
-                +{hour}h
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={24}
-              value={hour}
-              onChange={(e) => setHour(Number(e.target.value))}
-              className="w-full accent-[var(--accent)]"
-            />
-            {ensemble && (
-              <p className="mt-2 text-[11px] leading-snug text-[var(--ink-2)]">
-                <Sparkles className="mr-1 inline h-3 w-3 text-[var(--accent)]" />
-                {ensemble.summary}
-              </p>
-            )}
-            {ensLoading && (
-              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--ink-3)]">
-                <RefreshCw className="h-3 w-3 animate-spin" />
-                Blending models…
-              </p>
-            )}
-            {ensError && (
-              <p className="mt-2 text-[11px] text-red-300">{ensError}</p>
-            )}
-          </div>
-        )}
+        {course && !isMobile ? hourSlider : null}
       </aside>
 
       {/* Map + hole board */}
-      <div className="relative min-h-0 flex-1">
+      <div
+        className={[
+          'relative h-full min-h-0 flex-1',
+          isMobile && !course ? 'hidden' : '',
+        ].join(' ')}
+      >
         {course ? (
           <>
             <GolfMap
@@ -410,91 +461,158 @@ export function GolfView() {
               headwindMph={activeBrief?.headwindMph ?? null}
               crosswindMph={activeBrief?.crosswindMph ?? null}
               holeUp={holeUp}
+              compactControls={isMobile}
+              showWindLegend={!isMobile}
+              fitPadding={isMobile ? MOBILE_FIT_PADDING : 60}
+              legendClassName="left-3 top-16"
             />
 
-            {/* Hole-by-hole walkthrough */}
-            {holes.length > 0 && (
-              <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-3 lg:right-[352px] lg:left-3 lg:inset-x-auto lg:justify-start">
+            {/* Hole-by-hole walkthrough + course switcher */}
+            {(isMobile || holes.length > 0) && (
+              <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3 lg:right-[352px] lg:left-3 lg:inset-x-auto lg:justify-start">
                 <GlassPanel
                   variant="high"
-                  className="pointer-events-auto flex items-center gap-1 px-1.5 py-1.5 shadow-xl"
+                  className="pointer-events-auto flex max-w-full items-center gap-1 px-1.5 py-1.5 shadow-xl"
                 >
-                  <button
-                    type="button"
-                    onClick={() => stepHole(-1)}
-                    disabled={activeIdx <= 0}
-                    aria-label="Previous hole"
-                    className="rounded-lg p-1.5 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveHole(
-                        activeHole == null ? holes[0].number : null,
-                      )
-                    }
-                    className="min-w-[104px] rounded-lg px-2 py-0.5 text-center transition-colors hover:bg-white/10"
-                    title={
-                      activeHole == null
-                        ? 'Start the walkthrough'
-                        : 'Back to full course'
-                    }
-                  >
-                    <span className="block text-[10px] uppercase tracking-wide text-[var(--ink-4)]">
-                      {activeHole == null ? 'Course' : 'Hole'}
-                    </span>
-                    <span className="block text-[13px] font-semibold tabular-nums text-[var(--ink-1)]">
-                      {activeHole == null
-                        ? `${holes.length} holes`
-                        : `${activeHole} · ${activeBrief?.playsLikeYards ?? holes[activeIdx]?.yards} yd`}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => stepHole(1)}
-                    disabled={activeIdx >= holes.length - 1}
-                    aria-label="Next hole"
-                    className="rounded-lg p-1.5 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                  <span className="mx-0.5 h-6 w-px bg-[var(--line-subtle)]" />
-                  <button
-                    type="button"
-                    onClick={() => setHoleUp((v) => !v)}
-                    aria-pressed={holeUp}
-                    title="Rotate map so the hole plays up the screen"
-                    className={[
-                      'rounded-lg p-1.5 transition-colors',
-                      holeUp
-                        ? 'bg-[var(--accent)]/25 text-[var(--ink-1)]'
-                        : 'text-[var(--ink-3)] hover:bg-white/10',
-                    ].join(' ')}
-                  >
-                    <Compass className="h-4 w-4" />
-                  </button>
+                  {isMobile ? (
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      aria-label="Change course"
+                      title={course.name}
+                      className="max-w-[7.5rem] truncate rounded-lg px-2 py-1.5 text-[11px] font-medium text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink-1)]"
+                    >
+                      {course.name}
+                    </button>
+                  ) : null}
+                  {holes.length > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => stepHole(-1)}
+                        disabled={activeIdx <= 0}
+                        aria-label="Previous hole"
+                        className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30 lg:p-1.5"
+                      >
+                        <ChevronLeft className="h-5 w-5 lg:h-4 lg:w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveHole(
+                            activeHole == null ? holes[0].number : null,
+                          )
+                        }
+                        className="min-w-[104px] rounded-lg px-2 py-0.5 text-center transition-colors hover:bg-white/10"
+                        title={
+                          activeHole == null
+                            ? 'Start the walkthrough'
+                            : 'Back to full course'
+                        }
+                      >
+                        <span className="block text-[10px] uppercase tracking-wide text-[var(--ink-4)]">
+                          {activeHole == null ? 'Course' : 'Hole'}
+                        </span>
+                        <span className="block text-[13px] font-semibold tabular-nums text-[var(--ink-1)]">
+                          {activeHole == null
+                            ? `${holes.length} holes`
+                            : `${activeHole} · ${activeBrief?.playsLikeYards ?? holes[activeIdx]?.yards} yd`}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => stepHole(1)}
+                        disabled={activeIdx >= holes.length - 1}
+                        aria-label="Next hole"
+                        className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30 lg:p-1.5"
+                      >
+                        <ChevronRight className="h-5 w-5 lg:h-4 lg:w-4" />
+                      </button>
+                      <span className="mx-0.5 h-6 w-px bg-[var(--line-subtle)]" />
+                      <button
+                        type="button"
+                        onClick={() => setHoleUp((v) => !v)}
+                        aria-pressed={holeUp}
+                        title="Rotate map so the hole plays up the screen"
+                        className={[
+                          'rounded-lg p-2 transition-colors lg:p-1.5',
+                          holeUp
+                            ? 'bg-[var(--accent)]/25 text-[var(--ink-1)]'
+                            : 'text-[var(--ink-3)] hover:bg-white/10',
+                        ].join(' ')}
+                      >
+                        <Compass className="h-5 w-5 lg:h-4 lg:w-4" />
+                      </button>
+                    </>
+                  ) : null}
                 </GlassPanel>
               </div>
             )}
 
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3 lg:inset-x-auto lg:right-3 lg:top-3 lg:bottom-3 lg:w-[320px]">
-              <GlassPanel className="pointer-events-auto flex max-h-full flex-col overflow-hidden p-0 shadow-xl">
-                <div className="border-b border-[var(--line-subtle)] px-3 py-2.5">
-                  <div className="truncate text-sm font-semibold text-[var(--ink-1)]">
-                    {course.name}
+            <div
+              className={
+                isMobile
+                  ? 'pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3'
+                  : 'pointer-events-none absolute inset-x-0 bottom-0 p-3 lg:inset-x-auto lg:right-3 lg:top-3 lg:bottom-3 lg:w-[320px]'
+              }
+            >
+              <GlassPanel
+                className={[
+                  'pointer-events-auto flex flex-col overflow-hidden p-0 shadow-xl',
+                  isMobile
+                    ? sheetExpanded
+                      ? 'max-h-[min(70dvh,32rem)]'
+                      : ''
+                    : 'max-h-full',
+                ].join(' ')}
+              >
+                {isMobile ? (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 border-b border-[var(--line-subtle)] px-3 py-2.5 text-left"
+                    onClick={() => setSheetExpanded((v) => !v)}
+                    aria-expanded={sheetExpanded}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-[var(--ink-1)]">
+                        {course.name}
+                      </div>
+                      <div className="text-[11px] text-[var(--ink-3)]">
+                        {holesLoading
+                          ? 'Loading hole geometry…'
+                          : holesError
+                            ? 'OpenStreetMap is busy — hole data unavailable'
+                            : holes.length
+                              ? ensemble?.ensemble.windMph != null
+                                ? `${holes.length} holes · ${Math.round(ensemble.ensemble.windMph)} mph ${bearingCompass(ensemble.ensemble.windFromDeg)}`
+                                : `${holes.length} holes · yardage, bearing & elevation`
+                              : 'No hole geometry in OSM for this course yet'}
+                      </div>
+                    </div>
+                    {sheetExpanded ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-[var(--ink-3)]" />
+                    ) : (
+                      <ChevronUp className="h-4 w-4 shrink-0 text-[var(--ink-3)]" />
+                    )}
+                  </button>
+                ) : (
+                  <div className="border-b border-[var(--line-subtle)] px-3 py-2.5">
+                    <div className="truncate text-sm font-semibold text-[var(--ink-1)]">
+                      {course.name}
+                    </div>
+                    <div className="text-[11px] text-[var(--ink-3)]">
+                      {holesLoading
+                        ? 'Loading hole geometry…'
+                        : holesError
+                          ? 'OpenStreetMap is busy — hole data unavailable'
+                          : holes.length
+                            ? `${holes.length} holes · yardage, bearing & elevation`
+                            : 'No hole geometry in OSM for this course yet'}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-[var(--ink-3)]">
-                    {holesLoading
-                      ? 'Loading hole geometry…'
-                      : holesError
-                        ? 'OpenStreetMap is busy — hole data unavailable'
-                        : holes.length
-                          ? `${holes.length} holes · yardage, bearing & elevation`
-                          : 'No hole geometry in OSM for this course yet'}
-                  </div>
-                  {holesError && (
+                )}
+                {holesError && (
+                  <div className="px-3 pb-2">
                     <button
                       type="button"
                       onClick={retryHoles}
@@ -502,8 +620,8 @@ export function GolfView() {
                     >
                       Retry holes
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {activeBrief && (
                   <div className="border-b border-[var(--line-subtle)] bg-[var(--accent)]/10 px-3 py-2.5">
@@ -515,12 +633,19 @@ export function GolfView() {
                         {aspectLabel(activeBrief.aspect)}
                       </span>
                     </div>
-                    <p className="mt-1 text-[12px] leading-snug text-[var(--ink-2)]">
+                    <p
+                      className={[
+                        'mt-1 text-[12px] leading-snug text-[var(--ink-2)]',
+                        isMobile && !sheetExpanded ? 'line-clamp-2' : '',
+                      ].join(' ')}
+                    >
                       {activeBrief.tip}
                     </p>
-                    <p className="mt-1 text-[11px] text-[var(--accent)]">
-                      {activeBrief.clubHint}
-                    </p>
+                    {(!isMobile || sheetExpanded) && (
+                      <p className="mt-1 text-[11px] text-[var(--accent)]">
+                        {activeBrief.clubHint}
+                      </p>
+                    )}
                     <div className="mt-2 grid grid-cols-4 gap-1 text-center">
                       <div className="rounded-md bg-black/25 px-1 py-1">
                         <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
@@ -560,60 +685,68 @@ export function GolfView() {
                   </div>
                 )}
 
-                <ul className="min-h-0 flex-1 overflow-y-auto">
-                  {holes.map((h) => {
-                    const brief = briefByHole.get(h.number);
-                    const on = activeHole === h.number;
-                    return (
-                      <li key={h.number}>
-                        <button
-                          type="button"
-                          onClick={() => setActiveHole(h.number)}
-                          className={[
-                            'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
-                            on ? 'bg-white/10' : 'hover:bg-white/5',
-                          ].join(' ')}
-                        >
-                          <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md bg-black/30 text-[11px] font-semibold tabular-nums text-[var(--ink-1)]">
-                            {h.number}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex flex-wrap items-baseline gap-x-2 text-[12px] text-[var(--ink-1)]">
-                              <span className="font-medium tabular-nums">
-                                {h.yards} yd
+                {(!isMobile || sheetExpanded) && (
+                  <>
+                    {isMobile ? hourSlider : null}
+                    <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                      {holes.map((h) => {
+                        const brief = briefByHole.get(h.number);
+                        const on = activeHole === h.number;
+                        return (
+                          <li key={h.number}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveHole(h.number);
+                                if (isMobile) setSheetExpanded(false);
+                              }}
+                              className={[
+                                'flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors lg:py-2',
+                                on ? 'bg-white/10' : 'hover:bg-white/5',
+                              ].join(' ')}
+                            >
+                              <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md bg-black/30 text-[11px] font-semibold tabular-nums text-[var(--ink-1)]">
+                                {h.number}
                               </span>
-                              <span className="text-[10px] text-[var(--ink-3)]">
-                                {h.bearingDeg}°{' '}
-                                {bearingCompass(h.bearingDeg)}
-                              </span>
-                              {h.par != null && (
-                                <span className="text-[10px] text-[var(--ink-4)]">
-                                  par {h.par}
+                              <span className="min-w-0 flex-1">
+                                <span className="flex flex-wrap items-baseline gap-x-2 text-[12px] text-[var(--ink-1)]">
+                                  <span className="font-medium tabular-nums">
+                                    {h.yards} yd
+                                  </span>
+                                  <span className="text-[10px] text-[var(--ink-3)]">
+                                    {h.bearingDeg}°{' '}
+                                    {bearingCompass(h.bearingDeg)}
+                                  </span>
+                                  {h.par != null && (
+                                    <span className="text-[10px] text-[var(--ink-4)]">
+                                      par {h.par}
+                                    </span>
+                                  )}
                                 </span>
-                              )}
-                            </span>
-                            {brief && (
-                              <span className="mt-0.5 block truncate text-[10px] text-[var(--ink-3)]">
-                                Plays {brief.playsLikeYards} ·{' '}
-                                {brief.recommendedClub} · slope{' '}
-                                {brief.slopeYards > 0 ? '+' : ''}
-                                {brief.slopeYards} · {Math.round(brief.windMph)} mph
+                                {brief && (
+                                  <span className="mt-0.5 block truncate text-[10px] text-[var(--ink-3)]">
+                                    Plays {brief.playsLikeYards} ·{' '}
+                                    {brief.recommendedClub} · slope{' '}
+                                    {brief.slopeYards > 0 ? '+' : ''}
+                                    {brief.slopeYards} · {Math.round(brief.windMph)} mph
+                                  </span>
+                                )}
                               </span>
-                            )}
-                          </span>
-                          <Navigation
-                            className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--ink-4)]"
-                            style={{
-                              transform: `rotate(${h.bearingDeg}deg)`,
-                            }}
-                          />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                              <Navigation
+                                className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--ink-4)]"
+                                style={{
+                                  transform: `rotate(${h.bearingDeg}deg)`,
+                                }}
+                              />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
 
-                {ensemble && (
+                {ensemble && (!isMobile || sheetExpanded) && (
                   <div className="border-t border-[var(--line-subtle)] px-3 py-2 text-[10px] text-[var(--ink-4)]">
                     {ensemble.ensemble.modelsUsed.length} models · OSM +
                     Open-Meteo elevation · Esri imagery
@@ -633,7 +766,6 @@ export function GolfView() {
           </div>
         )}
       </div>
-
     </div>
   );
 }

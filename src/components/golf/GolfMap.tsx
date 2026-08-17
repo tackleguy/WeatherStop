@@ -25,6 +25,11 @@ interface Props {
   /** Rotate the map so the active hole plays up the screen. */
   holeUp?: boolean;
   className?: string;
+  /** Hide zoom buttons — pinch-zoom still works on phones. */
+  compactControls?: boolean;
+  showWindLegend?: boolean;
+  fitPadding?: number | { top: number; right: number; bottom: number; left: number };
+  legendClassName?: string;
 }
 
 const SRC = 'golf-holes';
@@ -37,11 +42,21 @@ const LINE = 'golf-hole-lines';
 const LINE_ACTIVE = 'golf-hole-lines-active';
 const LYR_TEE = 'golf-tees-lyr';
 const LYR_GREEN = 'golf-greens-lyr';
+const LYR_TEE_HIT = 'golf-tees-hit';
+const LYR_GREEN_HIT = 'golf-greens-hit';
+const LINE_HIT = 'golf-hole-lines-hit';
 const LYR_FLOW = 'golf-wind-flow-lyr';
 const LYR_FLOW_ARROW = 'golf-wind-arrow-lyr';
 const LYR_AIM = 'golf-aim-lyr';
 const LYR_DRIFT = 'golf-drift-lyr';
 const LYR_LANDING = 'golf-landing-lyr';
+
+const CLICK_LAYERS = [LINE_HIT, LINE, LINE_ACTIVE, LYR_TEE_HIT, LYR_GREEN_HIT, LYR_TEE, LYR_GREEN];
+
+function holeNumberFromFeature(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
 
 // Marching-ants cycle for the streamlines.
 const DASH_STEPS: Array<[number, number, number, number]> = [
@@ -107,6 +122,10 @@ export function GolfMap({
   crosswindMph,
   holeUp = true,
   className = '',
+  compactControls = false,
+  showWindLegend = true,
+  fitPadding = 60,
+  legendClassName = 'left-3 top-3',
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -114,6 +133,8 @@ export function GolfMap({
   const queueRef = useRef<Array<() => void>>([]);
   const onSelectRef = useRef(onSelectHole);
   onSelectRef.current = onSelectHole;
+  const fitPaddingRef = useRef(fitPadding);
+  fitPaddingRef.current = fitPadding;
 
   // Layers only exist after `load`, so defer any data/camera work until then.
   const whenReady = useCallback((fn: () => void) => {
@@ -123,18 +144,43 @@ export function GolfMap({
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    const container = containerRef.current;
     const map = new maplibregl.Map({
-      container: containerRef.current,
+      container,
       style: GOLF_SATELLITE_STYLE as maplibregl.StyleSpecification,
       center: [lon, lat],
       zoom: 15.2,
       attributionControl: { compact: true },
+      pitchWithRotate: false,
+      touchPitch: false,
+      maxPitch: 0,
+      // Flex layouts often mount at 0×0 on phones; we resize once the
+      // container has a real size (see ResizeObserver below).
+      trackResize: true,
     });
-    map.addControl(
-      new maplibregl.NavigationControl({ visualizePitch: false }),
-      'top-right',
-    );
+    if (!compactControls) {
+      map.addControl(
+        new maplibregl.NavigationControl({ visualizePitch: false }),
+        'top-right',
+      );
+    }
     mapRef.current = map;
+
+    const resize = () => {
+      if (!mapRef.current) return;
+      try {
+        map.resize();
+      } catch {
+        // Map already removed.
+      }
+    };
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => resize())
+        : null;
+    ro?.observe(container);
+    window.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('resize', resize);
 
     const onLoad = () => {
       map.addSource(SRC, { type: 'geojson', data: holesGeoJSON([], null) });
@@ -149,6 +195,17 @@ export function GolfMap({
       map.addSource(SRC_FLOW, { type: 'geojson', data: emptyCollection() });
       map.addSource(SRC_SHOT, { type: 'geojson', data: emptyCollection() });
 
+      // Fat invisible stroke first so tees/fairways are tappable on phones.
+      map.addLayer({
+        id: LINE_HIT,
+        type: 'line',
+        source: SRC,
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 28,
+          'line-opacity': 0.02,
+        },
+      });
       map.addLayer({
         id: LINE,
         type: 'line',
@@ -234,11 +291,31 @@ export function GolfMap({
       });
 
       map.addLayer({
+        id: LYR_TEE_HIT,
+        type: 'circle',
+        source: SRC_TEE,
+        paint: {
+          'circle-radius': 18,
+          'circle-color': '#22c55e',
+          'circle-opacity': 0.02,
+        },
+      });
+      map.addLayer({
+        id: LYR_GREEN_HIT,
+        type: 'circle',
+        source: SRC_GREEN,
+        paint: {
+          'circle-radius': 18,
+          'circle-color': '#f8fafc',
+          'circle-opacity': 0.02,
+        },
+      });
+      map.addLayer({
         id: LYR_TEE,
         type: 'circle',
         source: SRC_TEE,
         paint: {
-          'circle-radius': 5,
+          'circle-radius': 6,
           'circle-color': '#22c55e',
           'circle-stroke-width': 1.5,
           'circle-stroke-color': '#052e16',
@@ -249,7 +326,7 @@ export function GolfMap({
         type: 'circle',
         source: SRC_GREEN,
         paint: {
-          'circle-radius': 6,
+          'circle-radius': 7,
           'circle-color': '#f8fafc',
           'circle-stroke-width': 2,
           'circle-stroke-color': '#0f172a',
@@ -257,10 +334,10 @@ export function GolfMap({
       });
 
       const click = (e: maplibregl.MapLayerMouseEvent) => {
-        const n = e.features?.[0]?.properties?.number;
-        if (typeof n === 'number') onSelectRef.current?.(n);
+        const n = holeNumberFromFeature(e.features?.[0]?.properties?.number);
+        if (n != null) onSelectRef.current?.(n);
       };
-      for (const id of [LINE, LINE_ACTIVE, LYR_TEE, LYR_GREEN]) {
+      for (const id of CLICK_LAYERS) {
         map.on('click', id, click);
         map.on('mouseenter', id, () => {
           map.getCanvas().style.cursor = 'pointer';
@@ -270,6 +347,7 @@ export function GolfMap({
         });
       }
 
+      resize();
       readyRef.current = true;
       const queued = queueRef.current;
       queueRef.current = [];
@@ -281,6 +359,9 @@ export function GolfMap({
     return () => {
       readyRef.current = false;
       queueRef.current = [];
+      ro?.disconnect();
+      window.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('resize', resize);
       map.remove();
       mapRef.current = null;
     };
@@ -357,7 +438,11 @@ export function GolfMap({
           b.extend([h.green.lon, h.green.lat]);
         }
         map.easeTo({ bearing: 0, duration: 300 });
-        map.fitBounds(b, { padding: 60, maxZoom: 17, duration: 700 });
+        map.fitBounds(b, {
+          padding: fitPaddingRef.current,
+          maxZoom: 17,
+          duration: 700,
+        });
       } else {
         map.easeTo({ center: [lon, lat], duration: 600 });
       }
@@ -397,10 +482,12 @@ export function GolfMap({
       : null;
 
   return (
-    <div className={`relative h-full w-full overflow-hidden ${className}`}>
+    <div className={`relative h-full min-h-0 w-full overflow-hidden ${className}`}>
       <div ref={containerRef} className="absolute inset-0" />
-      {windLabel && (
-        <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1 rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] font-medium backdrop-blur-md ring-1 ring-white/10">
+      {showWindLegend && windLabel && (
+        <div
+          className={`pointer-events-none absolute flex flex-col gap-1 rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] font-medium backdrop-blur-md ring-1 ring-white/10 ${legendClassName}`}
+        >
           <span className="text-cyan-200">{windLabel}</span>
           {activeHole != null && (
             <span className="flex items-center gap-1.5 text-[10px] text-[var(--ink-3)]">

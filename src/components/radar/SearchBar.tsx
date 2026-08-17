@@ -49,7 +49,7 @@ export function SearchBar({ onPick }: Props) {
             blurTimer.current = window.setTimeout(() => setOpen(false), 150);
           }}
           placeholder="Search city, county, or coordinates"
-          className="flex-1 bg-transparent text-[13px] text-[var(--ink-1)] placeholder-[var(--ink-4)] outline-none"
+          className="flex-1 bg-transparent text-[16px] text-[var(--ink-1)] placeholder-[var(--ink-4)] outline-none lg:text-[13px]"
         />
         {q ? (
           <button
@@ -84,7 +84,7 @@ export function SearchBar({ onPick }: Props) {
                       setOpen(false);
                       setQ('');
                     }}
-                    className="block w-full px-3 py-2 text-left text-[12px] text-[var(--ink-2)] transition-colors hover:bg-white/8 hover:text-[var(--ink-1)]"
+                    className="block w-full px-3 py-3 text-left text-[13px] text-[var(--ink-2)] transition-colors hover:bg-white/8 hover:text-[var(--ink-1)] lg:py-2 lg:text-[12px]"
                   >
                     {r.label}
                   </button>

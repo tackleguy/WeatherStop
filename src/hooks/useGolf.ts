@@ -62,14 +62,20 @@ export function useGolfCourses(
 export function useGolfHoles(
   lat: number | null,
   lon: number | null,
-  bbox?: [number, number, number, number],
+  course?: {
+    bbox?: [number, number, number, number];
+    osmType?: string;
+    osmId?: number;
+  } | null,
 ) {
   const [holes, setHoles] = useState<GolfHole[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
-  const bboxKey = bbox?.join(',') ?? '';
+  const bboxKey = course?.bbox?.join(',') ?? '';
+  const osmType = course?.osmType;
+  const osmId = course?.osmId;
 
   useEffect(() => {
     if (lat == null || lon == null) return;
@@ -80,7 +86,12 @@ export function useGolfHoles(
     const bounds = bboxKey
       ? (bboxKey.split(',').map(Number) as [number, number, number, number])
       : undefined;
-    fetchGolfHoles(lat, lon, { bbox: bounds, signal: ac.signal })
+    fetchGolfHoles(lat, lon, {
+      bbox: bounds,
+      osmType,
+      osmId,
+      signal: ac.signal,
+    })
       .then(setHoles)
       .catch((err) => {
         if (ac.signal.aborted) return;
@@ -91,7 +102,7 @@ export function useGolfHoles(
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [lat, lon, bboxKey, attempt]);
+  }, [lat, lon, bboxKey, osmType, osmId, attempt]);
 
   return {
     holes,

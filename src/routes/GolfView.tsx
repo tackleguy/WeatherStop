@@ -113,7 +113,13 @@ export function GolfView() {
     loading: holesLoading,
     error: holesError,
     retry: retryHoles,
-  } = useGolfHoles(course?.lat ?? null, course?.lon ?? null, course?.bbox);
+  } = useGolfHoles(
+    course?.lat ?? null,
+    course?.lon ?? null,
+    course
+      ? { bbox: course.bbox, osmType: course.osmType, osmId: course.osmId }
+      : null,
+  );
 
   // One character filters the nearby list; two or more searches the
   // nationwide 1,000+ public and private course catalog through Photon.
@@ -486,7 +492,7 @@ export function GolfView() {
                         ? 'OpenStreetMap is busy — hole data unavailable'
                         : holes.length
                           ? `${holes.length} holes · yardage, bearing & elevation`
-                          : 'This course has no hole tags in OSM yet'}
+                          : 'No hole geometry in OSM for this course yet'}
                   </div>
                   {holesError && (
                     <button

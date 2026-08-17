@@ -203,15 +203,28 @@ export async function fetchGolfHoles(
   opts?: {
     radius?: number;
     bbox?: [number, number, number, number];
+    osmType?: string;
+    osmId?: number;
     signal?: AbortSignal;
   },
 ): Promise<GolfHole[]> {
-  const bbox = opts?.bbox?.map((n) => q4(n)).join(',') ?? '';
-  const key = `golf:v3:holes:${q4(lat)}:${q4(lon)}:${bbox}:${opts?.radius ?? ''}`;
+  // Synthesize a ~1.4 km box when Photon had no extent — still better than a
+  // blind tiny radius for sprawling clubs.
+  const bbox =
+    opts?.bbox ??
+    ([
+      lat - 0.012,
+      lon - 0.012 / Math.max(0.2, Math.cos((lat * Math.PI) / 180)),
+      lat + 0.012,
+      lon + 0.012 / Math.max(0.2, Math.cos((lat * Math.PI) / 180)),
+    ] as [number, number, number, number]);
+  const bboxKey = bbox.map((n) => q4(n)).join(',');
+  const key = `golf:v4:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:${opts?.osmType ?? ''}${opts?.osmId ?? ''}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
     sessionGet<GolfHole[]>(key, HOLES_TTL_MS);
-  if (cached) {
+  // Never reuse an empty cache entry — that freezes a transient Overpass miss.
+  if (cached && cached.length > 0) {
     memSet(key, cached);
     return cached;
   }
@@ -219,23 +232,53 @@ export async function fetchGolfHoles(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
-    v: '3',
+    v: '4',
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
-  // Scopes the lookup to this course's footprint instead of a blind radius.
-  if (bbox) params.set('bbox', bbox);
-  const res = await fetchWithRetry(`/api/golf/holes?${params}`, opts?.signal);
-  if (!res.ok) {
-    const detail = (await res.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(detail?.error ?? `holes ${res.status}`);
+  params.set('bbox', bboxKey);
+  if (opts?.osmType && opts.osmId) {
+    params.set('osmType', opts.osmType);
+    params.set('osmId', String(opts.osmId));
   }
-  const data = (await res.json()) as { holes: GolfHole[] };
-  const holes = data.holes ?? [];
-  memSet(key, holes);
-  sessionSet(key, holes);
-  return holes;
+
+  // Escalating radii so a rate-limited first attempt still lands geometry.
+  const radii = [opts?.radius ?? 1800, 2800, 3800];
+  let lastErr: unknown = null;
+  for (const radius of radii) {
+    if (opts?.signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    params.set('radius', String(radius));
+    try {
+      const res = await fetchWithRetry(
+        `/api/golf/holes?${params}`,
+        opts?.signal,
+        4,
+      );
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        lastErr = new Error(detail?.error ?? `holes ${res.status}`);
+        continue;
+      }
+      const data = (await res.json()) as { holes: GolfHole[] };
+      const holes = data.holes ?? [];
+      if (holes.length) {
+        memSet(key, holes);
+        sessionSet(key, holes);
+        return holes;
+      }
+      // Empty but successful — OSM may simply not have hole tags; stop.
+      return [];
+    } catch (err) {
+      if (opts?.signal?.aborted) throw err;
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  }
+
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error('Failed to load hole geometry');
 }
 
 export async function fetchGolfEnsemble(

@@ -7,8 +7,13 @@ import { useAlerts } from '../../hooks/useAlerts';
 import { useRainViewer } from '../../hooks/useRainViewer';
 import { useTimeFrames } from '../../hooks/useTimeFrames';
 import { useSettings } from '../../hooks/useSettings';
+import { useTropical } from '../../hooks/useTropical';
 import { mapStyleUrl } from '../../lib/mapStyles';
 import { alertsPageHref } from '../../lib/alertsNav';
+import {
+  alertStorms,
+  stormOverlayGeoJSON,
+} from '../../lib/stormIntelligence';
 import {
   categorizeAlertEvent,
   type AlertCategory,
@@ -19,6 +24,17 @@ const ALERTS_FILL = 'nws-alerts-fill';
 const ALERTS_LINE = 'nws-alerts-line';
 const ALERTS_PULSE = 'nws-alerts-pulse';
 const ALERTS_FOCUS = 'nws-alerts-focus';
+const STORM_AREAS_SOURCE = 'storm-intel-areas';
+const STORM_PATHS_SOURCE = 'storm-intel-paths';
+const STORM_POINTS_SOURCE = 'storm-intel-points';
+const STORM_AREAS_FILL = 'storm-intel-areas-fill';
+const STORM_AREAS_LINE = 'storm-intel-areas-line';
+const STORM_PATHS_LINE = 'storm-intel-paths-line';
+const STORM_POINTS_LAYER = 'storm-intel-points-layer';
+const NHC_TRACK_SOURCE = 'nhc-radar-track';
+const NHC_POINTS_SOURCE = 'nhc-radar-points';
+const NHC_TRACK_LAYER = 'nhc-radar-track-layer';
+const NHC_POINTS_LAYER = 'nhc-radar-points-layer';
 const RULER_SOURCE = 'ruler-line';
 const RULER_LINE_LAYER = 'ruler-line-layer';
 const RULER_POINTS_LAYER = 'ruler-points-layer';
@@ -123,6 +139,12 @@ export function RadarMap({ onMapReady }: Props) {
   }, [catalog, activeProduct, ts]);
 
   const { alerts } = useAlerts();
+  const { geojson: nhcTrack } = useTropical('track', 'all');
+  const { geojson: nhcPoints } = useTropical('points', 'all');
+  const stormOverlays = useMemo(
+    () => stormOverlayGeoJSON(alertStorms(alerts)),
+    [alerts],
+  );
 
   const features = useMemo<GeoJSON.Feature[]>(
     () =>
@@ -373,6 +395,113 @@ export function RadarMap({ onMapReady }: Props) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [styleLoaded]);
+
+  // Local storm-intelligence circles + one-hour motion paths, plus official
+  // NHC hurricane forecast tracks. Tornado circles only come from NWS warnings.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoaded) return;
+
+    const upsert = (id: string, data: GeoJSON.FeatureCollection) => {
+      const source = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+      if (source) source.setData(data);
+      else map.addSource(id, { type: 'geojson', data });
+    };
+
+    upsert(STORM_AREAS_SOURCE, stormOverlays.areas);
+    upsert(STORM_PATHS_SOURCE, stormOverlays.paths);
+    upsert(STORM_POINTS_SOURCE, stormOverlays.points);
+    upsert(NHC_TRACK_SOURCE, nhcTrack);
+    upsert(NHC_POINTS_SOURCE, nhcPoints);
+
+    const dangerColor: maplibregl.DataDrivenPropertyValueSpecification<string> = [
+      'match',
+      ['get', 'danger'],
+      'extreme',
+      '#f43f5e',
+      'high',
+      '#fb923c',
+      'moderate',
+      '#facc15',
+      '#38bdf8',
+    ];
+
+    if (!map.getLayer(STORM_AREAS_FILL)) {
+      map.addLayer({
+        id: STORM_AREAS_FILL,
+        type: 'fill',
+        source: STORM_AREAS_SOURCE,
+        paint: {
+          'fill-color': dangerColor,
+          'fill-opacity': 0.08,
+        },
+      });
+    }
+    if (!map.getLayer(STORM_AREAS_LINE)) {
+      map.addLayer({
+        id: STORM_AREAS_LINE,
+        type: 'line',
+        source: STORM_AREAS_SOURCE,
+        paint: {
+          'line-color': dangerColor,
+          'line-width': 2.2,
+          'line-opacity': 0.95,
+        },
+      });
+    }
+    if (!map.getLayer(STORM_PATHS_LINE)) {
+      map.addLayer({
+        id: STORM_PATHS_LINE,
+        type: 'line',
+        source: STORM_PATHS_SOURCE,
+        paint: {
+          'line-color': dangerColor,
+          'line-width': 2.5,
+          'line-dasharray': [2, 1.5],
+          'line-opacity': 0.95,
+        },
+      });
+    }
+    if (!map.getLayer(STORM_POINTS_LAYER)) {
+      map.addLayer({
+        id: STORM_POINTS_LAYER,
+        type: 'circle',
+        source: STORM_POINTS_SOURCE,
+        paint: {
+          'circle-radius': 5,
+          'circle-color': dangerColor,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+        },
+      });
+    }
+    if (!map.getLayer(NHC_TRACK_LAYER)) {
+      map.addLayer({
+        id: NHC_TRACK_LAYER,
+        type: 'line',
+        source: NHC_TRACK_SOURCE,
+        paint: {
+          'line-color': '#67e8f9',
+          'line-width': 3,
+          'line-dasharray': [1.5, 1],
+          'line-opacity': 0.95,
+        },
+      });
+    }
+    if (!map.getLayer(NHC_POINTS_LAYER)) {
+      map.addLayer({
+        id: NHC_POINTS_LAYER,
+        type: 'circle',
+        source: NHC_POINTS_SOURCE,
+        paint: {
+          'circle-radius': 6,
+          'circle-color': '#06b6d4',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+        },
+      });
+    }
+  }, [styleLoaded, stormOverlays, nhcTrack, nhcPoints]);
 
   // Ruler source + line layer.
   useEffect(() => {

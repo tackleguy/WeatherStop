@@ -35,7 +35,7 @@ import {
   useGolfHoles,
   useGolfNotebook,
 } from '../hooks/useGolf';
-import type { GolfCourseSummary, HoleBrief } from '../lib/golf';
+import type { GolfCourseSummary, HoleBrief, TeeKind } from '../lib/golf';
 import { DEFAULT_TURF } from '../lib/golf';
 import {
   bagArcClubs,
@@ -51,6 +51,16 @@ import {
 } from '../lib/golfProfile';
 import { weatherAppHref } from '../lib/golfApp';
 import type { LonLat } from '../lib/golfWind';
+import {
+  applyTee,
+  availableTeeKinds,
+  holesOnLoop,
+  loopNames,
+  pickLoopForCourse,
+  pickTee,
+  teeKindLabel,
+  teesOnHole,
+} from '../lib/golfTees';
 
 interface Loc {
   name: string;
@@ -109,6 +119,47 @@ function aspectLabel(aspect: string): string {
 
 const MOBILE_FIT_PADDING = { top: 88, right: 28, bottom: 196, left: 28 };
 
+function ChipRow({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: Array<{ id: string; label: string }>;
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  if (options.length < 2) return null;
+  return (
+    <div className="px-3 pb-2">
+      <div className="mb-1 text-[10px] uppercase tracking-wide text-[var(--ink-4)]">
+        {label}
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {options.map((opt) => {
+          const on = opt.id === value;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => onChange(opt.id)}
+              className={[
+                'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+                on
+                  ? 'bg-[var(--accent)]/30 text-[var(--ink-1)]'
+                  : 'bg-black/25 text-[var(--ink-3)] hover:bg-white/10 hover:text-[var(--ink-1)]',
+              ].join(' ')}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function GolfView() {
   const isMobile = useIsMobile();
   const [profile, setProfile] = useState<GolfPlayerProfile>(
@@ -118,6 +169,8 @@ export function GolfView() {
   const [loc, setLoc] = useState<Loc>(defaultLoc);
   const [course, setCourse] = useState<GolfCourseSummary | null>(null);
   const [activeHole, setActiveHole] = useState<number | null>(null);
+  const [loop, setLoop] = useState<string | null>(null);
+  const [teeKind, setTeeKind] = useState<TeeKind>('mid');
   const [hour, setHour] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [courseFilter, setCourseFilter] = useState('');
@@ -150,6 +203,26 @@ export function GolfView() {
       : null,
   );
 
+  const loops = useMemo(() => loopNames(holes), [holes]);
+  const resolvedLoop =
+    loop ?? pickLoopForCourse(course?.name ?? '', loops);
+  const loopHoles = useMemo(
+    () => holesOnLoop(holes, resolvedLoop),
+    [holes, resolvedLoop],
+  );
+  const playHoles = useMemo(
+    () => loopHoles.map((h) => applyTee(h, teeKind)),
+    [loopHoles, teeKind],
+  );
+  const teeKinds = useMemo(() => availableTeeKinds(loopHoles), [loopHoles]);
+
+  useEffect(() => {
+    const next = pickLoopForCourse(course?.name ?? '', loopNames(holes));
+    setLoop(next);
+    setTeeKind('mid');
+    setActiveHole(null);
+  }, [holes, course?.id, course?.name]);
+
   // One character filters the nearby list; two or more searches the
   // nationwide 1,000+ public and private course catalog through Photon.
   const filteredCourses = useMemo(() => {
@@ -165,7 +238,7 @@ export function GolfView() {
   } = useGolfEnsemble(
     course?.lat ?? null,
     course?.lon ?? null,
-    holes,
+    playHoles,
     hour,
     profile,
   );
@@ -177,7 +250,7 @@ export function GolfView() {
   } = useGolfNotebook(
     course?.lat ?? null,
     course?.lon ?? null,
-    holes,
+    playHoles,
     profile,
     bookOpen,
   );
@@ -192,18 +265,18 @@ export function GolfView() {
   );
   const arcClubs = useMemo(() => bagArcClubs(bag), [bag]);
   const courseElevFt = useMemo(() => {
-    const tees = holes
+    const tees = playHoles
       .map((h) => h.teeElevationM)
       .filter((m): m is number => typeof m === 'number' && Number.isFinite(m));
     if (!tees.length) return 0;
     return Math.round(
       metersToFeet(tees.reduce((s, n) => s + n, 0) / tees.length),
     );
-  }, [holes]);
+  }, [playHoles]);
 
   const activeHoleObj = useMemo(
-    () => holes.find((h) => h.number === activeHole) ?? null,
-    [holes, activeHole],
+    () => playHoles.find((h) => h.number === activeHole) ?? null,
+    [playHoles, activeHole],
   );
 
   useEffect(() => {
@@ -235,12 +308,21 @@ export function GolfView() {
     });
   }, [activeHoleObj, target, bag, profile, activeBrief, turf]);
   const playLines = useMemo(() => playLinesGeoJSON(forecast), [forecast]);
-  const activeIdx = holes.findIndex((h) => h.number === activeHole);
+  const activeIdx = playHoles.findIndex((h) => h.number === activeHole);
+  const layoutLabel = [
+    `${playHoles.length} holes`,
+    loops.length > 1 ? resolvedLoop : null,
+    teeKinds.length > 1 ? teeKindLabel(teeKind) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const pickCourse = useCallback(
     (next: GolfCourseSummary) => {
       setCourse(next);
       setActiveHole(null);
+      setLoop(null);
+      setTeeKind('mid');
       setTarget(null);
       setBookOpen(false);
       setSheetExpanded(false);
@@ -251,16 +333,16 @@ export function GolfView() {
 
   const stepHole = useCallback(
     (delta: number) => {
-      if (!holes.length) return;
+      if (!playHoles.length) return;
       setActiveHole((prev) => {
-        if (prev == null) return holes[0].number;
-        const i = holes.findIndex((h) => h.number === prev);
-        if (i < 0) return holes[0].number;
-        const next = Math.min(Math.max(i + delta, 0), holes.length - 1);
-        return holes[next].number;
+        if (prev == null) return playHoles[0].number;
+        const i = playHoles.findIndex((h) => h.number === prev);
+        if (i < 0) return playHoles[0].number;
+        const next = Math.min(Math.max(i + delta, 0), playHoles.length - 1);
+        return playHoles[next].number;
       });
     },
-    [holes],
+    [playHoles],
   );
 
   // Arrow keys walk the course once a hole is open.
@@ -551,7 +633,7 @@ export function GolfView() {
               <GolfMap
                 lat={searchLat}
                 lon={searchLon}
-                holes={holes}
+                holes={playHoles}
                 activeHole={activeHole}
                 onSelectHole={setActiveHole}
                 target={target}
@@ -591,7 +673,7 @@ export function GolfView() {
             ) : null}
 
             {/* Hole-by-hole walkthrough + course switcher */}
-            {(isMobile || holes.length > 0) && (
+            {(isMobile || playHoles.length > 0) && (
               <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3 md:right-[352px] md:left-3 md:inset-x-auto md:justify-start">
                 <GlassPanel
                   variant="high"
@@ -607,7 +689,7 @@ export function GolfView() {
                       Courses
                     </button>
                   ) : null}
-                  {holes.length > 0 ? (
+                  {playHoles.length > 0 ? (
                     <>
                       <button
                         type="button"
@@ -622,7 +704,7 @@ export function GolfView() {
                         type="button"
                         onClick={() =>
                           setActiveHole(
-                            activeHole == null ? holes[0].number : null,
+                            activeHole == null ? playHoles[0].number : null,
                           )
                         }
                         className="min-w-[96px] rounded-lg px-2 py-0.5 text-center transition-colors hover:bg-white/10"
@@ -637,14 +719,14 @@ export function GolfView() {
                         </span>
                         <span className="block text-[13px] font-semibold tabular-nums text-[var(--ink-1)]">
                           {activeHole == null
-                            ? `${holes.length} holes`
-                            : `${activeHole} · ${holes[activeIdx]?.yards ?? '—'} yd`}
+                            ? layoutLabel
+                            : `${activeHole} · ${playHoles[activeIdx]?.yards ?? '—'} yd`}
                         </span>
                       </button>
                       <button
                         type="button"
                         onClick={() => stepHole(1)}
-                        disabled={activeIdx >= holes.length - 1}
+                        disabled={activeIdx >= playHoles.length - 1}
                         aria-label="Next hole"
                         className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-white/10 hover:text-[var(--ink-1)] disabled:opacity-30 md:p-1.5"
                       >
@@ -704,10 +786,10 @@ export function GolfView() {
                           ? 'Loading hole geometry…'
                           : holesError
                             ? 'OpenStreetMap is busy — hole data unavailable'
-                            : holes.length
+                            : playHoles.length
                               ? ensemble?.ensemble.windMph != null
-                                ? `${holes.length} holes · ${Math.round(ensemble.ensemble.windMph)} mph ${bearingCompass(ensemble.ensemble.windFromDeg)}`
-                                : `${holes.length} holes · yardage, bearing & elevation`
+                                ? `${layoutLabel} · ${Math.round(ensemble.ensemble.windMph)} mph ${bearingCompass(ensemble.ensemble.windFromDeg)}`
+                                : `${layoutLabel} · yardage, bearing & elevation`
                               : 'No hole geometry in OSM for this course yet'}
                       </div>
                     </div>
@@ -727,8 +809,8 @@ export function GolfView() {
                         ? 'Loading hole geometry…'
                         : holesError
                           ? 'OpenStreetMap is busy — hole data unavailable'
-                          : holes.length
-                            ? `${holes.length} holes · yardage, bearing & elevation`
+                          : playHoles.length
+                            ? `${layoutLabel} · yardage, bearing & elevation`
                             : 'No hole geometry in OSM for this course yet'}
                     </div>
                   </div>
@@ -754,6 +836,28 @@ export function GolfView() {
                     Yardage book
                   </button>
                 </div>
+                {(!isMobile || sheetExpanded) && (
+                  <>
+                    <ChipRow
+                      label="Course"
+                      options={loops.map((name) => ({ id: name, label: name }))}
+                      value={resolvedLoop ?? ''}
+                      onChange={(id) => {
+                        setLoop(id);
+                        setActiveHole(null);
+                      }}
+                    />
+                    <ChipRow
+                      label="Tees"
+                      options={teeKinds.map((kind) => ({
+                        id: kind,
+                        label: teeKindLabel(kind),
+                      }))}
+                      value={teeKind}
+                      onChange={(id) => setTeeKind(id as TeeKind)}
+                    />
+                  </>
+                )}
 
                 {activeBrief && (
                   <div className="border-b border-[var(--line-subtle)] bg-[var(--accent)]/10 px-3 py-2.5">
@@ -832,11 +936,13 @@ export function GolfView() {
                   <>
                     {isMobile ? hourSlider : null}
                     <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                      {holes.map((h) => {
+                      {playHoles.map((h) => {
                         const brief = briefByHole.get(h.number);
                         const on = activeHole === h.number;
+                        const teeCount = teesOnHole(h).length;
+                        const teeLabel = pickTee(h, teeKind).label;
                         return (
-                          <li key={h.number}>
+                          <li key={`${h.loop ?? ''}-${h.number}`}>
                             <button
                               type="button"
                               onClick={() => {
@@ -868,6 +974,12 @@ export function GolfView() {
                                   {h.par != null && (
                                     <span className="text-[10px] text-[var(--ink-4)]">
                                       par {h.par}
+                                    </span>
+                                  )}
+                                  {teeCount > 1 && (
+                                    <span className="text-[10px] text-[var(--ink-4)]">
+                                      {teeLabel}
+                                      {teeCount > 2 ? ` · ${teeCount} tees` : ''}
                                     </span>
                                   )}
                                 </span>

@@ -21,6 +21,20 @@ export interface GolfCourseSummary {
   distanceMi?: number;
 }
 
+export type TeeKind = 'back' | 'mid' | 'front';
+
+export interface GolfTeeBox {
+  id: string;
+  label: string;
+  kind: TeeKind;
+  color?: string;
+  yards: number;
+  bearingDeg: number;
+  tee: { lat: number; lon: number };
+  path?: Array<{ lat: number; lon: number }>;
+  teeElevationM?: number;
+}
+
 export interface GolfHole {
   number: number;
   name?: string;
@@ -33,6 +47,9 @@ export interface GolfHole {
   greenElevationM?: number;
   path?: Array<{ lat: number; lon: number }>;
   source: 'hole-way' | 'tee-green';
+  /** North / South / East / West layout when a club has more than one 18. */
+  loop?: string;
+  tees?: GolfTeeBox[];
 }
 
 export interface TurfReport {
@@ -189,7 +206,7 @@ export async function fetchGolfCourses(
   const q = opts?.q?.trim().toLowerCase() ?? '';
   // v2 invalidates empty results cached by the retired Nominatim/Overpass
   // discovery path.
-  const key = `golf:v4:courses:${q3(lat)}:${q3(lon)}:${q}:${opts?.radius ?? ''}`;
+  const key = `golf:v5:courses:${q3(lat)}:${q3(lon)}:${q}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfCourseSummary[]>(key, COURSES_TTL_MS) ??
     sessionGet<GolfCourseSummary[]>(key, COURSES_TTL_MS);
@@ -244,7 +261,7 @@ export async function fetchGolfHoles(
       lon + 0.012 / Math.max(0.2, Math.cos((lat * Math.PI) / 180)),
     ] as [number, number, number, number]);
   const bboxKey = bbox.map((n) => q4(n)).join(',');
-  const key = `golf:v4:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:${opts?.osmType ?? ''}${opts?.osmId ?? ''}:${opts?.radius ?? ''}`;
+  const key = `golf:v5:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:${opts?.osmType ?? ''}${opts?.osmId ?? ''}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
     sessionGet<GolfHole[]>(key, HOLES_TTL_MS);
@@ -257,7 +274,7 @@ export async function fetchGolfHoles(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
-    v: '4',
+    v: '5',
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
   params.set('bbox', bboxKey);

@@ -2,9 +2,10 @@
 //
 // Strategy (fast → thorough):
 //  1. golf=hole centerlines in the course bbox / radius
-//  2. tee↔green pairing only when centerlines are sparse
+//  2. always merge golf=tee boxes onto those holes (front / mid / back)
 //  3. wider radii, then OSM area(id) when the polygon is known
-// Lightweight queries keep public Overpass mirrors from 406/504'ing.
+// Multiple ways with the same hole number become tee variants when greens
+// sit near each other, or North/South (etc.) layouts when they do not.
 
 import { bearingDeg, haversineYards, pathLengthYards } from './_lib/geo';
 import {
@@ -19,6 +20,20 @@ import {
 
 export const config = { runtime: 'edge' };
 
+export type TeeKind = 'back' | 'mid' | 'front';
+
+export interface GolfTeeBox {
+  id: string;
+  label: string;
+  kind: TeeKind;
+  color?: string;
+  yards: number;
+  bearingDeg: number;
+  tee: { lat: number; lon: number };
+  path?: Array<{ lat: number; lon: number }>;
+  teeElevationM?: number;
+}
+
 export interface GolfHole {
   number: number;
   name?: string;
@@ -32,6 +47,8 @@ export interface GolfHole {
   greenElevationM?: number;
   path?: Array<{ lat: number; lon: number }>;
   source: 'hole-way' | 'tee-green';
+  loop?: string;
+  tees?: GolfTeeBox[];
 }
 
 /** Process-local cache — hole geometry almost never changes. */
@@ -41,7 +58,19 @@ const HOLE_MEM_TTL_MS = 6 * 60 * 60_000;
 /** Add tee/green elevations in one request so plays-like can include slope. */
 async function addElevations(holes: GolfHole[]): Promise<GolfHole[]> {
   if (!holes.length) return holes;
-  const points = holes.flatMap((hole) => [hole.tee, hole.green]);
+  const points: Array<{ lat: number; lon: number }> = [];
+  const jobs: Array<{ hole: number; teeIdx: number | 'green' }> = [];
+  holes.forEach((hole, holeIdx) => {
+    const tees = hole.tees?.length
+      ? hole.tees
+      : [{ tee: hole.tee } as GolfTeeBox];
+    tees.forEach((t, teeIdx) => {
+      points.push(t.tee);
+      jobs.push({ hole: holeIdx, teeIdx });
+    });
+    points.push(hole.green);
+    jobs.push({ hole: holeIdx, teeIdx: 'green' });
+  });
   const params = new URLSearchParams({
     latitude: points.map((p) => p.lat.toFixed(6)).join(','),
     longitude: points.map((p) => p.lon.toFixed(6)).join(','),
@@ -53,17 +82,36 @@ async function addElevations(holes: GolfHole[]): Promise<GolfHole[]> {
     if (!res.ok) return holes;
     const body = (await res.json()) as { elevation?: Array<number | null> };
     const elevations = body.elevation ?? [];
-    return holes.map((hole, index) => {
-      const tee = elevations[index * 2];
-      const green = elevations[index * 2 + 1];
+    const next = holes.map((h) => ({
+      ...h,
+      tees: h.tees ? h.tees.map((t) => ({ ...t })) : undefined,
+    }));
+    jobs.forEach((job, i) => {
+      const elev = elevations[i];
+      if (typeof elev !== 'number' || !Number.isFinite(elev)) return;
+      const hole = next[job.hole]!;
+      if (job.teeIdx === 'green') {
+        hole.greenElevationM = elev;
+        return;
+      }
+      if (hole.tees?.[job.teeIdx]) {
+        hole.tees[job.teeIdx]!.teeElevationM = elev;
+      }
+      if (job.teeIdx === 0) hole.teeElevationM = elev;
+    });
+    return next.map((hole) => {
+      const mid =
+        hole.tees?.find((t) => t.kind === 'mid') ??
+        hole.tees?.[Math.floor((hole.tees.length - 1) / 2)] ??
+        null;
+      if (!mid) return hole;
       return {
         ...hole,
-        teeElevationM:
-          typeof tee === 'number' && Number.isFinite(tee) ? tee : undefined,
-        greenElevationM:
-          typeof green === 'number' && Number.isFinite(green)
-            ? green
-            : undefined,
+        yards: mid.yards,
+        bearingDeg: mid.bearingDeg,
+        tee: mid.tee,
+        path: mid.path,
+        teeElevationM: mid.teeElevationM,
       };
     });
   } catch {
@@ -79,7 +127,7 @@ function parseRef(
   const m = String(raw).match(/(\d{1,2})/);
   if (!m) return null;
   const n = Number(m[1]);
-  return n >= 1 && n <= 27 ? n : null;
+  return n >= 1 && n <= 36 ? n : null;
 }
 
 function centroid(
@@ -130,63 +178,238 @@ function pointInPolygon(
   return inside;
 }
 
-const MAX_HOLES = 27;
+function titleCase(raw: string): string {
+  return raw
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function loopFromTags(
+  tags: Record<string, string | undefined> | undefined,
+): string {
+  const raw = (
+    tags?.['golf:course'] ??
+    tags?.course ??
+    tags?.['golf:layout'] ??
+    ''
+  ).trim();
+  return raw ? titleCase(raw) : '';
+}
+
+function colorFromTags(
+  tags: Record<string, string | undefined> | undefined,
+): string | undefined {
+  const raw = (tags?.colour ?? tags?.color ?? '').trim().toLowerCase();
+  return raw || undefined;
+}
+
+function labelFromTags(
+  tags: Record<string, string | undefined> | undefined,
+): string {
+  const color = colorFromTags(tags);
+  if (color) return titleCase(color);
+  const tee = (tags?.tee ?? tags?.['golf:tee'] ?? '').trim();
+  if (tee && !/^\d+$/.test(tee)) return titleCase(tee);
+  const name = (tags?.name ?? '')
+    .replace(/\btee(s| box)?\b/gi, '')
+    .replace(/\bhole\s*\d+\b/gi, '')
+    .trim();
+  if (name && !/^\d+$/.test(name) && name.length < 28) return titleCase(name);
+  return '';
+}
+
+function kindFromYardage(
+  yards: number,
+  all: number[],
+): TeeKind {
+  if (all.length <= 1) return 'mid';
+  const sorted = [...all].sort((a, b) => a - b);
+  const shortest = sorted[0]!;
+  const longest = sorted[sorted.length - 1]!;
+  if (yards === longest && longest > shortest + 8) return 'back';
+  if (yards === shortest && longest > shortest + 8) return 'front';
+  return 'mid';
+}
+
+function applyTeeKinds(tees: GolfTeeBox[]): GolfTeeBox[] {
+  const yards = tees.map((t) => t.yards);
+  return tees
+    .map((t) => ({
+      ...t,
+      kind: kindFromYardage(t.yards, yards),
+      label:
+        t.label ||
+        (kindFromYardage(t.yards, yards) === 'back'
+          ? 'Back'
+          : kindFromYardage(t.yards, yards) === 'front'
+            ? 'Front'
+            : 'Middle'),
+    }))
+    .sort((a, b) => b.yards - a.yards);
+}
+
+function upsertTee(
+  holes: GolfHole[],
+  input: {
+    number: number;
+    loop: string;
+    label: string;
+    color?: string;
+    yards: number;
+    bearingDeg: number;
+    tee: { lat: number; lon: number };
+    green: { lat: number; lon: number };
+    path?: Array<{ lat: number; lon: number }>;
+    par?: number;
+    name?: string;
+    source: 'hole-way' | 'tee-green';
+  },
+): void {
+  const same = holes.find(
+    (h) =>
+      h.number === input.number &&
+      haversineYards(h.green.lat, h.green.lon, input.green.lat, input.green.lon) <
+        90,
+  );
+  const box: GolfTeeBox = {
+    id: `${input.tee.lat.toFixed(5)},${input.tee.lon.toFixed(5)}`,
+    label: input.label,
+    kind: 'mid',
+    color: input.color,
+    yards: input.yards,
+    bearingDeg: input.bearingDeg,
+    tee: input.tee,
+    path: input.path,
+  };
+  if (same) {
+    const tees = same.tees ?? [];
+    if (
+      tees.some(
+        (t) => haversineYards(t.tee.lat, t.tee.lon, input.tee.lat, input.tee.lon) < 12,
+      )
+    ) {
+      return;
+    }
+    same.tees = applyTeeKinds([...tees, box]);
+    const mid =
+      same.tees.find((t) => t.kind === 'mid') ??
+      same.tees[Math.floor((same.tees.length - 1) / 2)]!;
+    same.yards = mid.yards;
+    same.bearingDeg = mid.bearingDeg;
+    same.tee = mid.tee;
+    same.path = mid.path;
+    if (input.par && !same.par) same.par = input.par;
+    if (input.name && !same.name) same.name = input.name;
+    if (input.loop && !same.loop) same.loop = input.loop;
+    return;
+  }
+  holes.push({
+    number: input.number,
+    name: input.name,
+    par: input.par,
+    yards: input.yards,
+    bearingDeg: input.bearingDeg,
+    tee: input.tee,
+    green: input.green,
+    path: input.path,
+    source: input.source,
+    loop: input.loop || undefined,
+    tees: applyTeeKinds([box]),
+  });
+}
+
+const MAX_HOLES = 54;
+
+function autoLoops(holes: GolfHole[]): GolfHole[] {
+  const withNums = holes.map((h) => {
+    if (h.loop || h.number <= 18) return h;
+    if (h.number <= 36) {
+      return { ...h, loop: 'Second course', number: h.number - 18 };
+    }
+    return h;
+  });
+  const firsts = withNums.filter((h) => h.number === 1);
+  const unlabeled = firsts.filter((h) => !h.loop);
+  if (unlabeled.length < 2) return withNums;
+  const lats = unlabeled.map((h) => h.green.lat);
+  const lons = unlabeled.map((h) => h.green.lon);
+  const dLat = Math.max(...lats) - Math.min(...lats);
+  const dLon = Math.max(...lons) - Math.min(...lons);
+  const meanLat = lats.reduce((s, n) => s + n, 0) / lats.length;
+  const meanLon = lons.reduce((s, n) => s + n, 0) / lons.length;
+  const ns = dLat >= dLon;
+  return withNums.map((h) => {
+    if (h.loop) return h;
+    if (ns) return { ...h, loop: h.green.lat >= meanLat ? 'North' : 'South' };
+    return { ...h, loop: h.green.lon >= meanLon ? 'East' : 'West' };
+  });
+}
+
+function finalizeHoles(holes: GolfHole[]): GolfHole[] {
+  const next = autoLoops(holes);
+  next.sort((a, b) => {
+    const loop = (a.loop ?? '').localeCompare(b.loop ?? '');
+    if (loop) return loop;
+    return a.number - b.number;
+  });
+  return next.slice(0, MAX_HOLES);
+}
 
 function holesFromWays(els: OsmElement[]): GolfHole[] {
   const holes: GolfHole[] = [];
-  const usedRefs = new Set<number>();
 
   for (const way of els) {
     if (way.type !== 'way' || way.tags?.golf !== 'hole') continue;
     const geom = way.geometry;
     if (!geom || geom.length < 2) continue;
-    const num = parseRef(way.tags) ?? holes.length + 1;
-    if (usedRefs.has(num)) continue;
+    let num = parseRef(way.tags);
+    if (num == null) continue;
     const tee = geom[0]!;
     const green = geom[geom.length - 1]!;
     const yards = Math.round(pathLengthYards(geom));
     if (yards < 40 || yards > 750) continue;
-    holes.push({
+    upsertTee(holes, {
       number: num,
-      name: way.tags?.name,
-      par: way.tags?.par ? Number(way.tags.par) : undefined,
+      loop: loopFromTags(way.tags),
+      label: labelFromTags(way.tags),
+      color: colorFromTags(way.tags),
       yards,
-      bearingDeg: Math.round(
-        bearingDeg(tee.lat, tee.lon, green.lat, green.lon),
-      ),
+      bearingDeg: Math.round(bearingDeg(tee.lat, tee.lon, green.lat, green.lon)),
       tee: { lat: tee.lat, lon: tee.lon },
       green: { lat: green.lat, lon: green.lon },
       path: slimPath(geom),
+      par: way.tags?.par ? Number(way.tags.par) : undefined,
+      name: way.tags?.name,
       source: 'hole-way',
     });
-    usedRefs.add(num);
   }
 
-  holes.sort((a, b) => a.number - b.number);
-  return holes.slice(0, MAX_HOLES);
+  return holes;
 }
 
 function holesFromTeeGreen(
   els: OsmElement[],
   existing: GolfHole[],
 ): GolfHole[] {
-  const holes = [...existing];
-  const usedRefs = new Set(existing.map((h) => h.number));
-  const claimedTees: Array<{ lat: number; lon: number }> = existing.map(
-    (h) => h.tee,
-  );
-  const claimedGreens: Array<{ lat: number; lon: number }> = existing.map(
-    (h) => h.green,
-  );
+  const holes = existing.map((h) => ({
+    ...h,
+    tees: h.tees ? [...h.tees] : undefined,
+  }));
 
   const teePts: Array<{
     ref: number | null;
     pt: { lat: number; lon: number };
     par?: number;
+    loop: string;
+    label: string;
+    color?: string;
+    name?: string;
   }> = [];
   const greenPts: Array<{
     ref: number | null;
     pt: { lat: number; lon: number };
+    loop: string;
   }> = [];
 
   for (const el of els) {
@@ -198,81 +421,79 @@ function holesFromTeeGreen(
           ref: parseRef(el.tags),
           pt,
           par: el.tags?.par ? Number(el.tags.par) : undefined,
+          loop: loopFromTags(el.tags),
+          label: labelFromTags(el.tags),
+          color: colorFromTags(el.tags),
+          name: el.tags?.name,
         });
       }
     } else if (golf === 'green' || golf === 'pin') {
       const pt = pointOf(el);
-      if (pt) greenPts.push({ ref: parseRef(el.tags), pt });
+      if (pt) {
+        greenPts.push({
+          ref: parseRef(el.tags),
+          pt,
+          loop: loopFromTags(el.tags),
+        });
+      }
     }
   }
 
   for (const tee of teePts) {
-    // Once a course already has a complete nine, only explicit hole refs may
-    // fill gaps. Unnumbered extra tee boxes otherwise turn a 9-hole course
-    // into 10–12 fake holes.
-    if (existing.length >= 9 && tee.ref == null) continue;
-    if (tee.ref != null && usedRefs.has(tee.ref)) continue;
-    if (
-      claimedTees.some(
-        (t) => haversineYards(t.lat, t.lon, tee.pt.lat, tee.pt.lon) < 60,
-      )
-    ) {
-      continue;
-    }
-
     let best: { pt: { lat: number; lon: number }; d: number } | null = null;
     for (const g of greenPts) {
       if (tee.ref != null && g.ref != null && tee.ref !== g.ref) continue;
-      if (
-        claimedGreens.some(
-          (c) => haversineYards(c.lat, c.lon, g.pt.lat, g.pt.lon) < 40,
-        )
-      ) {
-        continue;
-      }
+      if (tee.loop && g.loop && tee.loop !== g.loop) continue;
       const d = haversineYards(tee.pt.lat, tee.pt.lon, g.pt.lat, g.pt.lon);
       if (d < 45 || d > 720) continue;
       if (!best || d < best.d) best = { pt: g.pt, d };
     }
-
     if (!best && tee.ref == null) {
       for (const g of greenPts) {
-        if (
-          claimedGreens.some(
-            (c) => haversineYards(c.lat, c.lon, g.pt.lat, g.pt.lon) < 40,
-          )
-        ) {
-          continue;
-        }
         const d = haversineYards(tee.pt.lat, tee.pt.lon, g.pt.lat, g.pt.lon);
         if (d < 70 || d > 680) continue;
         if (!best || d < best.d) best = { pt: g.pt, d };
       }
     }
     if (!best) continue;
+    const green = best.pt;
 
-    const num = tee.ref ?? holes.length + 1;
-    if (usedRefs.has(num)) continue;
-    holes.push({
+    let num = tee.ref;
+    let loop = tee.loop;
+    if (num == null) {
+      const near = holes.find(
+        (h) =>
+          haversineYards(h.green.lat, h.green.lon, green.lat, green.lon) < 90,
+      );
+      if (near) {
+        num = near.number;
+        loop = loop || near.loop || '';
+      } else if (holes.length >= 18) {
+        continue;
+      } else {
+        num = holes.length + 1;
+      }
+    }
+
+    upsertTee(holes, {
       number: num,
-      par: tee.par,
+      loop,
+      label: tee.label,
+      color: tee.color,
       yards: Math.round(best.d),
       bearingDeg: Math.round(
-        bearingDeg(tee.pt.lat, tee.pt.lon, best.pt.lat, best.pt.lon),
+        bearingDeg(tee.pt.lat, tee.pt.lon, green.lat, green.lon),
       ),
       tee: tee.pt,
-      green: best.pt,
+      green,
       path: [tee.pt, best.pt],
+      par: tee.par,
+      name: tee.name,
       source: 'tee-green',
     });
-    usedRefs.add(num);
-    claimedTees.push(tee.pt);
-    claimedGreens.push(best.pt);
-    if (holes.length >= MAX_HOLES) break;
   }
 
-  holes.sort((a, b) => a.number - b.number);
-  return holes.slice(0, MAX_HOLES);
+  return holes;
 }
 
 async function queryWays(scope: string): Promise<OsmElement[]> {
@@ -308,13 +529,12 @@ out center tags;
 
 async function holesInScope(scope: string): Promise<GolfHole[]> {
   let holes = holesFromWays(await queryWays(scope));
-  if (holes.length >= 9) return holes;
   try {
     holes = holesFromTeeGreen(await queryTeeGreen(scope), holes);
   } catch {
     // Keep whatever centerlines we already have.
   }
-  return holes;
+  return finalizeHoles(holes);
 }
 
 /**
@@ -336,7 +556,7 @@ async function holesFromOsmMap(
     return null;
   }
   // OSM map API accepts west,south,east,north and rejects very large boxes.
-  if ((north! - south!) * (east! - west!) > 0.08) return null;
+  if ((north! - south!) * (east! - west!) > 0.12) return null;
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 12_000);
@@ -451,13 +671,10 @@ async function holesFromOsmMap(
       });
     }
 
-    // The full map payload is already local, so always use tee/green tags to
-    // fill a missing centerline (common on small clubs with 16–17 mapped
-    // golf=hole ways). Spatial/ref dedupe prevents extra tee boxes becoming
-    // duplicate holes.
+    // Always merge tee boxes onto centerlines so front / mid / back survive.
     let holes = holesFromWays(scoped);
     holes = holesFromTeeGreen(scoped, holes);
-    return holes;
+    return finalizeHoles(holes);
   } catch {
     return null;
   } finally {
@@ -503,7 +720,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const lat = quantizeCoord(rawLat, 4);
   const lon = quantizeCoord(rawLon, 4);
-  const cacheKey = `h:${lat}:${lon}:${bbox ?? ''}:${osmType ?? ''}${Number.isFinite(osmId) ? osmId : ''}:${radiusM}`;
+  const cacheKey = `h2:${lat}:${lon}:${bbox ?? ''}:${osmType ?? ''}${Number.isFinite(osmId) ? osmId : ''}:${radiusM}`;
   const cached = HOLE_MEM.get(cacheKey);
   if (cached && Date.now() - cached.at < HOLE_MEM_TTL_MS && cached.holes.length) {
     return jsonResponse(
@@ -581,7 +798,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   for (const scope of scopes) {
-    if (best.holes.length >= 9) break;
+    if (best.holes.length >= 18) break;
     try {
       let holes: GolfHole[];
       if (scope.queryScope.startsWith('area:')) {
@@ -598,8 +815,7 @@ out geom;
           hedgeMs: 2_000,
         })) as { elements?: OsmElement[] };
         holes = holesFromWays(ways.elements ?? []);
-        if (holes.length < 9) {
-          const tgQuery = `
+        const tgQuery = `
 [out:json][timeout:20];
 ${type === 'way' ? 'way' : 'rel'}(id:${id});
 map_to_area->.course;
@@ -610,16 +826,16 @@ map_to_area->.course;
 );
 out center tags;
 `.trim();
-          try {
-            const tg = (await overpass(tgQuery, {
-              timeoutMs: 12_000,
-              hedgeMs: 1_800,
-            })) as { elements?: OsmElement[] };
-            holes = holesFromTeeGreen(tg.elements ?? [], holes);
-          } catch {
-            // keep centerlines
-          }
+        try {
+          const tg = (await overpass(tgQuery, {
+            timeoutMs: 12_000,
+            hedgeMs: 1_800,
+          })) as { elements?: OsmElement[] };
+          holes = holesFromTeeGreen(tg.elements ?? [], holes);
+        } catch {
+          // keep centerlines
         }
+        holes = finalizeHoles(holes);
       } else {
         holes = await holesInScope(scope.queryScope);
       }
@@ -628,7 +844,7 @@ out center tags;
         best = { holes, scope: scope.name };
       }
       // Good enough — stop burning Overpass quota.
-      if (holes.length >= 9) break;
+      if (holes.length >= 18) break;
     } catch (err) {
       lastError = err instanceof Error ? err.message : 'overpass failed';
     }

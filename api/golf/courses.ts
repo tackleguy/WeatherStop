@@ -237,8 +237,19 @@ function catalogQueries(q: string): string[] {
     variants.add('Bethpage Red');
     variants.add('Bethpage Blue');
   }
+  if (/torrey/.test(lower)) {
+    variants.add('Torrey Pines North');
+    variants.add('Torrey Pines South');
+  }
 
-  return [...variants].slice(0, 5);
+  const hasDirection = /\b(north|south|east|west|nines?)\b/.test(lower);
+  if (!hasDirection) {
+    for (const dir of ['North', 'South', 'East', 'West']) {
+      variants.add(`${base} ${dir}`);
+    }
+  }
+
+  return [...variants].slice(0, 8);
 }
 
 async function photonSearchOnce(
@@ -418,6 +429,20 @@ out center tags bb;
   return courses;
 }
 
+function mergeCourses(
+  primary: GolfCourseSummary[],
+  extra: GolfCourseSummary[],
+): GolfCourseSummary[] {
+  const seen = new Set(primary.map((c) => c.id));
+  const out = [...primary];
+  for (const course of extra) {
+    if (seen.has(course.id)) continue;
+    seen.add(course.id);
+    out.push(course);
+  }
+  return out;
+}
+
 export default async function handler(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const rawLat = Number(searchParams.get('lat'));
@@ -464,7 +489,29 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (q.length >= 2) {
     try {
-      const courses = await photonCatalog(q, rawLat, rawLon, limit, ac.signal);
+      let courses = await photonCatalog(q, rawLat, rawLon, limit, ac.signal);
+      const seed = courses[0];
+      if (seed) {
+        try {
+          const osm = await overpassCourses(
+            seed.lat,
+            seed.lon,
+            rawLat,
+            rawLon,
+            8_000,
+          );
+          courses = mergeCourses(
+            courses,
+            osm.filter((c) =>
+              courses.some(
+                (s) => haversineMi(s.lat, s.lon, c.lat, c.lon) < 2.5,
+              ),
+            ),
+          );
+        } catch {
+          // Name search still works without sibling polygons.
+        }
+      }
       return finish(courses, 'photon', { preserveOrder: true });
     } catch (err) {
       return errResponse(
@@ -476,26 +523,31 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const courses = await photonCourses(
-      rawLat,
-      rawLon,
-      radiusM,
-      limit,
-      ac.signal,
-    );
-    if (courses.length) return finish(courses, 'photon');
-    failures.push('photon: no golf courses in range');
-  } catch (err) {
-    failures.push(err instanceof Error ? err.message : 'photon failed');
+    const [photon, osm] = await Promise.all([
+      photonCourses(rawLat, rawLon, radiusM, limit, ac.signal).catch((err) => {
+        failures.push(err instanceof Error ? err.message : 'photon failed');
+        return [] as GolfCourseSummary[];
+      }),
+      overpassCourses(
+        lat,
+        lon,
+        rawLat,
+        rawLon,
+        Math.min(radiusM, 25_000),
+      ).catch((err) => {
+        failures.push(err instanceof Error ? err.message : 'overpass failed');
+        return [] as GolfCourseSummary[];
+      }),
+    ]);
+    if (photon.length || osm.length) {
+      return finish(
+        mergeCourses(photon, osm),
+        photon.length ? 'photon' : 'overpass',
+      );
+    }
+    if (!failures.length) failures.push('no golf courses in range');
   } finally {
     clearTimeout(hardStop);
-  }
-
-  try {
-    const courses = await overpassCourses(lat, lon, rawLat, rawLon, radiusM);
-    return finish(courses, 'overpass');
-  } catch (err) {
-    failures.push(err instanceof Error ? err.message : 'overpass failed');
   }
 
   return errResponse(failures.join(' · '));

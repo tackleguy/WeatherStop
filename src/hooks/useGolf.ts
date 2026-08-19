@@ -3,9 +3,11 @@ import {
   fetchGolfCourses,
   fetchGolfEnsemble,
   fetchGolfHoles,
+  fetchGolfNotebook,
   type GolfCourseSummary,
   type GolfEnsemble,
   type GolfHole,
+  type GolfNotebook,
 } from '../lib/golf';
 import type { GolfPlayerProfile } from '../lib/golfProfile';
 
@@ -167,6 +169,63 @@ export function useGolfEnsemble(
     // holeKey captures hole geometry changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lon, hour, holeKey, playerKey]);
+
+  return { data, loading, error };
+}
+
+export function useGolfNotebook(
+  lat: number | null,
+  lon: number | null,
+  holes: GolfHole[],
+  player: GolfPlayerProfile | null,
+  enabled: boolean,
+) {
+  const [data, setData] = useState<GolfNotebook | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const holeKey = holes
+    .map(
+      (h) =>
+        `${h.number}:${h.yards}:${h.bearingDeg}:${h.teeElevationM ?? ''}:${h.greenElevationM ?? ''}`,
+    )
+    .join('|');
+  const playerKey = player
+    ? `${player.handicap}:${player.miss}:${player.sevenIronYards}:${player.driverYards}`
+    : '';
+
+  useEffect(() => {
+    if (!enabled || lat == null || lon == null) return;
+    const ac = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetchGolfNotebook(
+      lat,
+      lon,
+      holes.map((h) => ({
+        number: h.number,
+        yards: h.yards,
+        bearingDeg: h.bearingDeg,
+        par: h.par,
+        name: h.name,
+        teeElevationM: h.teeElevationM,
+        greenElevationM: h.greenElevationM,
+      })),
+      player,
+      ac.signal,
+    )
+      .then(setData)
+      .catch((err) => {
+        if (ac.signal.aborted) return;
+        setError(err instanceof Error ? err.message : 'Notebook failed');
+        setData(null);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, lat, lon, holeKey, playerKey]);
 
   return { data, loading, error };
 }

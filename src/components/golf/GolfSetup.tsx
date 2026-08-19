@@ -82,8 +82,8 @@ export function GolfSetup({ initial, onComplete, onCancel }: Props) {
               Set up your game
             </h1>
             <p className="mt-1 text-[13px] leading-snug text-[var(--ink-3)]">
-              Handicap, miss, and stock distances calibrate hole-by-hole
-              yardages and club picks before you open a course.
+              Handicap, miss, and total-average distances (carry + typical
+              roll) calibrate hole-by-hole yardages and club picks.
             </p>
           </div>
         </div>
@@ -193,14 +193,14 @@ export function GolfSetup({ initial, onComplete, onCancel }: Props) {
 
         {!canSave && (
           <p className="mb-3 text-[12px] text-amber-200/90">
-            Driver carry should be at least ~20 yards longer than your 7-iron.
+            Driver should be at least ~20 yards longer than your 7-iron.
           </p>
         )}
 
         <div className="mb-6 rounded-xl border border-[var(--line-subtle)] bg-black/15 px-3 py-3">
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-[var(--ink-3)]">
             <Sparkles className="h-3 w-3 text-[var(--accent)]" />
-            Your bag preview
+            Your bag preview — total avg
           </div>
           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
             {bagPreview.map((c) => (
@@ -214,12 +214,17 @@ export function GolfSetup({ initial, onComplete, onCancel }: Props) {
                 <div className="text-[12px] font-semibold tabular-nums text-[var(--ink-1)]">
                   {c.yards}
                 </div>
+                {c.carryYards != null && c.carryYards !== c.yards && (
+                  <div className="text-[9px] tabular-nums text-[var(--ink-4)]">
+                    {c.carryYards} carry
+                  </div>
+                )}
               </div>
             ))}
           </div>
           <p className="mt-2 text-[11px] text-[var(--ink-4)]">
-            {missLabel(miss)} · HCP {handicap} — tips will favor the fat side
-            and stock clubs from this bag.
+            {missLabel(miss)} · HCP {handicap} — rings and club picks use
+            total avg (where the ball finishes).
           </p>
         </div>
 

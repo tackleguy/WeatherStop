@@ -281,6 +281,97 @@ export async function fetchGolfHoles(
     : new Error('Failed to load hole geometry');
 }
 
+export interface GolfNotebookDay {
+  date: string;
+  windFromDeg: number;
+  windMph: number;
+  gustMph: number;
+  agreement: number;
+  modelsUsed: string[];
+}
+
+export interface GolfNotebookHoleDay {
+  date: string;
+  aspect: string;
+  headwindMph: number;
+  playsLikeYards: number;
+  recommendedClub: string;
+  clubHint: string;
+}
+
+export interface GolfNotebookHole {
+  number: number;
+  name?: string;
+  par?: number;
+  yards: number;
+  bearingDeg: number;
+  teeElevationFt: number | null;
+  greenElevationFt: number | null;
+  slopeYards: number;
+  elevationChangeFt: number;
+  seaLevelYards: number;
+  days: GolfNotebookHoleDay[];
+}
+
+export interface GolfNotebook {
+  lat: number;
+  lon: number;
+  generatedAt: string;
+  elevationFt: number;
+  altitudeBonusPct: number;
+  days: GolfNotebookDay[];
+  holes: GolfNotebookHole[];
+  modelsFailed: Array<{ model: string; reason?: string }>;
+  attribution: string;
+}
+
+const NOTEBOOK_TTL_MS = 15 * 60_000;
+
+export async function fetchGolfNotebook(
+  lat: number,
+  lon: number,
+  holes: Array<
+    Pick<
+      GolfHole,
+      | 'number'
+      | 'yards'
+      | 'bearingDeg'
+      | 'par'
+      | 'name'
+      | 'teeElevationM'
+      | 'greenElevationM'
+    >
+  >,
+  player?: GolfPlayerProfile | null,
+  signal?: AbortSignal,
+): Promise<GolfNotebook> {
+  const key = `golf:v1:notebook:${q4(lat)}:${q4(lon)}:${holes
+    .map(
+      (h) =>
+        `${h.number}:${h.yards}:${h.bearingDeg}:${h.teeElevationM ?? ''}:${h.greenElevationM ?? ''}`,
+    )
+    .join('|')}:${player?.handicap ?? ''}:${player?.sevenIronYards ?? ''}:${player?.driverYards ?? ''}`;
+  const cached =
+    memGet<GolfNotebook>(key, NOTEBOOK_TTL_MS) ??
+    sessionGet<GolfNotebook>(key, NOTEBOOK_TTL_MS);
+  if (cached) {
+    memSet(key, cached);
+    return cached;
+  }
+
+  const res = await fetch('/api/golf/notebook', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat, lon, holes, player }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`notebook ${res.status}`);
+  const data = (await res.json()) as GolfNotebook;
+  memSet(key, data);
+  sessionSet(key, data);
+  return data;
+}
+
 export async function fetchGolfEnsemble(
   lat: number,
   lon: number,

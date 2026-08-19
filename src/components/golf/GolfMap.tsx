@@ -6,9 +6,16 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { GOLF_SATELLITE_STYLE, type GolfHole } from '../../lib/golf';
 import {
+  bagRingsGeoJSON,
+  targetLineGeoJSON,
+  targetPointGeoJSON,
+} from '../../lib/golfMeasure';
+import type { BagClub } from '../../lib/golfProfile';
+import {
   emptyCollection,
   shotPathGeoJSON,
   windFlowGeoJSON,
+  type LonLat,
 } from '../../lib/golfWind';
 import { bearingCompass } from '../../lib/geo';
 
@@ -18,6 +25,9 @@ interface Props {
   holes: GolfHole[];
   activeHole: number | null;
   onSelectHole?: (n: number) => void;
+  target?: LonLat | null;
+  arcClubs?: BagClub[];
+  onSetTarget?: (pt: LonLat) => void;
   windFromDeg?: number | null;
   windMph?: number | null;
   headwindMph?: number | null;
@@ -37,6 +47,9 @@ const SRC_TEE = 'golf-tees';
 const SRC_GREEN = 'golf-greens';
 const SRC_FLOW = 'golf-wind-flow';
 const SRC_SHOT = 'golf-shot-path';
+const SRC_ARCS = 'golf-arcs';
+const SRC_TARGET_LINE = 'golf-target-line';
+const SRC_TARGET = 'golf-target-pt';
 
 const LINE = 'golf-hole-lines';
 const LINE_ACTIVE = 'golf-hole-lines-active';
@@ -50,6 +63,10 @@ const LYR_FLOW_ARROW = 'golf-wind-arrow-lyr';
 const LYR_AIM = 'golf-aim-lyr';
 const LYR_DRIFT = 'golf-drift-lyr';
 const LYR_LANDING = 'golf-landing-lyr';
+const LYR_ARCS = 'golf-arcs-lyr';
+const LYR_CARRY = 'golf-target-carry-lyr';
+const LYR_REMAIN = 'golf-target-remain-lyr';
+const LYR_TARGET = 'golf-target-pt-lyr';
 
 const CLICK_LAYERS = [LINE_HIT, LINE, LINE_ACTIVE, LYR_TEE_HIT, LYR_GREEN_HIT, LYR_TEE, LYR_GREEN];
 
@@ -116,6 +133,9 @@ export function GolfMap({
   holes,
   activeHole,
   onSelectHole,
+  target = null,
+  arcClubs = [],
+  onSetTarget,
   windFromDeg,
   windMph,
   headwindMph,
@@ -135,6 +155,10 @@ export function GolfMap({
   onSelectRef.current = onSelectHole;
   const fitPaddingRef = useRef(fitPadding);
   fitPaddingRef.current = fitPadding;
+  const onSetTargetRef = useRef(onSetTarget);
+  onSetTargetRef.current = onSetTarget;
+  const activeHoleRef = useRef(activeHole);
+  activeHoleRef.current = activeHole;
 
   // Layers only exist after `load`, so defer any data/camera work until then.
   const whenReady = useCallback((fn: () => void) => {
@@ -207,6 +231,12 @@ export function GolfMap({
       });
       map.addSource(SRC_FLOW, { type: 'geojson', data: emptyCollection() });
       map.addSource(SRC_SHOT, { type: 'geojson', data: emptyCollection() });
+      map.addSource(SRC_ARCS, { type: 'geojson', data: emptyCollection() });
+      map.addSource(SRC_TARGET_LINE, {
+        type: 'geojson',
+        data: emptyCollection(),
+      });
+      map.addSource(SRC_TARGET, { type: 'geojson', data: emptyCollection() });
 
       // Fat invisible stroke first so tees/fairways are tappable on phones.
       map.addLayer({
@@ -304,6 +334,40 @@ export function GolfMap({
       });
 
       map.addLayer({
+        id: LYR_ARCS,
+        type: 'line',
+        source: SRC_ARCS,
+        paint: {
+          'line-color': '#f8fafc',
+          'line-width': 1.15,
+          'line-opacity': 0.42,
+          'line-dasharray': [2, 2.4],
+        },
+      });
+      map.addLayer({
+        id: LYR_CARRY,
+        type: 'line',
+        source: SRC_TARGET_LINE,
+        filter: ['==', ['get', 'kind'], 'carry'],
+        paint: {
+          'line-color': '#22c55e',
+          'line-width': 2.6,
+          'line-opacity': 0.95,
+        },
+      });
+      map.addLayer({
+        id: LYR_REMAIN,
+        type: 'line',
+        source: SRC_TARGET_LINE,
+        filter: ['==', ['get', 'kind'], 'remain'],
+        paint: {
+          'line-color': '#facc15',
+          'line-width': 2.2,
+          'line-opacity': 0.9,
+          'line-dasharray': [2, 1.4],
+        },
+      });
+      map.addLayer({
         id: LYR_TEE_HIT,
         type: 'circle',
         source: SRC_TEE,
@@ -345,18 +409,35 @@ export function GolfMap({
           'circle-stroke-color': '#0f172a',
         },
       });
+      map.addLayer({
+        id: LYR_TARGET,
+        type: 'circle',
+        source: SRC_TARGET,
+        paint: {
+          'circle-radius': 7,
+          'circle-color': '#f97316',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#fff7ed',
+        },
+      });
 
-      const click = (e: maplibregl.MapLayerMouseEvent) => {
-        const n = holeNumberFromFeature(e.features?.[0]?.properties?.number);
-        if (n != null) onSelectRef.current?.(n);
+      const clickMap = (e: maplibregl.MapMouseEvent) => {
+        const hits = map.queryRenderedFeatures(e.point, { layers: CLICK_LAYERS });
+        if (hits.length > 0) {
+          const n = holeNumberFromFeature(hits[0]?.properties?.number);
+          if (n != null) onSelectRef.current?.(n);
+          return;
+        }
+        if (activeHoleRef.current == null) return;
+        onSetTargetRef.current?.({ lat: e.lngLat.lat, lon: e.lngLat.lng });
       };
+      map.on('click', clickMap);
       for (const id of CLICK_LAYERS) {
-        map.on('click', id, click);
         map.on('mouseenter', id, () => {
           map.getCanvas().style.cursor = 'pointer';
         });
         map.on('mouseleave', id, () => {
-          map.getCanvas().style.cursor = '';
+          map.getCanvas().style.cursor = activeHoleRef.current != null ? 'crosshair' : '';
         });
       }
 
@@ -489,6 +570,30 @@ export function GolfMap({
     whenReady,
   ]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const hole = holes.find((h) => h.number === activeHole) ?? null;
+    const tee = hole ? { lon: hole.tee.lon, lat: hole.tee.lat } : null;
+    const green = hole
+      ? { lon: hole.green.lon, lat: hole.green.lat }
+      : null;
+
+    whenReady(() => {
+      (
+        map.getSource(SRC_ARCS) as maplibregl.GeoJSONSource | undefined
+      )?.setData(bagRingsGeoJSON(tee, hole ? arcClubs : []));
+      (
+        map.getSource(SRC_TARGET_LINE) as maplibregl.GeoJSONSource | undefined
+      )?.setData(targetLineGeoJSON(tee, hole ? target : null, green));
+      (
+        map.getSource(SRC_TARGET) as maplibregl.GeoJSONSource | undefined
+      )?.setData(targetPointGeoJSON(hole ? target : null));
+      map.getCanvas().style.cursor =
+        hole && onSetTargetRef.current ? 'crosshair' : '';
+    });
+  }, [holes, activeHole, target, arcClubs, whenReady]);
+
   const windLabel =
     windFromDeg != null
       ? `Wind ${windMph != null ? `${Math.round(windMph)} mph ` : ''}from ${Math.round(windFromDeg)}° ${bearingCompass(windFromDeg)}`
@@ -503,11 +608,14 @@ export function GolfMap({
         >
           <span className="text-cyan-200">{windLabel}</span>
           {activeHole != null && (
-            <span className="flex items-center gap-1.5 text-[10px] text-[var(--ink-3)]">
+            <span className="flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--ink-3)]">
               <span className="inline-block h-0.5 w-4 rounded bg-cyan-300" />
-              wind flow
+              wind
               <span className="ml-1 inline-block h-0.5 w-4 rounded bg-[#ff8a3d]" />
-              ball path
+              ball
+              <span className="ml-1 inline-block h-0.5 w-4 rounded bg-emerald-400" />
+              carry
+              <span className="text-[9px] text-[var(--ink-4)]">tap to move target</span>
             </span>
           )}
         </div>

@@ -489,3 +489,40 @@ html[data-theme='sand'] .home-root .placeholder-white\/55::placeholder {
     bottom: 4.25rem;
   }
 }
+
+@media print {
+  @page {
+    margin: 0.5in;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .golf-yardage-print,
+  .golf-yardage-print * {
+    visibility: visible !important;
+  }
+
+  .golf-print-hide {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .golf-yardage-print {
+    position: absolute !important;
+    inset: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    box-shadow: none !important;
+  }
+
+  .golf-yardage-print table,
+  .golf-yardage-print th,
+  .golf-yardage-print td {
+    color: #111 !important;
+    border-color: #ccc !important;
+  }
+}

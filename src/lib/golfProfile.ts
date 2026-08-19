@@ -11,10 +11,33 @@ export interface GolfPlayerProfile {
 export interface BagClub {
   key: string;
   label: string;
+  /** Total average — where the ball typically finishes (carry + roll). */
   yards: number;
+  carryYards?: number;
 }
 
 const STORAGE_KEY = 'golf-player-v1';
+
+/** Typical roll on top of air carry, so planning uses finish distance. */
+const ROLL_PCT: Record<string, number> = {
+  dr: 0.1,
+  '3w': 0.08,
+  '5w': 0.06,
+  '4i': 0.05,
+  '5i': 0.05,
+  '6i': 0.04,
+  '7i': 0.04,
+  '8i': 0.025,
+  '9i': 0.025,
+  pw: 0.015,
+  gw: 0.01,
+  sw: 0.01,
+};
+
+export function totalAvgYards(carryYards: number, clubKey: string): number {
+  const pct = ROLL_PCT[clubKey] ?? 0.03;
+  return Math.max(40, Math.round(carryYards * (1 + pct)));
+}
 
 export const DEFAULT_PROFILE: GolfPlayerProfile = {
   commonCourses: [],
@@ -47,7 +70,14 @@ export function bagFromStocks(
     .filter((club, index, all) =>
       index === 0 || club.yards < all[index - 1]!.yards - 2,
     )
-    .map((club) => ({ ...club, yards: Math.max(40, Math.round(club.yards)) }));
+    .map((club) => {
+      const carry = Math.max(40, Math.round(club.yards));
+      return {
+        ...club,
+        carryYards: carry,
+        yards: totalAvgYards(carry, club.key),
+      };
+    });
 }
 
 export function missLabel(miss: MissBias): string {

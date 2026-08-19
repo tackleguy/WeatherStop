@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BookOpen,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -19,6 +20,8 @@ import {
 import { GolfMap } from '../components/golf/GolfMap';
 import { GolfMapBoundary } from '../components/golf/GolfMapBoundary';
 import { GolfSetup } from '../components/golf/GolfSetup';
+import { GolfTargetHud } from '../components/golf/GolfTargetHud';
+import { GolfYardageBook } from '../components/golf/GolfYardageBook';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { SearchBar } from '../components/radar/SearchBar';
 import { INITIAL_SEED } from '../constants/cities';
@@ -28,13 +31,21 @@ import {
   useGolfCourses,
   useGolfEnsemble,
   useGolfHoles,
+  useGolfNotebook,
 } from '../hooks/useGolf';
 import type { GolfCourseSummary, HoleBrief } from '../lib/golf';
 import {
+  bagArcClubs,
+  defaultTarget,
+  metersToFeet,
+} from '../lib/golfMeasure';
+import {
+  bagFromStocks,
   DEFAULT_PROFILE,
   loadGolfProfile,
   type GolfPlayerProfile,
 } from '../lib/golfProfile';
+import type { LonLat } from '../lib/golfWind';
 
 interface Loc {
   name: string;
@@ -108,6 +119,8 @@ export function GolfView() {
   const [holeUp, setHoleUp] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(true);
   const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [target, setTarget] = useState<LonLat | null>(null);
+  const [bookOpen, setBookOpen] = useState(false);
 
   const searchLat = course?.lat ?? loc.lat;
   const searchLon = course?.lon ?? loc.lon;
@@ -152,6 +165,50 @@ export function GolfView() {
     profile,
   );
 
+  const {
+    data: notebook,
+    loading: notebookLoading,
+    error: notebookError,
+  } = useGolfNotebook(
+    course?.lat ?? null,
+    course?.lon ?? null,
+    holes,
+    profile,
+    bookOpen,
+  );
+
+  const bag = useMemo(
+    () =>
+      bagFromStocks(
+        profile?.driverYards ?? 225,
+        profile?.sevenIronYards ?? 150,
+      ),
+    [profile],
+  );
+  const arcClubs = useMemo(() => bagArcClubs(bag), [bag]);
+  const courseElevFt = useMemo(() => {
+    const tees = holes
+      .map((h) => h.teeElevationM)
+      .filter((m): m is number => typeof m === 'number' && Number.isFinite(m));
+    if (!tees.length) return 0;
+    return Math.round(
+      metersToFeet(tees.reduce((s, n) => s + n, 0) / tees.length),
+    );
+  }, [holes]);
+
+  const activeHoleObj = useMemo(
+    () => holes.find((h) => h.number === activeHole) ?? null,
+    [holes, activeHole],
+  );
+
+  useEffect(() => {
+    if (!activeHoleObj || !profile) {
+      setTarget(null);
+      return;
+    }
+    setTarget(defaultTarget(activeHoleObj, bag[0]?.yards ?? profile.driverYards));
+  }, [activeHoleObj, profile, bag]);
+
   const briefByHole = useMemo(() => {
     const m = new Map<number, HoleBrief>();
     for (const h of ensemble?.holes ?? []) m.set(h.number, h);
@@ -166,6 +223,8 @@ export function GolfView() {
     (next: GolfCourseSummary) => {
       setCourse(next);
       setActiveHole(null);
+      setTarget(null);
+      setBookOpen(false);
       setSheetExpanded(false);
       if (isMobile) setPickerOpen(false);
     },
@@ -321,6 +380,8 @@ export function GolfView() {
                 setLoc({ name: p.label, lat: p.lat, lon: p.lon });
                 setCourse(null);
                 setActiveHole(null);
+                setTarget(null);
+                setBookOpen(false);
                 setPickerOpen(true);
                 setSearchOpen(false);
               }}
@@ -467,6 +528,9 @@ export function GolfView() {
                 holes={holes}
                 activeHole={activeHole}
                 onSelectHole={setActiveHole}
+                target={target}
+                arcClubs={arcClubs}
+                onSetTarget={setTarget}
                 windFromDeg={ensemble?.ensemble.windFromDeg ?? null}
                 windMph={ensemble?.ensemble.windMph ?? null}
                 headwindMph={activeBrief?.headwindMph ?? null}
@@ -478,6 +542,24 @@ export function GolfView() {
                 legendClassName="left-3 top-16"
               />
             </GolfMapBoundary>
+
+            {activeHoleObj && target && profile ? (
+              <GolfTargetHud
+                hole={activeHoleObj}
+                target={target}
+                bag={bag}
+                brief={activeBrief}
+                elevFt={courseElevFt}
+                onReset={() =>
+                  setTarget(
+                    defaultTarget(
+                      activeHoleObj,
+                      bag[0]?.yards ?? profile.driverYards,
+                    ),
+                  )
+                }
+              />
+            ) : null}
 
             {/* Hole-by-hole walkthrough + course switcher */}
             {(isMobile || holes.length > 0) && (
@@ -633,6 +715,16 @@ export function GolfView() {
                     </button>
                   </div>
                 )}
+                <div className="px-3 pb-2">
+                  <button
+                    type="button"
+                    onClick={() => setBookOpen(true)}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)]/20 px-2 py-1.5 text-[11px] font-semibold text-[var(--ink-1)] hover:bg-[var(--accent)]/30"
+                  >
+                    <BookOpen className="h-3.5 w-3.5" />
+                    Yardage book
+                  </button>
+                </div>
 
                 {activeBrief && (
                   <div className="border-b border-[var(--line-subtle)] bg-[var(--accent)]/10 px-3 py-2.5">
@@ -774,6 +866,17 @@ export function GolfView() {
           </div>
         )}
       </div>
+      {bookOpen && course && profile ? (
+        <GolfYardageBook
+          course={course}
+          profile={profile}
+          notebook={notebook}
+          loading={notebookLoading}
+          error={notebookError}
+          onClose={() => setBookOpen(false)}
+        />
+      ) : null}
+
     </div>
   );
 }

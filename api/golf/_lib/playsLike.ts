@@ -82,8 +82,12 @@ export function aspectFor(relDeg: number): WindAspect {
   return relDeg > 0 ? 'cross-L' : 'cross-R';
 }
 
-export function windAdjustment(headwindMph: number): number {
-  return Math.round(headwindMph * (10 / 6));
+export function windAdjustment(
+  headwindMph: number,
+  crosswindMph = 0,
+): number {
+  // Head: ~10 yd / 6 mph. Cross still costs distance (~4 yd / 6 mph).
+  return headwindMph * (10 / 6) + Math.abs(crosswindMph) * (4 / 6);
 }
 
 export function slopeFor(hole: HoleIn): {
@@ -160,7 +164,11 @@ export function clubPlan(
   player: PlayerIn,
 ): { hint: string; recommended: string } {
   const driverTotal = totalAvgYards(player.driverYards, 'Driver');
-  if ((hole.par ?? 3) <= 3 || playsLikeYards <= driverTotal * 0.78) {
+  const par =
+    typeof hole.par === 'number' && Number.isFinite(hole.par) && hole.par > 0
+      ? hole.par
+      : 4;
+  if (par <= 3 || playsLikeYards <= driverTotal * 0.78) {
     const club = nearestClub(playsLikeYards, player);
     return {
       recommended: club.label,
@@ -203,7 +211,7 @@ export function holeWind(
     crosswindMph,
     driftYards,
     aspect: aspectFor(rel),
-    windAdjustmentYards: windAdjustment(headwindMph),
+    windAdjustmentYards: windAdjustment(headwindMph, crosswindMph),
   };
 }
 
@@ -242,9 +250,12 @@ export function aggregateWinds(
   const circ = circMeanDeg(dirs) ?? ensFrom;
   const dirSpread = stdev(dirs.map((d) => angDiff(d, circ)));
   const spdSpread = stdev(speeds);
-  const windMph = ensSpeed || medSpeed;
+  // Median speed, not vector magnitude. Disagreeing directions cancel the
+  // vector and would make every hole play exactly as card yardage.
+  const windMph = medSpeed || ensSpeed;
+  const windFromDeg = ensSpeed >= windMph * 0.4 ? ensFrom : circ;
   return {
-    windFromDeg: ensFrom,
+    windFromDeg,
     windMph,
     gustMph: Math.max(medGust, windMph),
     agreement: Math.max(0, Math.min(1, 1 - dirSpread / 90 - spdSpread / 25)),

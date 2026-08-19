@@ -1,15 +1,19 @@
 // Multi-model wind ensemble + hole-by-hole golf brief.
-// Aggregates Open-Meteo models (vector mean) and emits play tips.
+// Median wind speed (vector mean cancels when models disagree) vs each
+// hole’s tee→green bearing. Plays-like includes wind, slope, and altitude.
 
 import {
   aggregateWinds,
   clubPlan,
   holeWind,
+  metersToFeet,
+  playsLikeYards,
   slopeFor,
   type HoleIn,
   type PlayerIn,
   type WindAspect,
 } from './_lib/playsLike';
+import { DEFAULT_TURF, turfFromWeather, type TurfReport } from './_lib/turf';
 
 export const config = { runtime: 'edge' };
 
@@ -123,6 +127,68 @@ function tipFor(
       break;
   }
   return `${conf}: ${windTip}${slope} ${missAim}`;
+}
+
+async function fetchTurf(lat: number, lon: number, windMph: number): Promise<TurfReport> {
+  const tryFetch = async (hourly: string) => {
+    const params = new URLSearchParams({
+      latitude: String(lat),
+      longitude: String(lon),
+      hourly,
+      past_days: '2',
+      forecast_days: '1',
+      precipitation_unit: 'inch',
+      timezone: 'auto',
+    });
+    const res = await fetch(`${FORECAST_URL}?${params}`);
+    if (!res.ok) return null;
+    return (await res.json()) as {
+      hourly?: {
+        precipitation?: Array<number | null>;
+        et0_fao_evapotranspiration?: Array<number | null>;
+        relative_humidity_2m?: Array<number | null>;
+        soil_moisture_0_to_7cm?: Array<number | null>;
+      };
+    };
+  };
+  try {
+    const data =
+      (await tryFetch(
+        'precipitation,et0_fao_evapotranspiration,relative_humidity_2m,soil_moisture_0_to_7cm',
+      )) ??
+      (await tryFetch(
+        'precipitation,et0_fao_evapotranspiration,relative_humidity_2m',
+      ));
+    if (!data) return DEFAULT_TURF;
+    const precip = data.hourly?.precipitation ?? [];
+    const et0 = data.hourly?.et0_fao_evapotranspiration ?? [];
+    const rh = data.hourly?.relative_humidity_2m ?? [];
+    const soil = data.hourly?.soil_moisture_0_to_7cm ?? [];
+    const last48 = Math.min(48, Math.max(precip.length, et0.length));
+    const slice = <T,>(arr: T[], n: number) =>
+      arr.slice(Math.max(0, arr.length - n));
+    const sum = (arr: Array<number | null>) =>
+      arr.reduce(
+        (s, n) => s + (typeof n === 'number' && Number.isFinite(n) ? n : 0),
+        0,
+      );
+    const lastNum = (arr: Array<number | null>) => {
+      for (let i = arr.length - 1; i >= 0; i -= 1) {
+        const v = arr[i];
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+      }
+      return null;
+    };
+    return turfFromWeather({
+      precipIn48h: sum(slice(precip, last48)),
+      et0Mm48h: sum(slice(et0, last48)),
+      humidityPct: lastNum(rh) ?? 55,
+      soilMoisture: lastNum(soil),
+      windMph,
+    });
+  } catch {
+    return DEFAULT_TURF;
+  }
 }
 
 async function fetchModelHour(
@@ -252,22 +318,44 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const results = await Promise.all(
-    ENSEMBLE_MODELS.map((m) => fetchModelHour(lat, lon, m, hour)),
-  );
+  const [results, turfEarly] = await Promise.all([
+    Promise.all(ENSEMBLE_MODELS.map((m) => fetchModelHour(lat, lon, m, hour))),
+    fetchTurf(lat, lon, 8),
+  ]);
   const ok = results.filter((r) => r.ok && r.speed != null && r.dir != null);
   const { windFromDeg, windMph, gustMph, agreement } = aggregateWinds(
     ok.map((r) => ({ speed: r.speed!, dir: r.dir!, gust: r.gust })),
   );
+  const turf = turfFromWeather({
+    precipIn48h: turfEarly.precipIn48h,
+    et0Mm48h: turfEarly.et0Mm48h,
+    humidityPct: turfEarly.humidityPct,
+    soilMoisture: turfEarly.soilMoisture,
+    windMph,
+  });
+
+  const teeElevs = holes
+    .map((h) => h.teeElevationM)
+    .filter((m): m is number => typeof m === 'number' && Number.isFinite(m));
+  const courseElevFt = teeElevs.length
+    ? metersToFeet(teeElevs.reduce((s, m) => s + m, 0) / teeElevs.length)
+    : 0;
 
   const briefs: HoleBrief[] = holes.map((hole) => {
     const wind = holeWind(windFromDeg, windMph, hole.bearingDeg, hole.yards);
     const { slopeYards, elevationChangeFt } = slopeFor(hole);
-    const playsLikeYards = Math.max(
-      40,
-      Math.round(hole.yards + wind.windAdjustmentYards + slopeYards),
+    const holeElevFt =
+      typeof hole.teeElevationM === 'number' &&
+      Number.isFinite(hole.teeElevationM)
+        ? metersToFeet(hole.teeElevationM)
+        : courseElevFt;
+    const plays = playsLikeYards(
+      hole.yards,
+      wind.windAdjustmentYards,
+      slopeYards,
+      holeElevFt,
     );
-    const plan = clubPlan(hole, playsLikeYards, player);
+    const plan = clubPlan(hole, plays, player);
     return {
       number: hole.number,
       yards: hole.yards,
@@ -280,8 +368,8 @@ export default async function handler(req: Request): Promise<Response> {
       driftYards: Math.round(wind.driftYards),
       slopeYards,
       elevationChangeFt,
-      windAdjustmentYards: wind.windAdjustmentYards,
-      playsLikeYards,
+      windAdjustmentYards: Math.round(wind.windAdjustmentYards),
+      playsLikeYards: plays,
       aspect: wind.aspect,
       tip: tipFor(
         hole,
@@ -308,7 +396,8 @@ export default async function handler(req: Request): Promise<Response> {
         `. Agreement ${Math.round(agreement * 100)}%.` +
         (briefs.length
           ? ` Hole-by-hole tips use each hole’s tee→green bearing vs ensemble wind.`
-          : '');
+          : '') +
+        ` ${turf.note}`;
 
   return new Response(
     JSON.stringify({
@@ -316,6 +405,7 @@ export default async function handler(req: Request): Promise<Response> {
       lon,
       hour,
       time: ok[0]?.time ?? null,
+      turf,
       ensemble: {
         windFromDeg: Math.round(windFromDeg),
         windMph: Math.round(windMph * 10) / 10,

@@ -28,6 +28,8 @@ interface Props {
   target?: LonLat | null;
   arcClubs?: BagClub[];
   onSetTarget?: (pt: LonLat) => void;
+  /** Three miss lines per shot (tee / approach / chip / putt). */
+  playLines?: GeoJSON.FeatureCollection | null;
   windFromDeg?: number | null;
   windMph?: number | null;
   headwindMph?: number | null;
@@ -50,6 +52,7 @@ const SRC_SHOT = 'golf-shot-path';
 const SRC_ARCS = 'golf-arcs';
 const SRC_TARGET_LINE = 'golf-target-line';
 const SRC_TARGET = 'golf-target-pt';
+const SRC_PLAY = 'golf-play-lines';
 
 const LINE = 'golf-hole-lines';
 const LINE_ACTIVE = 'golf-hole-lines-active';
@@ -67,6 +70,11 @@ const LYR_ARCS = 'golf-arcs-lyr';
 const LYR_CARRY = 'golf-target-carry-lyr';
 const LYR_REMAIN = 'golf-target-remain-lyr';
 const LYR_TARGET = 'golf-target-pt-lyr';
+const LYR_PLAY_TEE = 'golf-play-tee-lyr';
+const LYR_PLAY_APP = 'golf-play-app-lyr';
+const LYR_PLAY_CHIP = 'golf-play-chip-lyr';
+const LYR_PLAY_PUTT = 'golf-play-putt-lyr';
+const LYR_PLAY_TICK = 'golf-play-tick-lyr';
 
 const CLICK_LAYERS = [LINE_HIT, LINE, LINE_ACTIVE, LYR_TEE_HIT, LYR_GREEN_HIT, LYR_TEE, LYR_GREEN];
 
@@ -136,6 +144,7 @@ export function GolfMap({
   target = null,
   arcClubs = [],
   onSetTarget,
+  playLines = null,
   windFromDeg,
   windMph,
   headwindMph,
@@ -237,6 +246,7 @@ export function GolfMap({
         data: emptyCollection(),
       });
       map.addSource(SRC_TARGET, { type: 'geojson', data: emptyCollection() });
+      map.addSource(SRC_PLAY, { type: 'geojson', data: emptyCollection() });
 
       // Fat invisible stroke first so tees/fairways are tappable on phones.
       map.addLayer({
@@ -421,6 +431,64 @@ export function GolfMap({
         },
       });
 
+      map.addLayer({
+        id: LYR_PLAY_TEE,
+        type: 'line',
+        source: SRC_PLAY,
+        filter: ['==', ['get', 'kind'], 'tee'],
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['match', ['get', 'role'], 'start', 3.2, 'more', 1.8, 2.4],
+          'line-opacity': 0.95,
+        },
+      });
+      map.addLayer({
+        id: LYR_PLAY_APP,
+        type: 'line',
+        source: SRC_PLAY,
+        filter: ['==', ['get', 'kind'], 'approach'],
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['match', ['get', 'role'], 'start', 2.6, 'more', 1.6, 2.1],
+          'line-opacity': 0.9,
+          'line-dasharray': [2.2, 1.4],
+        },
+      });
+      map.addLayer({
+        id: LYR_PLAY_CHIP,
+        type: 'line',
+        source: SRC_PLAY,
+        filter: ['==', ['get', 'kind'], 'chip'],
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['match', ['get', 'role'], 'start', 2.2, 'more', 1.4, 1.8],
+          'line-opacity': 0.88,
+          'line-dasharray': [1.2, 1.6],
+        },
+      });
+      map.addLayer({
+        id: LYR_PLAY_PUTT,
+        type: 'line',
+        source: SRC_PLAY,
+        filter: ['==', ['get', 'kind'], 'putt'],
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['match', ['get', 'role'], 'start', 1.8, 'more', 1.2, 1.5],
+          'line-opacity': 0.9,
+        },
+      });
+      map.addLayer({
+        id: LYR_PLAY_TICK,
+        type: 'line',
+        source: SRC_PLAY,
+        filter: ['==', ['get', 'kind'], 'tick'],
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': 2.4,
+          'line-opacity': 0.9,
+        },
+      });
+
       const clickMap = (e: maplibregl.MapMouseEvent) => {
         const hits = map.queryRenderedFeatures(e.point, { layers: CLICK_LAYERS });
         if (hits.length > 0) {
@@ -558,7 +626,11 @@ export function GolfMap({
       )?.setData(windFlowGeoJSON(hole, windFromDeg, windMph));
       (
         map.getSource(SRC_SHOT) as maplibregl.GeoJSONSource | undefined
-      )?.setData(shotPathGeoJSON(hole, crosswindMph, headwindMph));
+      )?.setData(
+        playLines && playLines.features.length
+          ? emptyCollection()
+          : shotPathGeoJSON(hole, crosswindMph, headwindMph),
+      );
     });
   }, [
     holes,
@@ -567,6 +639,7 @@ export function GolfMap({
     windMph,
     headwindMph,
     crosswindMph,
+    playLines,
     whenReady,
   ]);
 
@@ -585,14 +658,21 @@ export function GolfMap({
       )?.setData(bagRingsGeoJSON(tee, hole ? arcClubs : []));
       (
         map.getSource(SRC_TARGET_LINE) as maplibregl.GeoJSONSource | undefined
-      )?.setData(targetLineGeoJSON(tee, hole ? target : null, green));
+      )?.setData(
+        playLines && playLines.features.length
+          ? emptyCollection()
+          : targetLineGeoJSON(tee, hole ? target : null, green),
+      );
+      (
+        map.getSource(SRC_PLAY) as maplibregl.GeoJSONSource | undefined
+      )?.setData(playLines ?? emptyCollection());
       (
         map.getSource(SRC_TARGET) as maplibregl.GeoJSONSource | undefined
       )?.setData(targetPointGeoJSON(hole ? target : null));
       map.getCanvas().style.cursor =
         hole && onSetTargetRef.current ? 'crosshair' : '';
     });
-  }, [holes, activeHole, target, arcClubs, whenReady]);
+  }, [holes, activeHole, target, arcClubs, playLines, whenReady]);
 
   const windLabel =
     windFromDeg != null
@@ -611,10 +691,12 @@ export function GolfMap({
             <span className="flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--ink-3)]">
               <span className="inline-block h-0.5 w-4 rounded bg-cyan-300" />
               wind
-              <span className="ml-1 inline-block h-0.5 w-4 rounded bg-[#ff8a3d]" />
-              ball
               <span className="ml-1 inline-block h-0.5 w-4 rounded bg-emerald-400" />
-              carry
+              start
+              <span className="ml-1 inline-block h-0.5 w-4 rounded bg-[#facc15]" />
+              miss
+              <span className="ml-1 inline-block h-0.5 w-4 rounded bg-[#f97316]" />
+              more
               <span className="text-[9px] text-[var(--ink-4)]">tap to move target</span>
             </span>
           )}

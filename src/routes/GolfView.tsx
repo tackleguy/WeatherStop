@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { GolfMap } from '../components/golf/GolfMap';
 import { GolfMapBoundary } from '../components/golf/GolfMapBoundary';
+import { GolfHoleIntel } from '../components/golf/GolfHoleIntel';
 import { GolfSetup } from '../components/golf/GolfSetup';
 import { GolfTargetHud } from '../components/golf/GolfTargetHud';
 import { GolfYardageBook } from '../components/golf/GolfYardageBook';
@@ -34,11 +35,13 @@ import {
   useGolfNotebook,
 } from '../hooks/useGolf';
 import type { GolfCourseSummary, HoleBrief } from '../lib/golf';
+import { DEFAULT_TURF } from '../lib/golf';
 import {
   bagArcClubs,
   defaultTarget,
   metersToFeet,
 } from '../lib/golfMeasure';
+import { playLinesGeoJSON, predictHole } from '../lib/golfPredict';
 import {
   bagFromStocks,
   DEFAULT_PROFILE,
@@ -217,6 +220,19 @@ export function GolfView() {
 
   const activeBrief =
     activeHole != null ? briefByHole.get(activeHole) : undefined;
+  const turf = ensemble?.turf ?? DEFAULT_TURF;
+  const forecast = useMemo(() => {
+    if (!activeHoleObj || !target || !profile) return null;
+    return predictHole({
+      hole: activeHoleObj,
+      target,
+      bag,
+      profile,
+      brief: activeBrief,
+      turf,
+    });
+  }, [activeHoleObj, target, bag, profile, activeBrief, turf]);
+  const playLines = useMemo(() => playLinesGeoJSON(forecast), [forecast]);
   const activeIdx = holes.findIndex((h) => h.number === activeHole);
 
   const pickCourse = useCallback(
@@ -531,6 +547,7 @@ export function GolfView() {
                 target={target}
                 arcClubs={arcClubs}
                 onSetTarget={setTarget}
+                playLines={playLines}
                 windFromDeg={ensemble?.ensemble.windFromDeg ?? null}
                 windMph={ensemble?.ensemble.windMph ?? null}
                 headwindMph={activeBrief?.headwindMph ?? null}
@@ -550,6 +567,8 @@ export function GolfView() {
                 bag={bag}
                 brief={activeBrief}
                 elevFt={courseElevFt}
+                turf={turf}
+                forecast={forecast}
                 onReset={() =>
                   setTarget(
                     defaultTarget(
@@ -779,10 +798,26 @@ export function GolfView() {
                         </div>
                         <div className="text-[12px] font-semibold tabular-nums text-[var(--ink-1)]">
                           {activeBrief.playsLikeYards} yd
+                          {activeBrief.playsLikeYards !== activeBrief.yards && (
+                            <span className="ml-1 text-[10px] font-medium text-[var(--accent)]">
+                              {activeBrief.playsLikeYards - activeBrief.yards > 0
+                                ? '+'
+                                : ''}
+                              {activeBrief.playsLikeYards - activeBrief.yards}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
+                )}
+
+                {forecast && (!isMobile || sheetExpanded) && (
+                  <GolfHoleIntel
+                    forecast={forecast}
+                    turf={turf}
+                    miss={profile.miss}
+                  />
                 )}
 
                 {(!isMobile || sheetExpanded) && (
@@ -825,10 +860,12 @@ export function GolfView() {
                                 </span>
                                 {brief && (
                                   <span className="mt-0.5 block truncate text-[10px] text-[var(--ink-3)]">
-                                    Plays {brief.playsLikeYards} ·{' '}
-                                    {brief.recommendedClub} · slope{' '}
-                                    {brief.slopeYards > 0 ? '+' : ''}
-                                    {brief.slopeYards} · {Math.round(brief.windMph)} mph
+                                    Plays {brief.playsLikeYards}
+                                    {brief.playsLikeYards !== h.yards
+                                      ? ` (${brief.playsLikeYards - h.yards > 0 ? '+' : ''}${brief.playsLikeYards - h.yards})`
+                                      : ''}{' '}
+                                    · {brief.recommendedClub} · {brief.aspect} ·{' '}
+                                    {Math.round(brief.windMph)} mph
                                   </span>
                                 )}
                               </span>

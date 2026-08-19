@@ -35,6 +35,30 @@ export interface GolfHole {
   source: 'hole-way' | 'tee-green';
 }
 
+export interface TurfReport {
+  fairway: 'soft' | 'medium' | 'firm';
+  green: 'soft' | 'medium' | 'firm';
+  precipIn48h: number;
+  et0Mm48h: number;
+  humidityPct: number;
+  soilMoisture: number | null;
+  fairwayRollYd: number;
+  greenReleaseYd: number;
+  note: string;
+}
+
+export const DEFAULT_TURF: TurfReport = {
+  fairway: 'medium',
+  green: 'medium',
+  precipIn48h: 0.1,
+  et0Mm48h: 6,
+  humidityPct: 55,
+  soilMoisture: null,
+  fairwayRollYd: 5,
+  greenReleaseYd: 6,
+  note: 'Checking rain, soil, and drying for turf firmness…',
+};
+
 export interface HoleBrief {
   number: number;
   yards: number;
@@ -74,6 +98,7 @@ export interface GolfEnsemble {
     modelsFailed: Array<{ model: string; reason?: string }>;
   };
   summary: string;
+  turf?: TurfReport;
   holes: HoleBrief[];
   attribution: string;
 }
@@ -345,7 +370,7 @@ export async function fetchGolfNotebook(
   player?: GolfPlayerProfile | null,
   signal?: AbortSignal,
 ): Promise<GolfNotebook> {
-  const key = `golf:v1:notebook:${q4(lat)}:${q4(lon)}:${holes
+  const key = `golf:v2:notebook:${q4(lat)}:${q4(lon)}:${holes
     .map(
       (h) =>
         `${h.number}:${h.yards}:${h.bearingDeg}:${h.teeElevationM ?? ''}:${h.greenElevationM ?? ''}`,

@@ -5,7 +5,8 @@ import {
   segmentPlaysLike,
   type MeasureSplit,
 } from '../../lib/golfMeasure';
-import type { GolfHole, HoleBrief } from '../../lib/golf';
+import type { GolfHole, HoleBrief, TurfReport } from '../../lib/golf';
+import type { HoleForecast } from '../../lib/golfPredict';
 import type { LonLat } from '../../lib/golfWind';
 
 interface Props {
@@ -14,6 +15,8 @@ interface Props {
   bag: BagClub[];
   brief?: HoleBrief;
   elevFt: number;
+  turf?: TurfReport;
+  forecast?: HoleForecast | null;
   onReset: () => void;
 }
 
@@ -23,11 +26,11 @@ export function GolfTargetHud({
   bag,
   brief,
   elevFt,
+  turf,
+  forecast,
   onReset,
 }: Props) {
   const split: MeasureSplit = measureFromTee(hole, target);
-  const carryClub = nearestBagClub(split.carryYards, bag);
-  const remainClub = nearestBagClub(split.remainYards, bag);
   const windAdj = brief?.windAdjustmentYards ?? 0;
   const slope = brief?.slopeYards ?? 0;
   const carryPlays = segmentPlaysLike(
@@ -44,6 +47,8 @@ export function GolfTargetHud({
     slope,
     elevFt,
   );
+  const carryClub = nearestBagClub(carryPlays, bag);
+  const remainClub = nearestBagClub(remainPlays, bag);
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3 lg:top-auto lg:bottom-4 lg:right-[352px] lg:left-3 lg:inset-x-auto lg:justify-start">
@@ -99,6 +104,38 @@ export function GolfTargetHud({
             </div>
           </div>
         </div>
+        {turf && (
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[var(--ink-3)]">
+            <span>
+              Fairway {turf.fairway}
+              {turf.fairwayRollYd ? ` +${turf.fairwayRollYd} yd` : ''}
+            </span>
+            <span>
+              Green {turf.green}
+              {turf.green === 'soft' ? ' holds' : ` +${turf.greenReleaseYd} yd`}
+            </span>
+          </div>
+        )}
+        {forecast?.shots[0] && (
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {forecast.shots[0].lines.map((line) => (
+              <span
+                key={line.id}
+                className="inline-flex items-center gap-1 text-[10px] text-[var(--ink-3)]"
+              >
+                <span
+                  className="h-1 w-3 rounded-sm"
+                  style={{ background: line.color }}
+                />
+                {line.label}
+              </span>
+            ))}
+            <span className="text-[10px] text-[var(--ink-4)]">
+              {forecast.shots.length} shots · GIR{' '}
+              {Math.round(forecast.girPct * 100)}%
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

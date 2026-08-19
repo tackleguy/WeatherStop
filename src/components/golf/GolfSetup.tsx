@@ -18,10 +18,10 @@ interface Props {
 }
 
 const MISS_OPTIONS: Array<{ value: MissBias; hint: string }> = [
-  { value: 'left', hint: 'Pull / hook bias' },
-  { value: 'right', hint: 'Push / slice bias' },
-  { value: 'both', hint: 'Two-way miss' },
-  { value: 'straight', hint: 'Rarely offline' },
+  { value: 'left', hint: 'Start, left, and more left on every shot' },
+  { value: 'right', hint: 'Start, right, and more right on every shot' },
+  { value: 'both', hint: 'Left, start, and right on every shot' },
+  { value: 'straight', hint: 'Tight left / start / right' },
 ];
 
 export function GolfSetup({ initial, onComplete, onCancel }: Props) {

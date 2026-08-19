@@ -253,6 +253,10 @@ export function GolfYardageBook({
                               </td>
                               <td className="px-2 py-1.5 font-medium tabular-nums">
                                 {dayRow?.playsLikeYards ?? h.yards} yd
+                                {dayRow &&
+                                dayRow.playsLikeYards !== h.yards
+                                  ? ` (${dayRow.playsLikeYards - h.yards > 0 ? '+' : ''}${dayRow.playsLikeYards - h.yards})`
+                                  : ''}
                               </td>
                               <td className="px-2 py-1.5 tabular-nums">
                                 {h.slopeYards > 0 ? '+' : ''}

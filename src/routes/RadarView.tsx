@@ -25,6 +25,7 @@ import { SupercellCompanionChip } from '../components/radar/SupercellCompanionCh
 import { TimeScrubber } from '../components/radar/TimeScrubber';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { PRODUCTS } from '../constants/products';
+import { nullschoolModeForProduct } from '../lib/nullschool';
 import { useRadarStore } from '../store/useRadarStore';
 
 export function RadarView() {
@@ -35,6 +36,8 @@ export function RadarView() {
   // aside or the legend and ruler end up hidden behind it.
   const alertsOpen = useRadarStore((s) => s.panelsOpen.alerts);
   const alertsOverlap = !isMobile && alertsOpen;
+  const activeProduct = useRadarStore((s) => s.activeProduct);
+  const nullschoolOn = Boolean(nullschoolModeForProduct(activeProduct));
 
   return (
     <div className="absolute inset-0 flex flex-col" style={{ background: 'var(--surface-0)' }}>
@@ -49,7 +52,7 @@ export function RadarView() {
 
         <main className="relative flex-1 overflow-hidden">
           <RadarMap onMapReady={setMap} />
-          <NullschoolEarth />
+          <NullschoolEarth bookmarkBar={<BookmarkBar map={map} />} />
 
           <MapSearchChrome map={map} />
 
@@ -64,18 +67,20 @@ export function RadarView() {
               and "unavailable" messages underneath it. */}
           <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col items-start gap-2">
             <DiagnosticsPanel />
-            <BookmarkBar map={map} />
+            {!nullschoolOn ? <BookmarkBar map={map} /> : null}
             <LayerLoadingChip />
-            <LayerInfoCard
-              onFlyToSite={(lon, lat) => {
-                map?.flyTo({
-                  center: [lon, lat],
-                  zoom: Math.max(map.getZoom(), 7.5),
-                  duration: 650,
-                });
-              }}
-            />
-            <ScaleBar map={map} />
+            {!nullschoolOn ? (
+              <LayerInfoCard
+                onFlyToSite={(lon, lat) => {
+                  map?.flyTo({
+                    center: [lon, lat],
+                    zoom: Math.max(map.getZoom(), 7.5),
+                    duration: 650,
+                  });
+                }}
+              />
+            ) : null}
+            {!nullschoolOn ? <ScaleBar map={map} /> : null}
             <SupercellCompanionChip />
           </div>
 
@@ -84,8 +89,8 @@ export function RadarView() {
               alertsOverlap ? 'right-[376px]' : 'right-4'
             }`}
           >
-            <DistanceRuler />
-            <RadarLegend />
+            {!nullschoolOn ? <DistanceRuler /> : null}
+            {!nullschoolOn ? <RadarLegend /> : null}
           </div>
 
           <ClickInspector />

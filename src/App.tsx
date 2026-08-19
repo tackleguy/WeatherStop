@@ -1,9 +1,10 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import {
   BrowserRouter,
   Navigate,
   Route,
   Routes,
+  useLocation,
 } from 'react-router-dom';
 import { SideNav } from './components/shell/SideNav';
 import { InstallPrompt } from './components/InstallPrompt';
@@ -11,6 +12,7 @@ import { ThemeBoot } from './components/ThemeBoot';
 import { HomeView } from './routes/HomeView';
 import { MapProductRedirect } from './routes/MapProductRedirect';
 import { applyTheme, loadTheme } from './lib/theme';
+import { isGolfHost } from './lib/golfApp';
 
 // Apply theme before first paint of lazy routes.
 applyTheme(loadTheme());
@@ -70,59 +72,103 @@ function RouteFallback() {
 export default function App() {
   return (
     <BrowserRouter>
+      <AppShell />
+    </BrowserRouter>
+  );
+}
+
+function AppShell() {
+  const loc = useLocation();
+  const golfHost = isGolfHost();
+  const golfSolo =
+    golfHost || loc.pathname === '/golf' || loc.pathname.startsWith('/golf/');
+
+  useEffect(() => {
+    if (!golfSolo) {
+      document.title = 'WeatherStop';
+      return;
+    }
+    document.title = 'WeatherStop Golf';
+    const manifest = document.querySelector('link[rel="manifest"]');
+    const prev = manifest?.getAttribute('href');
+    manifest?.setAttribute('href', '/golf-manifest.webmanifest');
+    return () => {
+      document.title = 'WeatherStop';
+      if (manifest && prev) manifest.setAttribute('href', prev);
+    };
+  }, [golfSolo]);
+
+  if (golfHost) {
+    return (
       <div className="relative h-[100dvh] overflow-hidden bg-[var(--bg-deep)] transition-colors duration-[var(--t-base)]">
         <ThemeBoot />
-        <SideNav />
-        <div className="app-main">
+        <div className="app-main golf-solo">
           <Suspense fallback={<RouteFallback />}>
             <Routes>
-              <Route path="/" element={<HomeView />} />
-              <Route path="/city/:cityId" element={<HomeView />} />
-              <Route path="/radar" element={<RadarView />} />
-              <Route path="/map" element={<Navigate to="/radar" replace />} />
-              <Route
-                path="/wind"
-                element={<MapProductRedirect product="wind" to="/radar" />}
-              />
-              <Route
-                path="/temperature"
-                element={
-                  <MapProductRedirect product="temperature" to="/radar" />
-                }
-              />
-              <Route
-                path="/rain"
-                element={
-                  <MapProductRedirect product="rain-forecast" to="/radar" />
-                }
-              />
-              <Route
-                path="/satellite"
-                element={
-                  <MapProductRedirect product="satellite-ir" to="/radar" />
-                }
-              />
-              <Route
-                path="/composite"
-                element={<MapProductRedirect product="composite" to="/radar" />}
-              />
-              <Route path="/forecast" element={<ForecastView />} />
-              <Route path="/alerts" element={<AlertsView />} />
-              <Route path="/outlooks" element={<OutlooksView />} />
-              <Route path="/tropical" element={<TropicalView />} />
-              <Route path="/models" element={<ModelsView />} />
+              <Route path="/" element={<GolfView />} />
               <Route path="/golf" element={<GolfView />} />
-              <Route path="/cities" element={<CitiesView />} />
-              <Route path="/compare" element={<CompareView />} />
-              <Route path="/dashboard" element={<DashboardView />} />
-              <Route path="/search" element={<SearchView />} />
-              <Route path="/settings" element={<SettingsView />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </div>
         <InstallPrompt />
       </div>
-    </BrowserRouter>
+    );
+  }
+
+  return (
+    <div className="relative h-[100dvh] overflow-hidden bg-[var(--bg-deep)] transition-colors duration-[var(--t-base)]">
+      <ThemeBoot />
+      {golfSolo ? null : <SideNav />}
+      <div className={golfSolo ? 'app-main golf-solo' : 'app-main'}>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<HomeView />} />
+            <Route path="/city/:cityId" element={<HomeView />} />
+            <Route path="/radar" element={<RadarView />} />
+            <Route path="/map" element={<Navigate to="/radar" replace />} />
+            <Route
+              path="/wind"
+              element={<MapProductRedirect product="wind" to="/radar" />}
+            />
+            <Route
+              path="/temperature"
+              element={
+                <MapProductRedirect product="temperature" to="/radar" />
+              }
+            />
+            <Route
+              path="/rain"
+              element={
+                <MapProductRedirect product="rain-forecast" to="/radar" />
+              }
+            />
+            <Route
+              path="/satellite"
+              element={
+                <MapProductRedirect product="satellite-ir" to="/radar" />
+              }
+            />
+            <Route
+              path="/composite"
+              element={<MapProductRedirect product="composite" to="/radar" />}
+            />
+            <Route path="/forecast" element={<ForecastView />} />
+            <Route path="/alerts" element={<AlertsView />} />
+            <Route path="/outlooks" element={<OutlooksView />} />
+            <Route path="/tropical" element={<TropicalView />} />
+            <Route path="/models" element={<ModelsView />} />
+            <Route path="/golf" element={<GolfView />} />
+            <Route path="/cities" element={<CitiesView />} />
+            <Route path="/compare" element={<CompareView />} />
+            <Route path="/dashboard" element={<DashboardView />} />
+            <Route path="/search" element={<SearchView />} />
+            <Route path="/settings" element={<SettingsView />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </div>
+      <InstallPrompt />
+    </div>
   );
 }

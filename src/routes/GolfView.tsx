@@ -16,6 +16,7 @@ import {
   Search,
   Settings2,
   Sparkles,
+  CloudSun,
 } from 'lucide-react';
 import { GolfMap } from '../components/golf/GolfMap';
 import { GolfMapBoundary } from '../components/golf/GolfMapBoundary';
@@ -48,6 +49,7 @@ import {
   loadGolfProfile,
   type GolfPlayerProfile,
 } from '../lib/golfProfile';
+import { weatherAppHref } from '../lib/golfApp';
 import type { LonLat } from '../lib/golfWind';
 
 interface Loc {
@@ -350,12 +352,20 @@ export function GolfView() {
           <Flag className="h-4 w-4 text-[var(--accent)]" strokeWidth={1.8} />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold text-[var(--ink-1)]">
-              Golf Wind
+              WeatherStop Golf
             </h1>
             <p className="truncate text-[11px] text-[var(--ink-3)]">
               1,000+ public &amp; private · multi-model wind
             </p>
           </div>
+          <a
+            href={weatherAppHref()}
+            className="rounded-lg p-2.5 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
+            aria-label="WeatherStop weather"
+            title="WeatherStop weather"
+          >
+            <CloudSun className="h-4 w-4" />
+          </a>
           {isMobile && course ? (
             <button
               type="button"

@@ -490,6 +490,11 @@ html[data-theme='sand'] .home-root .placeholder-white\/55::placeholder {
   }
 }
 
+.app-main.golf-solo {
+  left: 0;
+  bottom: 0;
+}
+
 @media print {
   @page {
     margin: 0.5in;

@@ -3,7 +3,7 @@
 // stays WeatherStop. Live Nullschool is proprietary — see ATTRIBUTIONS.
 
 import { ExternalLink } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   buildNullschoolUrl,
   nullschoolModeForProduct,
@@ -11,7 +11,11 @@ import {
 import { useRadarStore } from '../../store/useRadarStore';
 import { useTimeFrames } from '../../hooks/useTimeFrames';
 
-export function NullschoolEarth() {
+interface Props {
+  bookmarkBar?: ReactNode;
+}
+
+export function NullschoolEarth({ bookmarkBar }: Props) {
   const activeProduct = useRadarStore((s) => s.activeProduct);
   const mapCenter = useRadarStore((s) => s.mapCenter);
   const mapZoom = useRadarStore((s) => s.mapZoom);
@@ -58,17 +62,22 @@ export function NullschoolEarth() {
         referrerPolicy="no-referrer-when-downgrade"
       />
 
-      <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-col gap-2 sm:left-auto sm:right-3">
-        <a
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-[var(--ink-1)] shadow-lg ring-1 ring-white/10 backdrop-blur-md"
-          style={{ background: 'var(--glass-hi)' }}
-        >
-          <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.8} />
-          Open in Nullschool
-        </a>
+      <div className="pointer-events-none absolute right-3 top-14 z-10 flex max-w-[min(100%-1.5rem,20rem)] flex-col items-end gap-2 sm:top-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {bookmarkBar ? (
+            <div className="pointer-events-auto">{bookmarkBar}</div>
+          ) : null}
+          <a
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-[var(--ink-1)] shadow-lg ring-1 ring-white/10 backdrop-blur-md"
+            style={{ background: 'var(--glass-hi)' }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.8} />
+            Open in Nullschool
+          </a>
+        </div>
         <p
           className="pointer-events-none max-w-[14rem] rounded-md px-2 py-1 text-[10px] leading-snug text-[var(--ink-3)] ring-1 ring-white/5 backdrop-blur-md"
           style={{ background: 'var(--glass)' }}

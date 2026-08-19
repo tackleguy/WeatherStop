@@ -628,7 +628,7 @@ export function GolfView() {
                         <span className="block text-[13px] font-semibold tabular-nums text-[var(--ink-1)]">
                           {activeHole == null
                             ? `${holes.length} holes`
-                            : `${activeHole} · ${activeBrief?.playsLikeYards ?? holes[activeIdx]?.yards} yd`}
+                            : `${activeHole} · ${holes[activeIdx]?.yards ?? '—'} yd`}
                         </span>
                       </button>
                       <button
@@ -794,18 +794,16 @@ export function GolfView() {
                       </div>
                       <div className="rounded-md bg-black/25 px-1 py-1">
                         <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
-                          Plays
+                          Plays vs {activeBrief.yards}
                         </div>
                         <div className="text-[12px] font-semibold tabular-nums text-[var(--ink-1)]">
-                          {activeBrief.playsLikeYards} yd
-                          {activeBrief.playsLikeYards !== activeBrief.yards && (
-                            <span className="ml-1 text-[10px] font-medium text-[var(--accent)]">
-                              {activeBrief.playsLikeYards - activeBrief.yards > 0
-                                ? '+'
-                                : ''}
-                              {activeBrief.playsLikeYards - activeBrief.yards}
-                            </span>
-                          )}
+                          {activeBrief.playsLikeYards}
+                          <span className="ml-0.5 text-[10px] font-medium text-[var(--accent)]">
+                            {activeBrief.playsLikeYards - activeBrief.yards > 0
+                              ? '+'
+                              : ''}
+                            {activeBrief.playsLikeYards - activeBrief.yards}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -847,6 +845,11 @@ export function GolfView() {
                                 <span className="flex flex-wrap items-baseline gap-x-2 text-[12px] text-[var(--ink-1)]">
                                   <span className="font-medium tabular-nums">
                                     {h.yards} yd
+                                    {brief && brief.playsLikeYards !== h.yards
+                                      ? ` · plays ${brief.playsLikeYards} (${brief.playsLikeYards - h.yards > 0 ? '+' : ''}${brief.playsLikeYards - h.yards})`
+                                      : brief
+                                        ? ' · plays even'
+                                        : ''}
                                   </span>
                                   <span className="text-[10px] text-[var(--ink-3)]">
                                     {h.bearingDeg}°{' '}
@@ -860,10 +863,6 @@ export function GolfView() {
                                 </span>
                                 {brief && (
                                   <span className="mt-0.5 block truncate text-[10px] text-[var(--ink-3)]">
-                                    Plays {brief.playsLikeYards}
-                                    {brief.playsLikeYards !== h.yards
-                                      ? ` (${brief.playsLikeYards - h.yards > 0 ? '+' : ''}${brief.playsLikeYards - h.yards})`
-                                      : ''}{' '}
                                     · {brief.recommendedClub} · {brief.aspect} ·{' '}
                                     {Math.round(brief.windMph)} mph
                                   </span>

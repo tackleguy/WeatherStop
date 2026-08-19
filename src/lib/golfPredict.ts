@@ -69,11 +69,16 @@ export function missSpecs(
   handicap: number,
 ): MissSpec[] {
   const length = Math.max(0.12, Math.min(1.35, shotYards / 220));
-  let spread = (7 + handicap * 0.85) * length;
-  if (shotYards <= PUTT_YD) spread = 0.7 + handicap * 0.02;
-  else if (shotYards <= CHIP_YD) spread = Math.min(spread, 5 + handicap * 0.12);
-  const mild = Math.max(shotYards <= PUTT_YD ? 0.5 : 1, Math.round(spread * 10) / 10);
-  const more = Math.max(mild + (shotYards <= PUTT_YD ? 0.6 : 2), Math.round(spread * 18) / 10);
+  let spread = (14 + handicap * 1.15) * length;
+  if (shotYards <= PUTT_YD) spread = 0.8 + handicap * 0.025;
+  else if (shotYards <= CHIP_YD) spread = Math.min(spread, 7 + handicap * 0.15);
+  else spread = Math.max(spread, 14);
+  const isPutt = shotYards <= PUTT_YD;
+  const isChip = !isPutt && shotYards <= CHIP_YD;
+  const floor = isPutt ? 0.5 : isChip ? 3 : 12;
+  const extra = isPutt ? 0.7 : isChip ? 4 : 10;
+  const mild = Math.max(floor, Math.round(spread * 10) / 10);
+  const more = Math.max(mild + extra, Math.round(spread * 18) / 10);
 
   if (miss === 'right') {
     return [
@@ -105,9 +110,9 @@ export function missSpecs(
 }
 
 export function lineColor(side: LineSide, role: LineRole): string {
-  if (role === 'start') return '#22c55e';
-  if (side === 'left') return role === 'more' ? '#818cf8' : '#60a5fa';
-  if (side === 'right') return role === 'more' ? '#f97316' : '#facc15';
+  if (role === 'start') return '#f8fafc';
+  if (side === 'left') return role === 'more' ? '#818cf8' : '#38bdf8';
+  if (side === 'right') return role === 'more' ? '#fb7185' : '#facc15';
   return '#e2e8f0';
 }
 
@@ -540,13 +545,13 @@ export function playLinesGeoJSON(forecast: HoleForecast | null) {
           type: 'LineString' as const,
           coordinates: [
             [
-              destPoint(line.to, tickAxis + 90, 5).lon,
-              destPoint(line.to, tickAxis + 90, 5).lat,
-            ],
-            [
-              destPoint(line.to, tickAxis - 90, 5).lon,
-              destPoint(line.to, tickAxis - 90, 5).lat,
-            ],
+            destPoint(line.to, tickAxis + 90, 8).lon,
+            destPoint(line.to, tickAxis + 90, 8).lat,
+          ],
+          [
+            destPoint(line.to, tickAxis - 90, 8).lon,
+            destPoint(line.to, tickAxis - 90, 8).lat,
+          ],
           ] as Array<[number, number]>,
         },
       };

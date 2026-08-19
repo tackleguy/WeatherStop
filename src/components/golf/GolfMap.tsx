@@ -438,7 +438,7 @@ export function GolfMap({
         filter: ['==', ['get', 'kind'], 'tee'],
         paint: {
           'line-color': ['get', 'color'],
-          'line-width': ['match', ['get', 'role'], 'start', 3.2, 'more', 1.8, 2.4],
+          'line-width': ['match', ['get', 'role'], 'start', 4.2, 'more', 2.4, 3.1],
           'line-opacity': 0.95,
         },
       });
@@ -695,7 +695,7 @@ export function GolfMap({
               start
               <span className="ml-1 inline-block h-0.5 w-4 rounded bg-[#facc15]" />
               miss
-              <span className="ml-1 inline-block h-0.5 w-4 rounded bg-[#f97316]" />
+              <span className="ml-1 inline-block h-0.5 w-4 rounded bg-[#fb7185]" />
               more
               <span className="text-[9px] text-[var(--ink-4)]">tap to move target</span>
             </span>

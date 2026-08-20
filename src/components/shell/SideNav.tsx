@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   Bell,
+  BrainCircuit,
   CloudSun,
   Flag,
   Gauge,
@@ -42,6 +43,7 @@ const PRIMARY: Tab[] = [
   { to: '/satellite', label: 'Satellite', icon: Globe },
   { to: '/forecast', label: 'Forecast', icon: CloudSun },
   { to: '/alerts', label: 'Alerts', icon: Bell },
+  { to: '/storm', label: 'Storm AI', icon: BrainCircuit },
   { to: '/outlooks', label: 'Outlooks', icon: AlertTriangle },
   { to: '/tropical', label: 'Tropical', icon: Waves },
   { to: '/models', label: 'Models', icon: LineChart },

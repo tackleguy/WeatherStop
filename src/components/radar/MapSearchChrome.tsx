@@ -1,6 +1,6 @@
 // Floating map search chrome. Desktop bar is draggable; position persists.
 
-import { Activity, Bell, GripVertical, Menu, RotateCcw, Search, X } from 'lucide-react';
+import { Activity, Bell, BrainCircuit, GripVertical, Menu, Radio, RotateCcw, Search, X } from 'lucide-react';
 import type maplibregl from 'maplibre-gl';
 import {
   useCallback,
@@ -69,6 +69,8 @@ export function MapSearchChrome({ map }: Props) {
   const alertCount = useRadarStore((s) => s.alertCount);
   const togglePanel = useRadarStore((s) => s.togglePanel);
   const resetMapView = useRadarStore((s) => s.resetMapView);
+  const chaseMode = useRadarStore((s) => s.chaseMode);
+  const toggleChaseMode = useRadarStore((s) => s.toggleChaseMode);
   const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pos, setPos] = useState<Pos | null>(() => loadPos());
@@ -159,6 +161,33 @@ export function MapSearchChrome({ map }: Props) {
       />
       <button
         type="button"
+        onClick={() => toggleChaseMode()}
+        className="control-button relative h-10 w-10"
+        title={chaseMode ? 'Exit storm chase mode' : 'Storm chase mode (local AI)'}
+        aria-label={chaseMode ? 'Exit storm chase mode' : 'Storm chase mode'}
+        data-active={chaseMode}
+        style={
+          chaseMode
+            ? {
+                background: 'color-mix(in srgb, cyan 35%, transparent)',
+                color: '#ecfeff',
+              }
+            : undefined
+        }
+      >
+        <Radio className="h-4 w-4" strokeWidth={1.6} />
+      </button>
+      <button
+        type="button"
+        onClick={() => togglePanel('storm')}
+        className="control-button relative h-10 w-10"
+        title="AI storm tracker"
+        aria-label="AI storm tracker"
+      >
+        <BrainCircuit className="h-4 w-4" strokeWidth={1.6} />
+      </button>
+      <button
+        type="button"
         onClick={() => togglePanel('alerts')}
         className="control-button relative h-10 w-10"
         title={`${alertCount} active alerts`}
@@ -195,6 +224,32 @@ export function MapSearchChrome({ map }: Props) {
             className="h-10 w-10"
           />
           <BasemapControl />
+          <button
+            type="button"
+            onClick={() => toggleChaseMode()}
+            className="control-button relative h-10 w-10"
+            title={chaseMode ? 'Exit storm chase mode' : 'Storm chase mode'}
+            aria-label="Storm chase mode"
+            style={
+              chaseMode
+                ? {
+                    background: 'color-mix(in srgb, cyan 35%, transparent)',
+                    color: '#ecfeff',
+                  }
+                : undefined
+            }
+          >
+            <Radio className="h-4 w-4" strokeWidth={1.6} />
+          </button>
+          <button
+            type="button"
+            onClick={() => togglePanel('storm')}
+            className="control-button relative h-10 w-10"
+            title="AI storm tracker"
+            aria-label="AI storm tracker"
+          >
+            <BrainCircuit className="h-4 w-4" strokeWidth={1.6} />
+          </button>
           <button
             type="button"
             onClick={() => togglePanel('alerts')}

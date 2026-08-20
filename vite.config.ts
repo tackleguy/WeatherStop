@@ -8,22 +8,118 @@ import path from 'node:path';
 // Without it /api is stubbed (see devApiStub).
 const API_PROXY = process.env.DEV_API_PROXY;
 
-// `npm run dev` doesn't execute the Vercel Edge Functions in /api — those
-// only run under `vercel dev` or in production. Without this plugin the
-// browser's calls to /api/alerts etc. would land on the Vite dev server,
-// which then tries to transform the .ts source through its esbuild
-// plugin and fails noisily on the query string. Returning a 503 makes
-// SWR back off cleanly and matches what the user sees in production
-// when WINDY_KEY isn't configured.
+function readBody(req: import('http').IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c) => chunks.push(Buffer.from(c)));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+// In `npm run dev`, most /api routes 503. Local-chat is special-cased so
+// Storm Chase mode can talk to Ollama without `vercel dev`.
 function devApiStub(): Plugin {
+  const ollama =
+    (process.env.LOCAL_AI_URL ?? process.env.OLLAMA_URL ?? 'http://127.0.0.1:11434')
+      .trim()
+      .replace(/\/$/, '');
+  const defaultModel =
+    process.env.LOCAL_AI_MODEL ?? process.env.OLLAMA_MODEL ?? 'llama3.2';
+
   return {
     name: 'weatherstop-dev-api-stub',
     apply: 'serve',
     configureServer(server) {
       if (API_PROXY) return;
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
         if (!req.url) return next();
         if (!req.url.startsWith('/api/')) return next();
+
+        const url = new URL(req.url, 'http://localhost');
+        if (url.pathname === '/api/storm/local-chat') {
+          try {
+            if (url.searchParams.get('probe') === '1') {
+              const tags = await fetch(`${ollama}/api/tags`);
+              res.statusCode = 200;
+              res.setHeader('content-type', 'application/json');
+              res.end(
+                JSON.stringify(
+                  tags.ok
+                    ? { ok: true, model: defaultModel, base: ollama }
+                    : { ok: false, error: `Ollama ${tags.status}` },
+                ),
+              );
+              return;
+            }
+            if (req.method !== 'POST') {
+              res.statusCode = 405;
+              res.end('POST only');
+              return;
+            }
+            const raw = await readBody(req);
+            const body = JSON.parse(raw || '{}') as {
+              prompt?: string;
+              model?: string;
+            };
+            if (!body.prompt?.trim()) {
+              res.statusCode = 400;
+              res.setHeader('content-type', 'application/json');
+              res.end(JSON.stringify({ error: 'missing prompt' }));
+              return;
+            }
+            const upstream = await fetch(`${ollama}/api/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: body.model?.trim() || defaultModel,
+                stream: false,
+                format: 'json',
+                messages: [
+                  {
+                    role: 'system',
+                    content:
+                      'You are WeatherStop storm-chase assistant. Only use supplied NWS context. Never invent hazards. Return JSON as requested.',
+                  },
+                  { role: 'user', content: body.prompt },
+                ],
+                options: { temperature: 0.2 },
+              }),
+            });
+            if (!upstream.ok) {
+              res.statusCode = 502;
+              res.setHeader('content-type', 'application/json');
+              res.end(JSON.stringify({ error: `Ollama ${upstream.status}` }));
+              return;
+            }
+            const data = (await upstream.json()) as {
+              message?: { content?: string };
+            };
+            res.statusCode = 200;
+            res.setHeader('content-type', 'application/json');
+            res.end(
+              JSON.stringify({
+                content: data.message?.content ?? '',
+                model: body.model?.trim() || defaultModel,
+                via: 'ollama-dev',
+              }),
+            );
+            return;
+          } catch (err) {
+            res.statusCode = 502;
+            res.setHeader('content-type', 'application/json');
+            res.end(
+              JSON.stringify({
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : 'Ollama unreachable in vite dev',
+              }),
+            );
+            return;
+          }
+        }
+
         res.statusCode = 503;
         res.setHeader('content-type', 'application/json');
         res.end(

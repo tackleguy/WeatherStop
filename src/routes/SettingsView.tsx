@@ -2,6 +2,7 @@
 
 import {
   Bell,
+  BrainCircuit,
   CloudRain,
   Database,
   Eye,
@@ -27,6 +28,7 @@ type Section =
   | 'notifications'
   | 'layers'
   | 'sources'
+  | 'local-ai'
   | 'appearance'
   | 'about';
 
@@ -36,6 +38,7 @@ const SECTIONS: Array<{ id: Section; label: string; icon: LucideIcon }> = [
   { id: 'units', label: 'Units', icon: Ruler },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'layers', label: 'Layers', icon: Layers },
+  { id: 'local-ai', label: 'Local AI', icon: BrainCircuit },
   { id: 'sources', label: 'Data Sources', icon: Database },
   { id: 'about', label: 'About', icon: Info },
 ];
@@ -211,6 +214,93 @@ export function SettingsView() {
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+          ) : null}
+
+          {section === 'local-ai' ? (
+            <div className="mx-auto max-w-lg space-y-4">
+              <div className="panel panel-padded space-y-3">
+                <div className="flex items-center gap-2">
+                  <BrainCircuit
+                    className="h-4 w-4 text-cyan-300"
+                    strokeWidth={1.8}
+                  />
+                  <span className="font-medium text-[var(--ink-1)]">
+                    Storm chase · local AI
+                  </span>
+                </div>
+                <p className="text-[12px] leading-relaxed text-[var(--ink-3)]">
+                  Chase mode always runs an on-device brief from NWS alerts. Optional{' '}
+                  <strong className="text-[var(--ink-2)]">Ollama</strong> polishes
+                  wording and answers chase questions — nothing is sent to OpenAI
+                  unless you configure that separately on the server.
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[13px] text-[var(--ink-2)]">
+                    Enable local LLM
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings.localAiEnabled !== false}
+                    onClick={() =>
+                      update(
+                        'localAiEnabled',
+                        !(settings.localAiEnabled !== false),
+                      )
+                    }
+                    className={`relative h-7 w-12 rounded-full transition-colors ${
+                      settings.localAiEnabled !== false
+                        ? 'bg-[var(--accent)]'
+                        : 'bg-[var(--track)]'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-transform ${
+                        settings.localAiEnabled !== false
+                          ? 'translate-x-5'
+                          : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <label className="block space-y-1">
+                  <span className="text-[11px] uppercase tracking-wider text-[var(--ink-4)]">
+                    Ollama URL
+                  </span>
+                  <input
+                    type="url"
+                    value={settings.localAiUrl ?? 'http://127.0.0.1:11434'}
+                    onChange={(e) => update('localAiUrl', e.target.value)}
+                    className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-2 text-[13px] text-[var(--ink-1)] outline-none focus:border-[var(--accent)]"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] uppercase tracking-wider text-[var(--ink-4)]">
+                    Model
+                  </span>
+                  <input
+                    type="text"
+                    value={settings.localAiModel ?? 'llama3.2'}
+                    onChange={(e) => update('localAiModel', e.target.value)}
+                    className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-2 text-[13px] text-[var(--ink-1)] outline-none focus:border-[var(--accent)]"
+                    placeholder="llama3.2"
+                  />
+                </label>
+                <p className="text-[11px] leading-relaxed text-[var(--ink-4)]">
+                  Run <code className="text-[var(--ink-3)]">ollama pull llama3.2</code>{' '}
+                  then <code className="text-[var(--ink-3)]">ollama serve</code>.
+                  For browser access set{' '}
+                  <code className="text-[var(--ink-3)]">
+                    OLLAMA_ORIGINS=&quot;http://localhost:5173&quot;
+                  </code>
+                  . For API proxy set{' '}
+                  <code className="text-[var(--ink-3)]">
+                    LOCAL_AI_URL=http://127.0.0.1:11434
+                  </code>
+                  .
+                </p>
               </div>
             </div>
           ) : null}

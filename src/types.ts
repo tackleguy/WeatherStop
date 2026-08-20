@@ -12,6 +12,10 @@ export interface Settings {
   precip: PrecipUnit;
   theme: ThemeId;
   mapStyle: MapStyleId;
+  /** Prefer Ollama / local LLM for storm chase mode. */
+  localAiEnabled?: boolean;
+  localAiUrl?: string;
+  localAiModel?: string;
 }
 
 export interface City {

@@ -13,6 +13,9 @@ const DEFAULTS: Settings = {
   precip: 'inch',
   theme: 'dark',
   mapStyle: DEFAULT_MAP_STYLE,
+  localAiEnabled: true,
+  localAiUrl: 'http://127.0.0.1:11434',
+  localAiModel: 'llama3.2',
 };
 
 function loadMapStyle(): MapStyleId {

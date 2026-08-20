@@ -22,6 +22,8 @@ import { RadarMap } from '../components/radar/RadarMap';
 import { ScaleBar } from '../components/radar/ScaleBar';
 import { StationModal } from '../components/radar/StationModal';
 import { SupercellCompanionChip } from '../components/radar/SupercellCompanionChip';
+import { StormChaseHud } from '../components/radar/StormChaseHud';
+import { StormTrackerPanel } from '../components/radar/StormTrackerPanel';
 import { TimeScrubber } from '../components/radar/TimeScrubber';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { PRODUCTS } from '../constants/products';
@@ -55,6 +57,7 @@ export function RadarView() {
           <NullschoolEarth bookmarkBar={<BookmarkBar map={map} />} />
 
           <MapSearchChrome map={map} />
+          <StormChaseHud />
 
           {!isMobile ? <AlertFilterChips /> : null}
           {!isMobile ? <LayerOpacitySlider /> : null}
@@ -97,6 +100,7 @@ export function RadarView() {
         </main>
 
         {!isMobile ? <AlertsPanel /> : null}
+        <StormTrackerPanel />
       </div>
 
       <TimeScrubber />

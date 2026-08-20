@@ -26,6 +26,7 @@ export const FORECAST_FRAME_COUNT = 48;
 
 export type PanelKey =
   | 'alerts'
+  | 'storm'
   | 'stations'
   | 'settings'
   | 'bookmarks'
@@ -162,6 +163,11 @@ interface RadarState {
   inspectAt: [number, number] | null;
   setInspectAt: (p: [number, number] | null) => void;
 
+  /** Storm chasing mode — local AI brief + severe-focused HUD. */
+  chaseMode: boolean;
+  setChaseMode: (on: boolean) => void;
+  toggleChaseMode: () => void;
+
   // Active radar source (mirrored from useRadarLayers' resolver) + the
   // user's manual site override (when set, the resolver locks the per-
   // site WMS to this station instead of the auto-nearest pick).
@@ -282,6 +288,37 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   inspectAt: null,
   setInspectAt: (p) => set({ inspectAt: p }),
 
+  chaseMode: false,
+  setChaseMode: (on) =>
+    set((state) => {
+      if (!on) return { chaseMode: false };
+      // Entering chase mode: focus severe categories + open storm panel.
+      const filter = new Set<AlertCategory>([
+        'tornado',
+        'severe-thunderstorm',
+        'flash-flood',
+      ]);
+      saveAlertFilter(filter);
+      return {
+        chaseMode: true,
+        alertFilter: filter,
+        panelsOpen: {
+          ...state.panelsOpen,
+          storm: true,
+          alerts: false,
+        },
+        activeProduct:
+          state.activeProduct === 'reflectivity' ||
+          state.activeProduct === 'composite'
+            ? 'velocity'
+            : state.activeProduct,
+      };
+    }),
+  toggleChaseMode: () => {
+    const on = !get().chaseMode;
+    get().setChaseMode(on);
+  },
+
   sourcePlan: null,
   setSourcePlan: (plan) =>
     set((state) => {
@@ -306,6 +343,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
 
   panelsOpen: {
     alerts: true,
+    storm: false,
     stations: false,
     settings: false,
     bookmarks: false,
@@ -313,9 +351,14 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     diagnostics: false,
   },
   togglePanel: (key) =>
-    set((state) => ({
-      panelsOpen: { ...state.panelsOpen, [key]: !state.panelsOpen[key] },
-    })),
+    set((state) => {
+      const next = !state.panelsOpen[key];
+      const panelsOpen = { ...state.panelsOpen, [key]: next };
+      // Storm tracker and alerts both use the right/bottom overlay space.
+      if (next && key === 'storm') panelsOpen.alerts = false;
+      if (next && key === 'alerts') panelsOpen.storm = false;
+      return { panelsOpen };
+    }),
   setPanelOpen: (key, open) =>
     set((state) => ({ panelsOpen: { ...state.panelsOpen, [key]: open } })),
 

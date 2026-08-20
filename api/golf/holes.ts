@@ -751,6 +751,7 @@ function applyScorecards(
   holes: GolfHole[],
   polys: CoursePoly[],
   selectedName?: string,
+  selectedId?: number,
 ): GolfHole[] {
   const loops = [
     ...new Set(holes.map((h) => h.loop).filter((l): l is string => Boolean(l))),
@@ -763,15 +764,24 @@ function applyScorecards(
   const cards = new Map<string, CourseScorecard>();
   for (const loop of loops) {
     for (const name of names) {
-      const card = findScorecard(name, loop);
+      const card = findScorecard({ courseName: name, loop, osmId: selectedId });
       if (card) {
         cards.set(loop, card);
         break;
       }
     }
   }
-  if (!cards.size && names.length) {
-    const card = findScorecard(names[0]!);
+  if (!cards.size) {
+    const fallbackNames = names.length ? names : [selectedName].filter(Boolean) as string[];
+    for (const name of fallbackNames) {
+      const card = findScorecard({ courseName: name, osmId: selectedId });
+      if (!card) continue;
+      cards.set('', card);
+      break;
+    }
+  }
+  if (!cards.size && selectedId != null) {
+    const card = findScorecard({ osmId: selectedId });
     if (card) cards.set('', card);
   }
   if (!cards.size) return holes;
@@ -815,7 +825,7 @@ function finalizeHoles(
   next = autoLoops(next);
   next = normalizeOnePerNumber(next);
   pruneOutlierTees(next);
-  next = applyScorecards(next, polys, selectedName);
+  next = applyScorecards(next, polys, selectedName, selectedId);
   next.sort((a, b) => {
     const loop = (a.loop ?? '').localeCompare(b.loop ?? '');
     if (loop) return loop;

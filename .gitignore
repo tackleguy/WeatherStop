@@ -13,6 +13,7 @@ ref/
 tsconfig.tsbuildinfo
 .vite
 .eslintcache
+scripts/.cache
 
 # Editor
 .vscode

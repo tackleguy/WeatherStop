@@ -1,3 +1,5 @@
+import { IMPORTED_SCORECARDS } from './importedScorecards';
+
 /**
  * Official scorecard par + yardage overrides for popular courses.
  *
@@ -19,6 +21,10 @@ export interface CourseScorecard {
   name: string;
   totalPar: number;
   loop?: string;
+  /** Exact OSM course IDs when we know them. */
+  osmIds?: number[];
+  /** Known alternate names seen in OSM / search results. */
+  aliases?: string[];
   holes: ScorecardHole[];
 }
 
@@ -31,6 +37,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
       name: 'Torrey Pines South Course',
       totalPar: 72,
       loop: 'South',
+      aliases: ['Torrey Pines Golf Course South Course', 'Torrey Pines South'],
       holes: [
         { hole: 1, par: 4, back: 451, mid: 417, front: 358 },
         { hole: 2, par: 4, back: 389, mid: 376, front: 325 },
@@ -60,6 +67,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
       name: 'Torrey Pines North Course',
       totalPar: 72,
       loop: 'North',
+      aliases: ['Torrey Pines Golf Course North Course', 'Torrey Pines North'],
       holes: [
         { hole: 1, par: 4, back: 421, mid: 395, front: 322 },
         { hole: 2, par: 4, back: 495, mid: 412, front: 344 },
@@ -88,6 +96,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'Pebble Beach Golf Links',
       totalPar: 72,
+      aliases: ['Pebble Beach'],
       holes: [
         { hole: 1, par: 4, back: 378, mid: 349, front: 295 },
         { hole: 2, par: 5, back: 509, mid: 491, front: 427 },
@@ -116,6 +125,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'Bethpage State Park – Black',
       totalPar: 71,
+      aliases: ['Bethpage Black', 'Bethpage Black Course'],
       holes: [
         { hole: 1, par: 4, back: 430, mid: 429, front: 426 },
         { hole: 2, par: 4, back: 389, mid: 354, front: 346 },
@@ -144,6 +154,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'Augusta National Golf Club',
       totalPar: 72,
+      aliases: ['Augusta National'],
       holes: [
         { hole: 1, par: 4, back: 445, name: 'Tea Olive' },
         { hole: 2, par: 5, back: 585, name: 'Pink Dogwood' },
@@ -172,6 +183,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'Pinehurst No. 2',
       totalPar: 72,
+      aliases: ['Pinehurst No 2', 'Pinehurst Number 2', 'Pinehurst #2'],
       holes: [
         { hole: 1, par: 4, back: 393, mid: 376, front: 340 },
         { hole: 2, par: 4, back: 439, mid: 411, front: 342 },
@@ -200,6 +212,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'TPC Sawgrass – Stadium Course',
       totalPar: 72,
+      aliases: ['TPC Sawgrass Stadium Course', 'Players Stadium Course'],
       holes: [
         { hole: 1, par: 4, back: 424, mid: 394, front: 292 },
         { hole: 2, par: 5, back: 555, mid: 507, front: 381 },
@@ -228,6 +241,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'Whistling Straits – Straits Course',
       totalPar: 72,
+      aliases: ['Whistling Straits Straits Course', 'Straits Course'],
       holes: [
         { hole: 1, par: 4, back: 493, mid: 370, front: 325 },
         { hole: 2, par: 5, back: 597, mid: 521, front: 447 },
@@ -256,6 +270,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'Kiawah Island – Ocean Course',
       totalPar: 72,
+      aliases: ['Kiawah Ocean Course', 'The Ocean Course'],
       holes: [
         { hole: 1, par: 4, back: 396, mid: 375, front: 306 },
         { hole: 2, par: 5, back: 543, mid: 528, front: 419 },
@@ -284,6 +299,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'Pacific Dunes',
       totalPar: 71,
+      aliases: ['Pacific Dunes Golf Course'],
       holes: [
         { hole: 1, par: 4, back: 370, mid: 304, front: 287 },
         { hole: 2, par: 4, back: 368, mid: 335, front: 288 },
@@ -312,6 +328,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'Spyglass Hill Golf Course',
       totalPar: 72,
+      aliases: ['Spyglass Hill'],
       holes: [
         { hole: 1, par: 5, back: 597, mid: 565, front: 488 },
         { hole: 2, par: 4, back: 349, mid: 321, front: 241 },
@@ -340,6 +357,7 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
     {
       name: 'TPC Scottsdale – Stadium Course',
       totalPar: 71,
+      aliases: ['TPC Scottsdale Stadium Course', 'Scottsdale Stadium Course'],
       holes: [
         { hole: 1, par: 4, back: 403, mid: 355, front: 314 },
         { hole: 2, par: 4, back: 442, mid: 410, front: 357 },
@@ -364,6 +382,29 @@ const SCORECARDS: Record<string, CourseScorecard[]> = {
   ],
 };
 
+function isSequentialHoles(holes: ScorecardHole[]): boolean {
+  return holes.every((hole, index) => hole.hole === index + 1);
+}
+
+function hasOrderedTees(hole: ScorecardHole): boolean {
+  if (hole.front != null && hole.mid != null && hole.front > hole.mid) return false;
+  if (hole.mid != null && hole.back != null && hole.mid > hole.back) return false;
+  if (hole.front != null && hole.back != null && hole.front > hole.back) return false;
+  return true;
+}
+
+function isUsableImportedScorecard(card: CourseScorecard): boolean {
+  if (card.holes.length !== 9 && card.holes.length !== 18) return false;
+  if (!isSequentialHoles(card.holes)) return false;
+  const parSum = card.holes.reduce((sum, hole) => sum + hole.par, 0);
+  if (parSum !== card.totalPar) return false;
+  return card.holes.every((hole) => hasOrderedTees(hole));
+}
+
+const ALL_MANUAL_SCORECARDS = Object.values(SCORECARDS).flat();
+const VALID_IMPORTED_SCORECARDS = IMPORTED_SCORECARDS.filter(isUsableImportedScorecard);
+const ALL_SCORECARDS = [...ALL_MANUAL_SCORECARDS, ...VALID_IMPORTED_SCORECARDS];
+
 // ─── Name-based lookup table ───
 // We cannot always predict the exact OSM ID, so match by course name tokens.
 
@@ -371,6 +412,48 @@ interface NameEntry {
   key: string;
   patterns: RegExp[];
   loop?: string;
+}
+
+function normalizeCourseName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[#]/g, ' number ')
+    .replace(/\bno\.?\b/g, ' number ')
+    .replace(/\bgc\b/g, ' golf club ')
+    .replace(/\bcc\b/g, ' country club ')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\b(the|golf|club|course|links|resort|state park)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cardNameCandidates(card: CourseScorecard): string[] {
+  return [card.name, ...(card.aliases ?? [])];
+}
+
+function matchesCardNameExact(card: CourseScorecard, courseName: string): boolean {
+  const target = normalizeCourseName(courseName);
+  if (!target) return false;
+  return cardNameCandidates(card).some(
+    (candidate) => normalizeCourseName(candidate) === target,
+  );
+}
+
+function matchesManualCardName(card: CourseScorecard, courseName: string): boolean {
+  const target = normalizeCourseName(courseName);
+  if (!target) return false;
+  return cardNameCandidates(card).some((candidate) => {
+    const normalized = normalizeCourseName(candidate);
+    return (
+      normalized === target ||
+      (normalized.length >= 8 &&
+        target.length >= 8 &&
+        (target.includes(normalized) || normalized.includes(target)))
+    );
+  });
 }
 
 const NAME_INDEX: NameEntry[] = [
@@ -388,22 +471,47 @@ const NAME_INDEX: NameEntry[] = [
   { key: 'tpc-scottsdale', patterns: [/tpc\s*scottsdale.*stadium/i, /scottsdale.*stadium/i] },
 ];
 
-export function findScorecard(
-  courseName: string,
-  loop?: string,
-): CourseScorecard | null {
+function pickScorecard(cards: CourseScorecard[], loop?: string): CourseScorecard | null {
+  if (!cards.length) return null;
+  if (loop) {
+    const match = cards.find(
+      (c) => c.loop && c.loop.toLowerCase() === loop.toLowerCase(),
+    );
+    if (match) return match;
+  }
+  return cards[0] ?? null;
+}
+
+export function findScorecard(opts: {
+  courseName?: string;
+  loop?: string;
+  osmId?: number;
+}): CourseScorecard | null {
+  if (opts.osmId != null) {
+    const exact = ALL_SCORECARDS.filter((card) => card.osmIds?.includes(opts.osmId!));
+    const match = pickScorecard(exact, opts.loop);
+    if (match) return match;
+  }
+
+  const courseName = opts.courseName?.trim();
+  if (!courseName) return null;
+
   for (const entry of NAME_INDEX) {
     if (!entry.patterns.some((re) => re.test(courseName))) continue;
     const cards = SCORECARDS[entry.key];
-    if (!cards?.length) continue;
-    if (loop) {
-      const match = cards.find(
-        (c) => c.loop && c.loop.toLowerCase() === loop.toLowerCase(),
-      );
-      if (match) return match;
-    }
-    return cards[0]!;
+    const match = pickScorecard(cards ?? [], opts.loop);
+    if (match) return match;
   }
+
+  const imported = VALID_IMPORTED_SCORECARDS.filter((card) =>
+    matchesCardNameExact(card, courseName),
+  );
+  const manual = ALL_MANUAL_SCORECARDS.filter((card) =>
+    matchesManualCardName(card, courseName),
+  );
+  const match = pickScorecard([...imported, ...manual], opts.loop);
+  if (match) return match;
+
   return null;
 }
 
@@ -412,7 +520,7 @@ export function findScorecardByLoop(
   loop: string,
 ): CourseScorecard | null {
   for (const name of coursePolygonNames) {
-    const card = findScorecard(name, loop);
+    const card = findScorecard({ courseName: name, loop });
     if (card) return card;
   }
   return null;

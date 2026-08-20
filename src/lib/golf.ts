@@ -263,7 +263,17 @@ export async function fetchGolfHoles(
       lon + 0.012 / Math.max(0.2, Math.cos((lat * Math.PI) / 180)),
     ] as [number, number, number, number]);
   const bboxKey = bbox.map((n) => q4(n)).join(',');
-  const key = `golf:v9:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:${opts?.radius ?? ''}`;
+  const courseKey = [
+    opts?.osmType ?? '',
+    opts?.osmId ?? '',
+    opts?.courseName?.trim().toLowerCase() ?? '',
+  ].join(':');
+  // Course identity matters here: nearby sibling layouts can share a center
+  // point or even a synthesized bbox, and reusing the wrong hole payload
+  // makes tee selection feel random when hopping between courses.
+  const key =
+    `golf:v10:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:` +
+    `${opts?.radius ?? ''}:${courseKey}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
     sessionGet<GolfHole[]>(key, HOLES_TTL_MS);

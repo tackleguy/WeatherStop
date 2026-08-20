@@ -1232,7 +1232,12 @@ export default async function handler(req: Request): Promise<Response> {
 
   const lat = quantizeCoord(rawLat, 4);
   const lon = quantizeCoord(rawLon, 4);
-  const cacheKey = `h6:${lat}:${lon}:${bbox ?? ''}:${radiusM}`;
+  const courseKey = [
+    osmType ?? '',
+    Number.isFinite(osmId) ? String(osmId) : '',
+    courseName.trim().toLowerCase(),
+  ].join(':');
+  const cacheKey = `h7:${lat}:${lon}:${bbox ?? ''}:${radiusM}:${courseKey}`;
   const cached = HOLE_MEM.get(cacheKey);
   if (cached && Date.now() - cached.at < HOLE_MEM_TTL_MS && cached.holes.length) {
     return jsonResponse(

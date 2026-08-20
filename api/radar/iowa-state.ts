@@ -44,22 +44,27 @@ export default async function handler(req: Request): Promise<Response> {
   const versionSegment = ts ?? '1.0.0';
   const upstream = `${UPSTREAM_HOST}/${versionSegment}/${product}/${z}/${x}/${y}.png`;
 
-  try {
-    const res = await fetch(upstream);
-    if (!res.ok) {
-      return new Response(`upstream ${res.status}`, { status: res.status });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 600));
+    try {
+      const res = await fetch(upstream);
+      if (!res.ok) {
+        if (res.status >= 500 && attempt < 1) continue;
+        return new Response(`upstream ${res.status}`, { status: res.status });
+      }
+      return new Response(res.body, {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': ts
+            ? 'public, max-age=86400, s-maxage=86400, immutable'
+            : 'public, max-age=240, s-maxage=240',
+          'X-Source': 'iowa-state',
+        },
+      });
+    } catch {
+      if (attempt < 1) continue;
+      return new Response('upstream fetch failed', { status: 502 });
     }
-    return new Response(res.body, {
-      headers: {
-        'Content-Type': 'image/png',
-        // Historical frames never change → cache 24h. Live frame → 4 min.
-        'Cache-Control': ts
-          ? 'public, max-age=86400, s-maxage=86400, immutable'
-          : 'public, max-age=240, s-maxage=240',
-        'X-Source': 'iowa-state',
-      },
-    });
-  } catch {
-    return new Response('upstream fetch failed', { status: 502 });
   }
+  return new Response('upstream fetch failed', { status: 502 });
 }

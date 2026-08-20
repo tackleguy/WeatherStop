@@ -186,26 +186,30 @@ async function photonCourses(
   });
   params.append('osm_tag', 'leisure:golf_course');
 
-  const res = await fetch(`https://photon.komoot.io/reverse?${params}`, {
-    headers: { 'User-Agent': UA, Accept: 'application/json' },
-    signal,
-  });
-  if (!res.ok) throw new Error(`photon ${res.status}`);
-  const gj = (await res.json()) as { features?: PhotonFeature[] };
+  try {
+    const res = await fetch(`https://photon.komoot.io/reverse?${params}`, {
+      headers: { 'User-Agent': UA, Accept: 'application/json' },
+      signal,
+    });
+    if (!res.ok) return [];
+    const gj = (await res.json()) as { features?: PhotonFeature[] };
 
-  const radiusMi = (radiusM / 1000) * MI_PER_KM;
-  const out: GolfCourseSummary[] = [];
-  const seen = new Set<string>();
-  for (const f of gj.features ?? []) {
-    const course = courseFromPhoton(f, { lat, lon });
-    if (!course) continue;
-    // Photon's radius is a soft bias, so enforce the range ourselves.
-    if ((course.distanceMi ?? Infinity) > radiusMi * 1.2) continue;
-    if (seen.has(course.id)) continue;
-    seen.add(course.id);
-    out.push(course);
+    const radiusMi = (radiusM / 1000) * MI_PER_KM;
+    const out: GolfCourseSummary[] = [];
+    const seen = new Set<string>();
+    for (const f of gj.features ?? []) {
+      const course = courseFromPhoton(f, { lat, lon });
+      if (!course) continue;
+      // Photon's radius is a soft bias, so enforce the range ourselves.
+      if ((course.distanceMi ?? Infinity) > radiusMi * 1.2) continue;
+      if (seen.has(course.id)) continue;
+      seen.add(course.id);
+      out.push(course);
+    }
+    return out;
+  } catch {
+    return [];
   }
-  return out;
 }
 
 /** Build query variants so park names and club nicknames still hit OSM. */
@@ -251,6 +255,10 @@ function catalogQueries(q: string): string[] {
     variants.add('Pelican Hill North');
     variants.add('Pelican Hill South');
   }
+  if (/riviera/.test(lower)) {
+    variants.add('Riviera Country Club');
+    variants.add('Riviera Country Club Pacific Palisades');
+  }
 
   const hasDirection = /\b(north|south|east|west|nines?)\b/.test(lower);
   if (!hasDirection) {
@@ -278,13 +286,17 @@ async function photonSearchOnce(
     lon: String(lon),
   });
   params.append('osm_tag', 'leisure:golf_course');
-  const res = await fetch(`https://photon.komoot.io/api/?${params}`, {
-    headers: { 'User-Agent': UA, Accept: 'application/json' },
-    signal,
-  });
-  if (!res.ok) throw new Error(`photon ${res.status}`);
-  const gj = (await res.json()) as { features?: PhotonFeature[] };
-  return gj.features ?? [];
+  try {
+    const res = await fetch(`https://photon.komoot.io/api/?${params}`, {
+      headers: { 'User-Agent': UA, Accept: 'application/json' },
+      signal,
+    });
+    if (!res.ok) return [];
+    const gj = (await res.json()) as { features?: PhotonFeature[] };
+    return gj.features ?? [];
+  } catch {
+    return [];
+  }
 }
 
 /** Significant tokens from the user query used to keep catalog hits on-topic. */
@@ -342,11 +354,12 @@ async function photonCatalog(
   signal: AbortSignal,
 ): Promise<GolfCourseSummary[]> {
   const queries = catalogQueries(q);
-  const features = (
-    await Promise.all(
-      queries.map((query) => photonSearchOnce(query, lat, lon, signal)),
-    )
-  ).flat();
+  const settled = await Promise.allSettled(
+    queries.map((query) => photonSearchOnce(query, lat, lon, signal)),
+  );
+  const features = settled.flatMap((row) =>
+    row.status === 'fulfilled' ? row.value : [],
+  );
 
   const needle = q.trim().toLowerCase();
   const tokens = queryTokens(q);
@@ -383,6 +396,180 @@ async function photonCatalog(
   });
 
   return courses.slice(0, limit);
+}
+
+interface NominatimHit {
+  osm_type?: string;
+  osm_id?: number;
+  lat?: string;
+  lon?: string;
+  name?: string;
+  display_name?: string;
+  class?: string;
+  type?: string;
+  boundingbox?: string[];
+  extratags?: Record<string, string>;
+  address?: { city?: string; state?: string; country?: string };
+}
+
+function nominatimOsmType(t: string | undefined): 'way' | 'relation' | 'node' {
+  if (t === 'way') return 'way';
+  if (t === 'relation') return 'relation';
+  return 'node';
+}
+
+async function nominatimCatalog(
+  q: string,
+  lat: number,
+  lon: number,
+  limit: number,
+  signal: AbortSignal,
+): Promise<GolfCourseSummary[]> {
+  const needle = q.trim();
+  const queries = catalogQueries(needle).slice(0, 3);
+  const hits: NominatimHit[] = [];
+  for (const query of queries) {
+    const params = new URLSearchParams({
+      format: 'jsonv2',
+      q: query,
+      limit: '20',
+      addressdetails: '1',
+      extratags: '1',
+      countrycodes: 'us',
+    });
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?${params}`,
+        { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal },
+      );
+      if (!res.ok) continue;
+      const rows = (await res.json()) as NominatimHit[];
+      hits.push(...rows);
+    } catch {
+      // Nominatim is a backup — never fail the whole search.
+    }
+  }
+
+  const tokens = queryTokens(needle);
+  const seen = new Set<string>();
+  const courses: GolfCourseSummary[] = [];
+  for (const hit of hits) {
+    const isGolf =
+      hit.type === 'golf_course' ||
+      hit.class === 'leisure' ||
+      /golf|country club|links/i.test(`${hit.name ?? ''} ${hit.display_name ?? ''}`);
+    if (!isGolf) continue;
+    const osmId = Number(hit.osm_id);
+    const cLat = Number(hit.lat);
+    const cLon = Number(hit.lon);
+    if (!Number.isFinite(osmId) || !Number.isFinite(cLat) || !Number.isFinite(cLon)) {
+      continue;
+    }
+    const osmType = nominatimOsmType(hit.osm_type);
+    const id = `${osmType}/${osmId}`;
+    if (seen.has(id)) continue;
+    const name =
+      hit.name?.trim() ||
+      hit.display_name?.split(',')[0]?.trim() ||
+      'Unnamed golf course';
+    if (nameMatchScore(name, needle.toLowerCase(), tokens) >= 9) continue;
+    seen.add(id);
+    const bb = hit.boundingbox;
+    const south = bb ? Number(bb[0]) : NaN;
+    const north = bb ? Number(bb[1]) : NaN;
+    const west = bb ? Number(bb[2]) : NaN;
+    const east = bb ? Number(bb[3]) : NaN;
+    courses.push({
+      id,
+      osmType,
+      osmId,
+      name,
+      lat: cLat,
+      lon: cLon,
+      bbox:
+        [south, west, north, east].every(Number.isFinite)
+          ? [south, west, north, east]
+          : undefined,
+      website: hit.extratags?.website,
+      region:
+        [hit.address?.city, hit.address?.state, hit.address?.country]
+          .filter(Boolean)
+          .join(', ') || undefined,
+      access: classifyAccess(name, hit.extratags),
+      distanceMi: haversineMi(lat, lon, cLat, cLon),
+    });
+  }
+
+  courses.sort(
+    (a, b) =>
+      nameMatchScore(a.name, needle.toLowerCase(), tokens) -
+        nameMatchScore(b.name, needle.toLowerCase(), tokens) ||
+      (a.distanceMi ?? 9_999) - (b.distanceMi ?? 9_999),
+  );
+  return courses.slice(0, limit);
+}
+
+async function opengolfCatalog(
+  q: string,
+  lat: number,
+  lon: number,
+  limit: number,
+  signal: AbortSignal,
+): Promise<GolfCourseSummary[]> {
+  try {
+    const params = new URLSearchParams({ q: q.trim() });
+    const res = await fetch(
+      `https://api.opengolfapi.org/v1/courses/search?${params}`,
+      { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal },
+    );
+    if (!res.ok) return [];
+    const body = (await res.json()) as {
+      courses?: Array<{
+        id?: string;
+        name?: string;
+        latitude?: number;
+        longitude?: number;
+        city?: string;
+        state?: string;
+        type?: string;
+        par?: number;
+        osm_id?: number;
+      }>;
+    };
+    const tokens = queryTokens(q);
+    const needle = q.trim().toLowerCase();
+    const out: GolfCourseSummary[] = [];
+    const seen = new Set<string>();
+    for (const row of body.courses ?? []) {
+      const name = row.name?.trim();
+      const cLat = Number(row.latitude);
+      const cLon = Number(row.longitude);
+      if (!name || !Number.isFinite(cLat) || !Number.isFinite(cLon)) continue;
+      if (nameMatchScore(name, needle, tokens) >= 9) continue;
+      const osmId = Number(row.osm_id);
+      const id = Number.isFinite(osmId) && osmId > 0
+        ? `way/${osmId}`
+        : `opengolf/${row.id ?? `${cLat},${cLon}`}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({
+        id,
+        osmType: Number.isFinite(osmId) && osmId > 0 ? 'way' : 'node',
+        osmId: Number.isFinite(osmId) && osmId > 0 ? osmId : 0,
+        name,
+        lat: cLat,
+        lon: cLon,
+        par: Number.isFinite(Number(row.par)) ? Number(row.par) : undefined,
+        region: [row.city, row.state].filter(Boolean).join(', ') || undefined,
+        access: classifyAccess(name),
+        distanceMi: haversineMi(lat, lon, cLat, cLon),
+      });
+    }
+    out.sort((a, b) => (a.distanceMi ?? 9_999) - (b.distanceMi ?? 9_999));
+    return out.slice(0, limit);
+  } catch {
+    return [];
+  }
 }
 
 async function overpassCourses(
@@ -552,13 +739,10 @@ export default async function handler(req: Request): Promise<Response> {
 
   const lat = quantizeCoord(rawLat, 3);
   const lon = quantizeCoord(rawLon, 3);
-  const ac = new AbortController();
-  const hardStop = setTimeout(() => ac.abort(), 8_000);
-  const failures: string[] = [];
 
   const finish = (
     courses: GolfCourseSummary[],
-    source: 'photon' | 'overpass' | 'osm-map',
+    source: 'photon' | 'overpass' | 'osm-map' | 'nominatim' | 'opengolf',
     opts?: { preserveOrder?: boolean },
   ) =>
     jsonResponse(
@@ -577,8 +761,43 @@ export default async function handler(req: Request): Promise<Response> {
     );
 
   if (q.length >= 2) {
+    const catalogAc = new AbortController();
+    const catalogStop = setTimeout(() => catalogAc.abort(), 8_000);
     try {
-      let courses = await photonCatalog(q, rawLat, rawLon, limit, ac.signal);
+      let courses = await photonCatalog(
+        q,
+        rawLat,
+        rawLon,
+        limit,
+        catalogAc.signal,
+      );
+      let source: 'photon' | 'nominatim' | 'opengolf' = 'photon';
+      if (!courses.length) {
+        const backupAc = new AbortController();
+        const backupStop = setTimeout(() => backupAc.abort(), 8_000);
+        try {
+          courses = await nominatimCatalog(
+            q,
+            rawLat,
+            rawLon,
+            limit,
+            backupAc.signal,
+          );
+          source = 'nominatim';
+          if (!courses.length) {
+            courses = await opengolfCatalog(
+              q,
+              rawLat,
+              rawLon,
+              limit,
+              backupAc.signal,
+            );
+            source = 'opengolf';
+          }
+        } finally {
+          clearTimeout(backupStop);
+        }
+      }
       const seed = courses[0];
       if (seed) {
         try {
@@ -594,69 +813,47 @@ export default async function handler(req: Request): Promise<Response> {
           // Name search still works without sibling polygons.
         }
       }
-      return finish(courses, 'photon', { preserveOrder: true });
-    } catch (err) {
-      return errResponse(
-        err instanceof Error ? err.message : 'catalog search failed',
-      );
+      return finish(courses, source, { preserveOrder: true });
+    } catch {
+      return finish([], 'photon', { preserveOrder: true });
     } finally {
-      clearTimeout(hardStop);
+      clearTimeout(catalogStop);
     }
   }
 
-  try {
-    const photonP = photonCourses(
-      rawLat,
-      rawLon,
-      radiusM,
-      limit,
-      ac.signal,
-    ).catch((err) => {
-      failures.push(err instanceof Error ? err.message : 'photon failed');
-      return [] as GolfCourseSummary[];
-    });
-    const osmP = overpassCourses(
+  const photonAc = new AbortController();
+  const photonStop = setTimeout(() => photonAc.abort(), 6_000);
+  const [photonSettled, osmSettled, mapSettled] = await Promise.allSettled([
+    photonCourses(rawLat, rawLon, radiusM, limit, photonAc.signal),
+    overpassCourses(
       lat,
       lon,
       rawLat,
       rawLon,
       Math.min(radiusM, 20_000),
-    ).catch((err) => {
-      failures.push(err instanceof Error ? err.message : 'overpass failed');
-      return [] as GolfCourseSummary[];
-    });
-    const photon = await photonP;
-    if (photon.length) {
-      const osm = await Promise.race([
-        osmP,
-        new Promise<GolfCourseSummary[]>((resolve) => {
-          setTimeout(() => resolve([]), 2500);
-        }),
-      ]);
-      return finish(expandWithOsmSiblings(photon, osm), 'photon');
-    }
-    const osm = await osmP;
-    if (osm.length) return finish(osm, 'overpass');
+    ),
+    mapCourses(
+      lat,
+      lon,
+      rawLat,
+      rawLon,
+      Math.min(radiusM, 4_000),
+    ),
+  ]);
+  clearTimeout(photonStop);
 
-    // Photon + Overpass failed or empty — last resort is OSM's map API for a
-    // tight local bbox so nearby Golf still works when mirrors are busy.
-    try {
-      const local = await mapCourses(
-        lat,
-        lon,
-        rawLat,
-        rawLon,
-        Math.min(radiusM, 4_000),
-      );
-      if (local.length) return finish(local, 'osm-map');
-    } catch (err) {
-      failures.push(err instanceof Error ? err.message : 'osm-map failed');
-    }
+  const photon =
+    photonSettled.status === 'fulfilled' ? photonSettled.value : [];
+  const osm = osmSettled.status === 'fulfilled' ? osmSettled.value : [];
+  const local = mapSettled.status === 'fulfilled' ? mapSettled.value : [];
 
-    if (!failures.length) failures.push('no golf courses in range');
-  } finally {
-    clearTimeout(hardStop);
+  if (photon.length) {
+    return finish(expandWithOsmSiblings(photon, mergeCourses(osm, local)), 'photon');
   }
+  if (osm.length) return finish(osm, 'overpass');
+  if (local.length) return finish(local, 'osm-map');
 
-  return errResponse(failures.join(' · '));
+  // Never 502 for an empty discovery result — the UI treats that as a hard
+  // failure and hides the course list even when name search would work.
+  return finish([], 'photon');
 }

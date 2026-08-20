@@ -1,4 +1,5 @@
 import { NWS_USER_AGENT } from './_lib/nwsUa.js';
+import { resilientFetch } from './_lib/resilientFetch.js';
 
 export const config = { runtime: 'edge' };
 
@@ -12,12 +13,21 @@ export default async function handler(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const bbox = searchParams.get('bbox');
 
-  const upstream = await fetch('https://api.weather.gov/alerts/active', {
-    headers: {
-      'User-Agent': NWS_USER_AGENT,
-      Accept: 'application/geo+json',
-    },
-  });
+  let upstream: Response;
+  try {
+    upstream = await resilientFetch('https://api.weather.gov/alerts/active', {
+      attempts: 3,
+      timeoutMs: 10_000,
+      init: {
+        headers: {
+          'User-Agent': NWS_USER_AGENT,
+          Accept: 'application/geo+json',
+        },
+      },
+    });
+  } catch {
+    return new Response('NWS unavailable', { status: 503 });
+  }
 
   if (!upstream.ok) {
     return new Response('NWS unavailable', { status: 503 });

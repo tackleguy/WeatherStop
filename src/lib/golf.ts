@@ -206,7 +206,7 @@ export async function fetchGolfCourses(
   const q = opts?.q?.trim().toLowerCase() ?? '';
   // v2 invalidates empty results cached by the retired Nominatim/Overpass
   // discovery path.
-  const key = `golf:v5:courses:${q3(lat)}:${q3(lon)}:${q}:${opts?.radius ?? ''}`;
+  const key = `golf:v6:courses:${q3(lat)}:${q3(lon)}:${q}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfCourseSummary[]>(key, COURSES_TTL_MS) ??
     sessionGet<GolfCourseSummary[]>(key, COURSES_TTL_MS);
@@ -222,12 +222,19 @@ export async function fetchGolfCourses(
   });
   if (q) params.set('q', q);
   if (opts?.radius) params.set('radius', String(opts.radius));
-  const res = await fetchWithRetry(
-    `/api/golf/courses?${params}`,
-    opts?.signal,
-    2,
-  );
+  let res: Response;
+  try {
+    res = await fetchWithRetry(
+      `/api/golf/courses?${params}`,
+      opts?.signal,
+      2,
+    );
+  } catch {
+    // Upstream OSM mirrors occasionally answer 502/503 after retries.
+    return [];
+  }
   if (!res.ok) {
+    if (res.status >= 500) return [];
     const detail = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;

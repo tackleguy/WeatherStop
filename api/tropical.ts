@@ -23,22 +23,28 @@ export default async function handler(req: Request): Promise<Response> {
   });
   const upstream = `${MAPSERVER_BASE}/${layer}/query?${params}`;
 
-  try {
-    const res = await fetch(upstream, {
-      headers: { Accept: 'application/geo+json,application/json' },
-    });
-    if (!res.ok) {
-      return new Response(`upstream ${res.status}`, { status: res.status });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 700));
+    try {
+      const res = await fetch(upstream, {
+        headers: { Accept: 'application/geo+json,application/json' },
+      });
+      if (!res.ok) {
+        if (res.status >= 500 && attempt < 1) continue;
+        return new Response(`upstream ${res.status}`, { status: res.status });
+      }
+      const body = await res.text();
+      return new Response(body, {
+        headers: {
+          'Content-Type': 'application/geo+json',
+          'Cache-Control': 'public, max-age=300, s-maxage=600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } catch {
+      if (attempt < 1) continue;
+      return new Response('upstream fetch failed', { status: 502 });
     }
-    const body = await res.text();
-    return new Response(body, {
-      headers: {
-        'Content-Type': 'application/geo+json',
-        'Cache-Control': 'public, max-age=300, s-maxage=600',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
-  } catch {
-    return new Response('upstream fetch failed', { status: 502 });
   }
+  return new Response('upstream fetch failed', { status: 502 });
 }

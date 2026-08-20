@@ -661,7 +661,7 @@ export function GolfView() {
                 : 'Finding nearby courses…'}
             </div>
           )}
-          {coursesError && (
+          {coursesError && !courses.length && (
             <div className="floating-subpanel px-3 py-3">
               <p className="text-xs text-red-300">
                 OpenStreetMap is busy right now.
@@ -678,9 +678,11 @@ export function GolfView() {
               </button>
             </div>
           )}
-          {!coursesLoading && !courses.length && (
+          {!coursesLoading && !courses.length && !coursesError && (
             <p className="floating-subpanel px-3 py-3 text-xs text-[var(--ink-3)]">
-              No golf courses found nearby. Try another city.
+              {courseFilter.trim().length >= 2
+                ? `No courses match “${courseFilter.trim()}”.`
+                : 'No golf courses found nearby. Try another city.'}
             </p>
           )}
           {!coursesLoading && courses.length > 0 && !filteredCourses.length && (

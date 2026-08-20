@@ -309,9 +309,20 @@ export async function GET(req: Request): Promise<Response> {
 
   let omResults: OpenMeteoResponse[];
   try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      return new Response(`open-meteo ${res.status}`, { status: 502 });
+    let res: Response | null = null;
+    for (let i = 0; i < 3; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 500 * i));
+      try {
+        res = await fetch(url);
+        if (res.ok) break;
+        if (res.status < 500) break;
+        res = null;
+      } catch {
+        res = null;
+      }
+    }
+    if (!res || !res.ok) {
+      return new Response(`open-meteo ${res?.status ?? 'timeout'}`, { status: 502 });
     }
     const json = (await res.json()) as
       | OpenMeteoResponse

@@ -27,8 +27,18 @@ async function getManifest(): Promise<RainViewerManifest> {
   if (manifestCache && manifestCache.expires > Date.now()) {
     return manifestCache.data;
   }
-  const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-  if (!res.ok) throw new Error(`manifest ${res.status}`);
+  let res: Response | null = null;
+  for (let i = 0; i < 3; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 500 * i));
+    try {
+      res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+      if (res.ok) break;
+      res = null;
+    } catch {
+      res = null;
+    }
+  }
+  if (!res || !res.ok) throw new Error('manifest unavailable');
   const data = (await res.json()) as RainViewerManifest;
   manifestCache = { data, expires: Date.now() + 60_000 };
   return data;

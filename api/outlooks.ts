@@ -126,20 +126,28 @@ function parseProduct(raw: string | null): OutlookProduct {
 }
 
 async function fetchJson(url: string): Promise<unknown | null> {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/geo+json, application/json',
-        'User-Agent':
-          process.env.NWS_USER_AGENT ??
-          'weather-stop/1.0 (contact@example.com)',
-      },
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
+  for (let i = 0; i < 2; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 600));
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Accept: 'application/geo+json, application/json',
+          'User-Agent':
+            process.env.NWS_USER_AGENT ??
+            'weather-stop/1.0 (contact@example.com)',
+        },
+      });
+      if (!res.ok) {
+        if (res.status >= 500 && i < 1) continue;
+        return null;
+      }
+      return await res.json();
+    } catch {
+      if (i < 1) continue;
+      return null;
+    }
   }
+  return null;
 }
 
 function mapServerUrl(layerId: number): string {

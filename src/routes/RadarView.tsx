@@ -4,6 +4,11 @@
 
 import maplibregl from 'maplibre-gl';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  ActiveNavChip,
+  ChaseScreenSwitcher,
+} from '../components/direction/ChaseScreenSwitcher';
 import { AlertFilterChips } from '../components/radar/AlertFilterChips';
 import { AlertsPanel } from '../components/radar/AlertsPanel';
 import { BookmarkBar } from '../components/radar/BookmarkBar';
@@ -40,10 +45,29 @@ export function RadarView() {
   const alertsOverlap = !isMobile && alertsOpen;
   const activeProduct = useRadarStore((s) => s.activeProduct);
   const nullschoolOn = Boolean(nullschoolModeForProduct(activeProduct));
+  const navActive = useRadarStore((s) => s.navActive);
+  const setChaseScreenMode = useRadarStore((s) => s.setChaseScreenMode);
 
   return (
     <div className="absolute inset-0 flex flex-col" style={{ background: 'var(--surface-0)' }}>
       {isMobile ? <MobileProductStrip /> : null}
+
+      {navActive ? (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b border-[var(--line-subtle)] px-3 py-2"
+          style={{ background: 'var(--glass)' }}
+        >
+          <ActiveNavChip />
+          <ChaseScreenSwitcher className="ml-auto" />
+          <Link
+            to="/direction-radar"
+            onClick={() => setChaseScreenMode('split')}
+            className="chip-button text-[11px]"
+          >
+            Open Direction Radar
+          </Link>
+        </div>
+      ) : null}
 
       <div className="relative flex flex-1 overflow-hidden">
         {!isMobile ? (

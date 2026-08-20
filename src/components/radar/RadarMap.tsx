@@ -107,6 +107,10 @@ export function RadarMap({ onMapReady }: Props) {
   const rulerPoints = useRadarStore((s) => s.rulerPoints);
   const pushRulerPoint = useRadarStore((s) => s.pushRulerPoint);
   const chaseMode = useRadarStore((s) => s.chaseMode);
+  const navActive = useRadarStore((s) => s.navActive);
+  const navRouteGeometry = useRadarStore((s) => s.navRouteGeometry);
+  const navDestination = useRadarStore((s) => s.navDestination);
+  const navDestLabel = useRadarStore((s) => s.navDestLabel);
   const dom3TrackEnabled = useRadarStore((s) => s.dom3TrackEnabled);
   const famousChasersEnabled = useRadarStore((s) => s.famousChasersEnabled);
   const setSelectedViewSpotId = useRadarStore((s) => s.setSelectedViewSpotId);
@@ -555,19 +559,50 @@ export function RadarMap({ onMapReady }: Props) {
     upsert(VIEW_POINTS_SOURCE, viewGeo.points);
     upsert(
       VIEW_ROUTE_SOURCE,
-      chaseMode && route
+      navActive && navRouteGeometry
         ? {
             type: 'FeatureCollection',
             features: [
               {
                 type: 'Feature',
                 properties: {},
-                geometry: route.geometry,
+                geometry: navRouteGeometry,
               },
             ],
           }
-        : empty,
+        : chaseMode && route
+          ? {
+              type: 'FeatureCollection',
+              features: [
+                {
+                  type: 'Feature',
+                  properties: {},
+                  geometry: route.geometry,
+                },
+              ],
+            }
+          : empty,
     );
+
+    // Active nav destination pin (also when not in chase viewing spots mode).
+    if (navActive && navDestination) {
+      const existing = viewGeo.points.features.slice();
+      existing.push({
+        type: 'Feature',
+        properties: {
+          id: 'nav-destination',
+          kind: 'footage',
+          label: navDestLabel || 'Destination',
+          tip: 'Active route destination',
+          stormId: 'nav',
+        },
+        geometry: { type: 'Point', coordinates: navDestination },
+      });
+      upsert(VIEW_POINTS_SOURCE, {
+        type: 'FeatureCollection',
+        features: existing,
+      });
+    }
 
     const dom3Points: GeoJSON.FeatureCollection =
       chaseMode &&
@@ -645,7 +680,8 @@ export function RadarMap({ onMapReady }: Props) {
     };
     upsert(CHASERS_SOURCE, chaserFc);
 
-    if (!map.getLayer(VIEW_ROUTE_LAYER)) {
+    // Ensure route/point layers exist for chase spots and active nav.
+    if ((navActive || chaseMode) && !map.getLayer(VIEW_ROUTE_LAYER)) {
       map.addLayer({
         id: VIEW_ROUTE_LAYER,
         type: 'line',
@@ -657,7 +693,7 @@ export function RadarMap({ onMapReady }: Props) {
         },
       });
     }
-    if (!map.getLayer(VIEW_POINTS_LAYER)) {
+    if ((navActive || chaseMode) && !map.getLayer(VIEW_POINTS_LAYER)) {
       map.addLayer({
         id: VIEW_POINTS_LAYER,
         type: 'circle',
@@ -788,6 +824,10 @@ export function RadarMap({ onMapReady }: Props) {
     dom3TrackEnabled,
     famousChasers,
     famousChasersEnabled,
+    navActive,
+    navRouteGeometry,
+    navDestination,
+    navDestLabel,
     setSelectedViewSpotId,
   ]);
 

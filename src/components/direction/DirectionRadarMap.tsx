@@ -1,23 +1,32 @@
-// Lightweight MapLibre canvas for Direction Radar — origin, destination, route.
+// Lightweight MapLibre canvas for Direction Radar — origin, destination, live nav.
 
 import maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import { useSettings } from '../../hooks/useSettings';
 import { mapStyleUrl } from '../../lib/mapStyles';
+import { remainingRouteGeometry, type LonLat } from '../../lib/navRoute';
 
 const ROUTE_SOURCE = 'dir-route';
+const REMAIN_SOURCE = 'dir-remain';
 const POINTS_SOURCE = 'dir-points';
 
 interface Props {
-  origin: [number, number] | null;
-  destination: [number, number] | null;
+  origin: LonLat | null;
+  destination: LonLat | null;
   routeGeometry: GeoJSON.LineString | null;
+  /** Live GPS while navigating. */
+  livePosition?: LonLat | null;
+  navigating?: boolean;
+  followLive?: boolean;
 }
 
 export function DirectionRadarMap({
   origin,
   destination,
   routeGeometry,
+  livePosition = null,
+  navigating = false,
+  followLive = true,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -28,17 +37,19 @@ export function DirectionRadarMap({
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: mapStyleUrl(settings.mapStyle),
-      center: origin ?? destination ?? [-97.5, 35.5],
+      center: livePosition ?? origin ?? destination ?? [-97.5, 35.5],
       zoom: origin || destination ? 7 : 4.2,
       attributionControl: { compact: true },
     });
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
+    map.addControl(
+      new maplibregl.NavigationControl({ visualizePitch: false }),
+      'top-right',
+    );
     mapRef.current = map;
     return () => {
       map.remove();
       mapRef.current = null;
     };
-    // Intentionally mount once; style swaps remount via key from parent if needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -57,9 +68,25 @@ export function DirectionRadarMap({
           type: 'line',
           source: ROUTE_SOURCE,
           paint: {
+            'line-color': '#64748b',
+            'line-width': 3,
+            'line-opacity': 0.45,
+          },
+        });
+      }
+      if (!map.getSource(REMAIN_SOURCE)) {
+        map.addSource(REMAIN_SOURCE, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+        map.addLayer({
+          id: 'dir-remain-line',
+          type: 'line',
+          source: REMAIN_SOURCE,
+          paint: {
             'line-color': '#22d3ee',
-            'line-width': 4,
-            'line-opacity': 0.9,
+            'line-width': 5,
+            'line-opacity': 0.95,
           },
         });
       }
@@ -76,13 +103,17 @@ export function DirectionRadarMap({
             'circle-radius': [
               'match',
               ['get', 'role'],
+              'live',
+              10,
               'origin',
-              8,
+              7,
               9,
             ],
             'circle-color': [
               'match',
               ['get', 'role'],
+              'live',
+              '#22d3ee',
               'origin',
               '#34d399',
               '#f472b6',
@@ -98,7 +129,7 @@ export function DirectionRadarMap({
           layout: {
             'text-field': ['get', 'label'],
             'text-size': 11,
-            'text-offset': [0, 1.2],
+            'text-offset': [0, 1.25],
             'text-anchor': 'top',
             'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
           },
@@ -110,26 +141,42 @@ export function DirectionRadarMap({
         });
       }
 
+      const fullRoute = routeGeometry;
+      const you = livePosition ?? origin;
+      const remain =
+        navigating && you
+          ? remainingRouteGeometry(you, fullRoute) ?? fullRoute
+          : fullRoute;
+
       const routeSrc = map.getSource(ROUTE_SOURCE) as maplibregl.GeoJSONSource;
       routeSrc.setData({
         type: 'FeatureCollection',
-        features: routeGeometry
-          ? [
-              {
-                type: 'Feature',
-                properties: {},
-                geometry: routeGeometry,
-              },
-            ]
+        features: fullRoute
+          ? [{ type: 'Feature', properties: {}, geometry: fullRoute }]
+          : [],
+      });
+
+      const remainSrc = map.getSource(REMAIN_SOURCE) as maplibregl.GeoJSONSource;
+      remainSrc.setData({
+        type: 'FeatureCollection',
+        features: remain
+          ? [{ type: 'Feature', properties: {}, geometry: remain }]
           : [],
       });
 
       const features: GeoJSON.Feature[] = [];
-      if (origin) {
+      if (origin && !livePosition) {
         features.push({
           type: 'Feature',
-          properties: { role: 'origin', label: 'You' },
+          properties: { role: 'origin', label: 'Start' },
           geometry: { type: 'Point', coordinates: origin },
+        });
+      }
+      if (livePosition) {
+        features.push({
+          type: 'Feature',
+          properties: { role: 'live', label: 'You' },
+          geometry: { type: 'Point', coordinates: livePosition },
         });
       }
       if (destination) {
@@ -142,17 +189,27 @@ export function DirectionRadarMap({
       const pts = map.getSource(POINTS_SOURCE) as maplibregl.GeoJSONSource;
       pts.setData({ type: 'FeatureCollection', features });
 
-      if (origin && destination) {
+      if (navigating && followLive && livePosition) {
+        map.easeTo({
+          center: livePosition,
+          zoom: Math.max(map.getZoom(), 11),
+          duration: 700,
+        });
+      } else if (!navigating && origin && destination) {
         const bounds = new maplibregl.LngLatBounds(origin, origin);
         bounds.extend(destination);
-        if (routeGeometry?.coordinates?.length) {
-          for (const c of routeGeometry.coordinates) {
+        if (fullRoute?.coordinates?.length) {
+          for (const c of fullRoute.coordinates) {
             bounds.extend(c as [number, number]);
           }
         }
         map.fitBounds(bounds, { padding: 56, maxZoom: 10, duration: 600 });
       } else if (origin) {
-        map.easeTo({ center: origin, zoom: Math.max(map.getZoom(), 8), duration: 500 });
+        map.easeTo({
+          center: origin,
+          zoom: Math.max(map.getZoom(), 8),
+          duration: 500,
+        });
       } else if (destination) {
         map.easeTo({
           center: destination,
@@ -164,7 +221,14 @@ export function DirectionRadarMap({
 
     if (map.isStyleLoaded()) ensure();
     else map.once('load', ensure);
-  }, [origin, destination, routeGeometry]);
+  }, [
+    origin,
+    destination,
+    routeGeometry,
+    livePosition,
+    navigating,
+    followLive,
+  ]);
 
   return (
     <div

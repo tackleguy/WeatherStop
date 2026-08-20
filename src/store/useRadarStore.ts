@@ -179,6 +179,34 @@ interface RadarState {
   famousChasersEnabled: boolean;
   setFamousChasersEnabled: (on: boolean) => void;
 
+  /**
+   * Direction Radar ↔ Radar multi-screen while navigating.
+   * directions = planning HUD, split = both maps, radar = full radar.
+   */
+  chaseScreenMode: 'directions' | 'split' | 'radar';
+  setChaseScreenMode: (mode: 'directions' | 'split' | 'radar') => void;
+  /** Live in-app navigation to a chase destination. */
+  navActive: boolean;
+  navDestination: [number, number] | null;
+  navDestLabel: string;
+  navRouteGeometry: GeoJSON.LineString | null;
+  navDistanceMi: number | null;
+  navDurationMin: number | null;
+  startNavRoute: (opts: {
+    destination: [number, number];
+    destLabel: string;
+    routeGeometry: GeoJSON.LineString | null;
+    distanceMi?: number | null;
+    durationMin?: number | null;
+  }) => void;
+  stopNavRoute: () => void;
+  setNavRouteGeometry: (
+    geometry: GeoJSON.LineString | null,
+    distanceMi?: number | null,
+    durationMin?: number | null,
+  ) => void;
+  updateNavProgress: (distanceMi: number, durationMin: number) => void;
+
   // Active radar source (mirrored from useRadarLayers' resolver) + the
   // user's manual site override (when set, the resolver locks the per-
   // site WMS to this station instead of the auto-nearest pick).
@@ -338,6 +366,53 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   setDom3TrackEnabled: (on) => set({ dom3TrackEnabled: on }),
   famousChasersEnabled: true,
   setFamousChasersEnabled: (on) => set({ famousChasersEnabled: on }),
+
+  chaseScreenMode: 'directions',
+  setChaseScreenMode: (mode) => set({ chaseScreenMode: mode }),
+  navActive: false,
+  navDestination: null,
+  navDestLabel: '',
+  navRouteGeometry: null,
+  navDistanceMi: null,
+  navDurationMin: null,
+  startNavRoute: ({
+    destination,
+    destLabel,
+    routeGeometry,
+    distanceMi = null,
+    durationMin = null,
+  }) =>
+    set({
+      navActive: true,
+      navDestination: destination,
+      navDestLabel: destLabel,
+      navRouteGeometry: routeGeometry,
+      navDistanceMi: distanceMi ?? null,
+      navDurationMin: durationMin ?? null,
+      chaseMode: true,
+      chaseScreenMode: get().chaseScreenMode === 'directions'
+        ? 'split'
+        : get().chaseScreenMode,
+    }),
+  stopNavRoute: () =>
+    set({
+      navActive: false,
+      navDestination: null,
+      navDestLabel: '',
+      navRouteGeometry: null,
+      navDistanceMi: null,
+      navDurationMin: null,
+    }),
+  setNavRouteGeometry: (geometry, distanceMi, durationMin) =>
+    set((state) => ({
+      navRouteGeometry: geometry,
+      navDistanceMi:
+        distanceMi !== undefined ? distanceMi : state.navDistanceMi,
+      navDurationMin:
+        durationMin !== undefined ? durationMin : state.navDurationMin,
+    })),
+  updateNavProgress: (distanceMi, durationMin) =>
+    set({ navDistanceMi: distanceMi, navDurationMin: durationMin }),
 
   sourcePlan: null,
   setSourcePlan: (plan) =>

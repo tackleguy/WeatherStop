@@ -93,6 +93,32 @@ async function chatViaProxy(
   return body.content;
 }
 
+/** Prefer proxy, then direct Ollama — returns raw model text. */
+export async function chatLocalAi(
+  user: string,
+  settings: LocalAiSettings,
+  signal?: AbortSignal,
+): Promise<string> {
+  try {
+    return await chatViaProxy(user, settings.model, signal);
+  } catch {
+    if (!settings.enabled) {
+      throw new Error('Local AI is disabled in Settings');
+    }
+    return chatOllama(settings.url, settings.model, user, signal);
+  }
+}
+
+/** Chat and parse a JSON object from the model. */
+export async function chatForJson(
+  user: string,
+  settings: LocalAiSettings,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown> | null> {
+  const raw = await chatLocalAi(user, settings, signal);
+  return extractJsonObject(raw);
+}
+
 /** Returns true if either the proxy or direct Ollama answers. */
 export async function probeLocalAi(
   settings: LocalAiSettings,
@@ -208,12 +234,9 @@ export async function askLocalChaseAi(
 
   let raw: string;
   try {
-    raw = await chatViaProxy(user, settings.model, signal);
-  } catch {
-    if (!settings.enabled) {
-      throw new Error('Local AI is disabled in Settings');
-    }
-    raw = await chatOllama(settings.url, settings.model, user, signal);
+    raw = await chatLocalAi(user, settings, signal);
+  } catch (err) {
+    throw err instanceof Error ? err : new Error('Local AI failed');
   }
 
   const parsed = extractJsonObject(raw);

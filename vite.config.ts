@@ -37,6 +37,86 @@ function devApiStub(): Plugin {
         if (!req.url.startsWith('/api/')) return next();
 
         const url = new URL(req.url, 'http://localhost');
+        if (url.pathname === '/api/storm/dom3') {
+          try {
+            const feed = url.searchParams.get('feed')?.trim();
+            const empty = {
+              available: false,
+              label: 'Dominator 3',
+              error:
+                'No live Dom 3 feed in vite dev. Paste a feed URL in Settings, or use vercel dev with DOM3_FEED_URL.',
+              disclaimer:
+                'Dom 3 position is only shown when a public/licensed feed is configured.',
+            };
+            if (!feed) {
+              res.statusCode = 200;
+              res.setHeader('content-type', 'application/json');
+              res.end(JSON.stringify(empty));
+              return;
+            }
+            const upstream = await fetch(feed, {
+              headers: { Accept: 'application/json, application/geo+json' },
+            });
+            if (!upstream.ok) {
+              res.statusCode = 200;
+              res.setHeader('content-type', 'application/json');
+              res.end(
+                JSON.stringify({
+                  ...empty,
+                  error: `Feed HTTP ${upstream.status}`,
+                }),
+              );
+              return;
+            }
+            const data = (await upstream.json()) as Record<string, unknown>;
+            const lat = Number(data.lat ?? data.latitude);
+            const lon = Number(data.lon ?? data.lng ?? data.longitude);
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
+              res.statusCode = 200;
+              res.setHeader('content-type', 'application/json');
+              res.end(
+                JSON.stringify({
+                  available: true,
+                  label: String(data.name ?? data.label ?? 'Dominator 3'),
+                  lat,
+                  lon,
+                  heading: Number(data.heading ?? data.course) || undefined,
+                  speedMph: Number(data.speedMph ?? data.speed) || undefined,
+                  updatedAt: String(
+                    data.updatedAt ?? data.time ?? new Date().toISOString(),
+                  ),
+                  source: 'feed',
+                  disclaimer: empty.disclaimer,
+                }),
+              );
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader('content-type', 'application/json');
+            res.end(
+              JSON.stringify({
+                ...empty,
+                error: 'Feed JSON missing lat/lon',
+              }),
+            );
+            return;
+          } catch (err) {
+            res.statusCode = 200;
+            res.setHeader('content-type', 'application/json');
+            res.end(
+              JSON.stringify({
+                available: false,
+                label: 'Dominator 3',
+                error:
+                  err instanceof Error ? err.message : 'Dom 3 feed failed',
+                disclaimer:
+                  'Dom 3 position is only shown when a public/licensed feed is configured.',
+              }),
+            );
+            return;
+          }
+        }
+
         if (url.pathname === '/api/storm/local-chat') {
           try {
             if (url.searchParams.get('probe') === '1') {

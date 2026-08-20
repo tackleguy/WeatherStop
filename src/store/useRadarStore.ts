@@ -167,6 +167,15 @@ interface RadarState {
   chaseMode: boolean;
   setChaseMode: (on: boolean) => void;
   toggleChaseMode: () => void;
+  /** Selected viewing / footage waypoint id. */
+  selectedViewSpotId: string | null;
+  setSelectedViewSpotId: (id: string | null) => void;
+  /** Chase start point [lon, lat] — GPS or map center. */
+  chaseOrigin: [number, number] | null;
+  setChaseOrigin: (c: [number, number] | null) => void;
+  /** Show Dom 3 tracker layer in chase mode. */
+  dom3TrackEnabled: boolean;
+  setDom3TrackEnabled: (on: boolean) => void;
 
   // Active radar source (mirrored from useRadarLayers' resolver) + the
   // user's manual site override (when set, the resolver locks the per-
@@ -318,6 +327,13 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     const on = !get().chaseMode;
     get().setChaseMode(on);
   },
+
+  selectedViewSpotId: null,
+  setSelectedViewSpotId: (id) => set({ selectedViewSpotId: id }),
+  chaseOrigin: null,
+  setChaseOrigin: (c) => set({ chaseOrigin: c }),
+  dom3TrackEnabled: true,
+  setDom3TrackEnabled: (on) => set({ dom3TrackEnabled: on }),
 
   sourcePlan: null,
   setSourcePlan: (plan) =>

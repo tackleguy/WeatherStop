@@ -16,6 +16,8 @@ export interface Settings {
   localAiEnabled?: boolean;
   localAiUrl?: string;
   localAiModel?: string;
+  /** Optional public Dom 3 / chase-vehicle JSON or GeoJSON feed URL. */
+  dom3FeedUrl?: string;
 }
 
 export interface City {

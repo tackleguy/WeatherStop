@@ -302,6 +302,31 @@ export function SettingsView() {
                   .
                 </p>
               </div>
+
+              <div className="panel panel-padded space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-[var(--ink-1)]">
+                    Dominator 3 feed
+                  </span>
+                </div>
+                <p className="text-[12px] leading-relaxed text-[var(--ink-3)]">
+                  Optional public JSON / GeoJSON URL for Dom 3 (or any chase
+                  vehicle). There is no official Team Dominator GPS API — only
+                  use feeds you are allowed to display.
+                </p>
+                <label className="block space-y-1">
+                  <span className="text-[11px] uppercase tracking-wider text-[var(--ink-4)]">
+                    Feed URL
+                  </span>
+                  <input
+                    type="url"
+                    value={settings.dom3FeedUrl ?? ''}
+                    onChange={(e) => update('dom3FeedUrl', e.target.value)}
+                    placeholder="https://example.com/dom3.json"
+                    className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-2 text-[13px] text-[var(--ink-1)] outline-none focus:border-[var(--accent)]"
+                  />
+                </label>
+              </div>
             </div>
           ) : null}
 

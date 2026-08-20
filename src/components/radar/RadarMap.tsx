@@ -14,6 +14,9 @@ import {
   alertStorms,
   stormOverlayGeoJSON,
 } from '../../lib/stormIntelligence';
+import { viewingSpotsGeoJSON } from '../../lib/chaseViewing';
+import { useChaseViewing } from '../../hooks/useChaseViewing';
+import { useDom3Track } from '../../hooks/useDom3Track';
 import {
   categorizeAlertEvent,
   type AlertCategory,
@@ -35,6 +38,15 @@ const NHC_TRACK_SOURCE = 'nhc-radar-track';
 const NHC_POINTS_SOURCE = 'nhc-radar-points';
 const NHC_TRACK_LAYER = 'nhc-radar-track-layer';
 const NHC_POINTS_LAYER = 'nhc-radar-points-layer';
+const VIEW_POINTS_SOURCE = 'chase-view-points';
+const VIEW_ROUTE_SOURCE = 'chase-view-route';
+const VIEW_POINTS_LAYER = 'chase-view-points-layer';
+const VIEW_POINTS_LABEL = 'chase-view-points-label';
+const VIEW_ROUTE_LAYER = 'chase-view-route-layer';
+const DOM3_SOURCE = 'dom3-track';
+const DOM3_TRAIL_SOURCE = 'dom3-trail';
+const DOM3_POINT_LAYER = 'dom3-point-layer';
+const DOM3_TRAIL_LAYER = 'dom3-trail-layer';
 const RULER_SOURCE = 'ruler-line';
 const RULER_LINE_LAYER = 'ruler-line-layer';
 const RULER_POINTS_LAYER = 'ruler-points-layer';
@@ -90,6 +102,15 @@ export function RadarMap({ onMapReady }: Props) {
   const rulerActive = useRadarStore((s) => s.rulerActive);
   const rulerPoints = useRadarStore((s) => s.rulerPoints);
   const pushRulerPoint = useRadarStore((s) => s.pushRulerPoint);
+  const chaseMode = useRadarStore((s) => s.chaseMode);
+  const dom3TrackEnabled = useRadarStore((s) => s.dom3TrackEnabled);
+  const setSelectedViewSpotId = useRadarStore((s) => s.setSelectedViewSpotId);
+
+  const { spots, selected, route } = useChaseViewing(chaseMode);
+  const { fix: dom3 } = useDom3Track(
+    chaseMode && dom3TrackEnabled,
+    settings.dom3FeedUrl,
+  );
 
   const frames = useTimeFrames();
   const ts = frames[currentFrameIdx] ?? frames[frames.length - 1];
@@ -502,6 +523,199 @@ export function RadarMap({ onMapReady }: Props) {
       });
     }
   }, [styleLoaded, stormOverlays, nhcTrack, nhcPoints]);
+
+  // Chase mode: viewing / footage waypoints + drive route + Dom 3.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoaded) return;
+
+    const empty: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [],
+    };
+    const upsert = (id: string, data: GeoJSON.FeatureCollection) => {
+      const source = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
+      if (source) source.setData(data);
+      else map.addSource(id, { type: 'geojson', data });
+    };
+
+    const viewGeo = chaseMode
+      ? viewingSpotsGeoJSON(spots)
+      : { points: empty, spokes: empty };
+    upsert(VIEW_POINTS_SOURCE, viewGeo.points);
+    upsert(
+      VIEW_ROUTE_SOURCE,
+      chaseMode && route
+        ? {
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: {},
+                geometry: route.geometry,
+              },
+            ],
+          }
+        : empty,
+    );
+
+    const dom3Points: GeoJSON.FeatureCollection =
+      chaseMode &&
+      dom3TrackEnabled &&
+      dom3?.available &&
+      dom3.lat != null &&
+      dom3.lon != null
+        ? {
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: {
+                  label: dom3.label,
+                  heading: dom3.heading ?? null,
+                  speedMph: dom3.speedMph ?? null,
+                },
+                geometry: {
+                  type: 'Point',
+                  coordinates: [dom3.lon, dom3.lat],
+                },
+              },
+            ],
+          }
+        : empty;
+    const dom3Trail: GeoJSON.FeatureCollection =
+      chaseMode &&
+      dom3TrackEnabled &&
+      dom3?.trail &&
+      dom3.trail.length >= 2
+        ? {
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'LineString',
+                  coordinates: dom3.trail,
+                },
+              },
+            ],
+          }
+        : empty;
+    upsert(DOM3_SOURCE, dom3Points);
+    upsert(DOM3_TRAIL_SOURCE, dom3Trail);
+
+    if (!map.getLayer(VIEW_ROUTE_LAYER)) {
+      map.addLayer({
+        id: VIEW_ROUTE_LAYER,
+        type: 'line',
+        source: VIEW_ROUTE_SOURCE,
+        paint: {
+          'line-color': '#22d3ee',
+          'line-width': 4,
+          'line-opacity': 0.9,
+        },
+      });
+    }
+    if (!map.getLayer(VIEW_POINTS_LAYER)) {
+      map.addLayer({
+        id: VIEW_POINTS_LAYER,
+        type: 'circle',
+        source: VIEW_POINTS_SOURCE,
+        paint: {
+          'circle-radius': [
+            'match',
+            ['get', 'kind'],
+            'footage',
+            8,
+            'structure',
+            7,
+            6,
+          ],
+          'circle-color': [
+            'match',
+            ['get', 'kind'],
+            'footage',
+            '#f472b6',
+            'structure',
+            '#a78bfa',
+            '#38bdf8',
+          ],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
+    }
+    if (!map.getLayer(VIEW_POINTS_LABEL) && map.getLayer(VIEW_POINTS_LAYER)) {
+      map.addLayer({
+        id: VIEW_POINTS_LABEL,
+        type: 'symbol',
+        source: VIEW_POINTS_SOURCE,
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 11,
+          'text-offset': [0, 1.2],
+          'text-anchor': 'top',
+          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+        },
+        paint: {
+          'text-color': '#ecfeff',
+          'text-halo-color': '#0b1220',
+          'text-halo-width': 1.4,
+        },
+      });
+    }
+    if (!map.getLayer(DOM3_TRAIL_LAYER)) {
+      map.addLayer({
+        id: DOM3_TRAIL_LAYER,
+        type: 'line',
+        source: DOM3_TRAIL_SOURCE,
+        paint: {
+          'line-color': '#fbbf24',
+          'line-width': 3,
+          'line-opacity': 0.85,
+        },
+      });
+    }
+    if (!map.getLayer(DOM3_POINT_LAYER)) {
+      map.addLayer({
+        id: DOM3_POINT_LAYER,
+        type: 'circle',
+        source: DOM3_SOURCE,
+        paint: {
+          'circle-radius': 9,
+          'circle-color': '#f59e0b',
+          'circle-stroke-color': '#111827',
+          'circle-stroke-width': 2,
+        },
+      });
+    }
+
+    const onClick = (e: maplibregl.MapLayerMouseEvent) => {
+      const id = e.features?.[0]?.properties?.id;
+      if (typeof id === 'string') setSelectedViewSpotId(id);
+    };
+    map.on('click', VIEW_POINTS_LAYER, onClick);
+    map.on('mouseenter', VIEW_POINTS_LAYER, () => {
+      map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave', VIEW_POINTS_LAYER, () => {
+      map.getCanvas().style.cursor = '';
+    });
+
+    return () => {
+      map.off('click', VIEW_POINTS_LAYER, onClick);
+    };
+  }, [
+    styleLoaded,
+    chaseMode,
+    spots,
+    selected?.id,
+    route,
+    dom3,
+    dom3TrackEnabled,
+    setSelectedViewSpotId,
+  ]);
 
   // Ruler source + line layer.
   useEffect(() => {

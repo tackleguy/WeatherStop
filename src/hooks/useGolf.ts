@@ -68,6 +68,7 @@ export function useGolfHoles(
     bbox?: [number, number, number, number];
     osmType?: string;
     osmId?: number;
+    name?: string;
   } | null,
 ) {
   const [holes, setHoles] = useState<GolfHole[]>([]);
@@ -78,6 +79,7 @@ export function useGolfHoles(
   const bboxKey = course?.bbox?.join(',') ?? '';
   const osmType = course?.osmType;
   const osmId = course?.osmId;
+  const courseName = course?.name;
 
   useEffect(() => {
     if (lat == null || lon == null) return;
@@ -92,6 +94,7 @@ export function useGolfHoles(
       bbox: bounds,
       osmType,
       osmId,
+      courseName,
       signal: ac.signal,
     })
       .then(setHoles)
@@ -104,7 +107,7 @@ export function useGolfHoles(
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [lat, lon, bboxKey, osmType, osmId, attempt]);
+  }, [lat, lon, bboxKey, osmType, osmId, courseName, attempt]);
 
   return {
     holes,

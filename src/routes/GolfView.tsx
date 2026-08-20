@@ -199,13 +199,20 @@ export function GolfView() {
     course?.lat ?? null,
     course?.lon ?? null,
     course
-      ? { bbox: course.bbox, osmType: course.osmType, osmId: course.osmId }
+      ? {
+          bbox: course.bbox,
+          osmType: course.osmType,
+          osmId: course.osmId,
+          name: course.name,
+        }
       : null,
   );
 
   const loops = useMemo(() => loopNames(holes), [holes]);
   const resolvedLoop =
-    loop ?? pickLoopForCourse(course?.name ?? '', loops);
+    loop ??
+    pickLoopForCourse(course?.name ?? '', loops) ??
+    (loops.length === 1 ? loops[0]! : null);
   const loopHoles = useMemo(
     () => holesOnLoop(holes, resolvedLoop),
     [holes, resolvedLoop],

@@ -106,12 +106,116 @@ async function addElevations(holes: GolfHole[]): Promise<GolfHole[]> {
 function parseRef(
   tags: Record<string, string | undefined> | undefined,
 ): number | null {
-  const raw = tags?.ref ?? tags?.hole ?? tags?.name;
-  if (!raw) return null;
-  const m = String(raw).match(/(\d{1,2})/);
-  if (!m) return null;
-  const n = Number(m[1]);
-  return n >= 1 && n <= 36 ? n : null;
+  const direct = tags?.ref ?? tags?.hole;
+  if (direct != null && String(direct).trim() !== '') {
+    const n = Number(String(direct).trim());
+    if (Number.isInteger(n) && n >= 1 && n <= 36) return n;
+  }
+  const name = (tags?.name ?? '').trim();
+  const m = name.match(/^hole\s*#?\s*(\d{1,2})\b/i);
+  if (m) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= 36) return n;
+  }
+  return null;
+}
+
+type Pt = { lat: number; lon: number };
+
+interface CoursePoly {
+  id: number;
+  name: string;
+  loop: string;
+  ring: Array<{ lat: number; lon: number }>;
+}
+
+function loopKey(loop: string | undefined): string {
+  return loop ?? '';
+}
+
+function polygonArea(ring: Pt[]): number {
+  let area = 0;
+  for (let i = 0; i < ring.length - 1; i += 1) {
+    const a = ring[i]!;
+    const b = ring[i + 1]!;
+    area += a.lon * b.lat - b.lon * a.lat;
+  }
+  return Math.abs(area);
+}
+
+function loopForPoint(pt: Pt, polys: CoursePoly[]): string {
+  const hits = polys.filter((p) => pointInPolygon(pt, p.ring));
+  if (hits.length) {
+    hits.sort((a, b) => polygonArea(a.ring) - polygonArea(b.ring));
+    return hits[0]!.loop;
+  }
+  let best: { loop: string; d: number } | null = null;
+  for (const p of polys) {
+    const c = centroid(p.ring);
+    const d = haversineYards(pt.lat, pt.lon, c.lat, c.lon);
+    if (!best || d < best.d) best = { loop: p.loop, d };
+  }
+  return best && best.d < 900 ? best.loop : '';
+}
+
+function holeQuality(h: GolfHole): number {
+  let score = h.yards;
+  if (h.source === 'hole-way') score += 500;
+  score += (h.tees?.length ?? 1) * 5;
+  if (h.path && h.path.length >= 3) score += 50;
+  return score;
+}
+
+/** One numbered hole per layout; merge duplicate centerlines / tee boxes. */
+function normalizeOnePerNumber(holes: GolfHole[]): GolfHole[] {
+  const byLoop = new Map<string, GolfHole[]>();
+  for (const h of holes) {
+    if (h.number < 1 || h.number > 36) continue;
+    const key = loopKey(h.loop);
+    const list = byLoop.get(key) ?? [];
+    list.push(h);
+    byLoop.set(key, list);
+  }
+
+  const out: GolfHole[] = [];
+  for (const group of byLoop.values()) {
+    const byNum = new Map<number, GolfHole[]>();
+    for (const h of group) {
+      const list = byNum.get(h.number) ?? [];
+      list.push(h);
+      byNum.set(h.number, list);
+    }
+
+    for (const dupes of byNum.values()) {
+      dupes.sort((a, b) => holeQuality(b) - holeQuality(a));
+      const bucket: GolfHole[] = [{ ...dupes[0]!, tees: dupes[0]!.tees ? [...dupes[0]!.tees!] : undefined }];
+      for (let i = 1; i < dupes.length; i += 1) {
+        const other = dupes[i]!;
+        const dGreen = haversineYards(
+          bucket[0]!.green.lat,
+          bucket[0]!.green.lon,
+          other.green.lat,
+          other.green.lon,
+        );
+        if (dGreen >= 90) continue;
+        upsertTee(bucket, {
+          number: bucket[0]!.number,
+          loop: loopKey(bucket[0]!.loop),
+          label: '',
+          yards: other.yards,
+          bearingDeg: other.bearingDeg,
+          tee: other.tee,
+          green: bucket[0]!.green,
+          path: other.path,
+          par: other.par,
+          name: other.name,
+          source: other.source,
+        });
+      }
+      out.push(bucket[0]!);
+    }
+  }
+  return out;
 }
 
 function centroid(
@@ -195,29 +299,33 @@ function loopFromTags(
   return dir ? titleCase(dir[1]) : '';
 }
 
-interface CoursePoly {
-  id: number;
-  name: string;
-  loop: string;
-  ring: Array<{ lat: number; lon: number }>;
-}
-
 function extractCoursePolygons(els: OsmElement[]): CoursePoly[] {
-  const out: CoursePoly[] = [];
+  const raw: CoursePoly[] = [];
   for (const el of els) {
     if (el.type !== 'way' || el.tags?.leisure !== 'golf_course') continue;
     const ring = el.geometry;
     if (!ring || ring.length < 4) continue;
     const name = el.tags?.name?.trim();
     if (!name) continue;
-    out.push({
+    raw.push({
       id: el.id,
       name,
       loop: layoutLabelFromName(name),
       ring,
     });
   }
-  return out;
+  const seen = new Map<string, number>();
+  return raw.map((p) => {
+    const base = p.loop;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    if (n === 0) return p;
+    const short = p.name.replace(/\s*(golf\s+)?course\s*$/i, '').trim();
+    return {
+      ...p,
+      loop: titleCaseName(short.length <= 28 ? short : `${base} ${n + 1}`),
+    };
+  });
 }
 
 function relatedCourseNames(a: string, b: string): boolean {
@@ -231,34 +339,20 @@ function assignLoopsFromPolygons(
   selectedId?: number,
 ): GolfHole[] {
   if (!polys.length) return holes;
-  const labeled = holes.map((hole) => {
-    if (isRealLoop(hole.loop)) return hole;
-    const hit = polys.find(
-      (p) =>
-        pointInPolygon(hole.green, p.ring) || pointInPolygon(hole.tee, p.ring),
-    );
-    return hit ? { ...hole, loop: hit.loop } : hole;
-  });
-  if (polys.length <= 1 || (selectedId == null && !selectedName)) {
-    return labeled;
-  }
   const selected =
     polys.find((p) => selectedId != null && p.id === selectedId) ??
     polys.find((p) => selectedName && relatedCourseNames(p.name, selectedName)) ??
     null;
-  if (!selected) return labeled;
-  const keep = new Set(
-    polys
-      .filter(
-        (p) => p.id === selected.id || relatedCourseNames(p.name, selected.name),
-      )
-      .map((p) => p.loop),
-  );
-  if (keep.size < 1) return labeled;
-  return labeled.filter((h) => !h.loop || keep.has(h.loop));
-}
 
-type Pt = { lat: number; lon: number };
+  return holes.map((hole) => {
+    if (isRealLoop(hole.loop)) return hole;
+    let loop = loopForPoint(hole.green, polys) || loopForPoint(hole.tee, polys);
+    if (!loop && selected && pointInPolygon(hole.green, selected.ring)) {
+      loop = selected.loop;
+    }
+    return loop ? { ...hole, loop } : hole;
+  });
+}
 
 function toXY(origin: Pt, p: Pt): { x: number; y: number } {
   const mLat = 111_320;
@@ -536,6 +630,7 @@ function upsertTee(
   const same = holes.find(
     (h) =>
       h.number === input.number &&
+      loopKey(h.loop) === loopKey(input.loop || undefined) &&
       haversineYards(h.green.lat, h.green.lon, input.green.lat, input.green.lon) <
         90,
   );
@@ -612,22 +707,29 @@ const MAX_HOLES = 54;
 
 function autoLoops(holes: GolfHole[]): GolfHole[] {
   const withNums = holes.map((h) => {
-    if (isRealLoop(h.loop) || h.number <= 18) return h;
-    if (h.number <= 36) {
+    if (isRealLoop(h.loop)) return h;
+    if (h.number > 18 && h.number <= 36) {
       return { ...h, loop: 'Second course', number: h.number - 18 };
     }
     return h;
   });
   const unlabeled = withNums.filter((h) => !isRealLoop(h.loop));
-  const counts = new Map<number, number>();
+  if (unlabeled.length < 2) return withNums;
+
+  const byNum = new Map<number, GolfHole[]>();
   for (const h of unlabeled) {
-    counts.set(h.number, (counts.get(h.number) ?? 0) + 1);
+    const list = byNum.get(h.number) ?? [];
+    list.push(h);
+    byNum.set(h.number, list);
   }
-  let anchors = unlabeled.filter((h) => (counts.get(h.number) ?? 0) >= 2);
-  if (anchors.length < 2) {
+  const splitNums = [...byNum.entries()].filter(([, g]) => g.length >= 2);
+  if (!splitNums.length) {
     if (unlabeled.length < 20) return withNums;
-    anchors = unlabeled;
   }
+
+  const anchors = splitNums.length
+    ? splitNums.flatMap(([, g]) => g)
+    : unlabeled;
   const lats = anchors.map((h) => h.green.lat);
   const lons = anchors.map((h) => h.green.lon);
   const dLat = Math.max(...lats) - Math.min(...lats);
@@ -635,6 +737,7 @@ function autoLoops(holes: GolfHole[]): GolfHole[] {
   const meanLat = lats.reduce((s, n) => s + n, 0) / lats.length;
   const meanLon = lons.reduce((s, n) => s + n, 0) / lons.length;
   const ns = dLat >= dLon;
+
   return withNums.map((h) => {
     if (isRealLoop(h.loop)) return h;
     if (ns) return { ...h, loop: h.green.lat >= meanLat ? 'North' : 'South' };
@@ -648,9 +751,9 @@ function finalizeHoles(
   selectedName?: string,
   selectedId?: number,
 ): GolfHole[] {
-  const next = autoLoops(
-    assignLoopsFromPolygons(holes, polys, selectedName, selectedId),
-  );
+  let next = assignLoopsFromPolygons(holes, polys, selectedName, selectedId);
+  next = autoLoops(next);
+  next = normalizeOnePerNumber(next);
   pruneOutlierTees(next);
   next.sort((a, b) => {
     const loop = (a.loop ?? '').localeCompare(b.loop ?? '');
@@ -660,22 +763,26 @@ function finalizeHoles(
   return next.slice(0, MAX_HOLES);
 }
 
-function holesFromWays(els: OsmElement[]): GolfHole[] {
+function holesFromWays(els: OsmElement[], polys: CoursePoly[] = []): GolfHole[] {
   const holes: GolfHole[] = [];
 
   for (const way of els) {
     if (way.type !== 'way' || way.tags?.golf !== 'hole') continue;
     const geom = way.geometry;
     if (!geom || geom.length < 2) continue;
-    let num = parseRef(way.tags);
+    const num = parseRef(way.tags);
     if (num == null) continue;
     const tee = geom[0]!;
     const green = geom[geom.length - 1]!;
     const yards = Math.round(pathLengthYards(geom));
-    if (yards < 40 || yards > 750) continue;
+    if (yards < 35 || yards > 780) continue;
+    let loop = loopFromTags(way.tags);
+    if (!loop && polys.length) {
+      loop = loopForPoint({ lat: green.lat, lon: green.lon }, polys);
+    }
     upsertTee(holes, {
       number: num,
-      loop: loopFromTags(way.tags),
+      loop,
       label: labelFromTags(way.tags),
       color: colorFromTags(way.tags),
       yards,
@@ -769,8 +876,8 @@ function holesFromTeeGreen(
       continue;
     }
 
-    // No centerline nearby — only invent holes when the course is still sparse.
-    if (holes.length >= 9) continue;
+    // Only build missing holes when almost nothing is mapped yet.
+    if (holes.length >= 7) continue;
 
     let best: { pt: Pt; d: number } | null = null;
     for (const g of greenPts) {
@@ -827,11 +934,22 @@ out geom;
 
 async function holesInScope(
   scope: string,
+  selectedName?: string,
   selectedId?: number,
 ): Promise<GolfHole[]> {
   const els = await queryGolfBundle(scope);
-  const holes = holesFromTeeGreen(els, holesFromWays(els));
-  return finalizeHoles(holes, extractCoursePolygons(els), undefined, selectedId);
+  const polys = extractCoursePolygons(els);
+  const holes = holesFromTeeGreen(els, holesFromWays(els, polys));
+  return finalizeHoles(holes, polys, selectedName, selectedId);
+}
+
+function fetchLooksComplete(holes: GolfHole[]): boolean {
+  if (holes.length >= 36) return true;
+  const loops = [
+    ...new Set(holes.map((h) => h.loop).filter((l): l is string => isRealLoop(l))),
+  ];
+  if (loops.length >= 2) return holes.length >= loops.length * 16;
+  return holes.length >= 18;
 }
 
 /**
@@ -844,6 +962,7 @@ async function holesFromOsmMap(
   osmType?: string | null,
   osmId?: number,
   expanded = false,
+  courseName?: string,
 ): Promise<GolfHole[] | null> {
   const [south, west, north, east] = bbox.split(',').map(Number);
   if (
@@ -932,12 +1051,12 @@ async function holesFromOsmMap(
     }
 
     const polys = extractCoursePolygons(elements);
-    let holes = holesFromWays(elements);
+    let holes = holesFromWays(elements, polys);
     holes = holesFromTeeGreen(elements, holes);
     const labeled = finalizeHoles(
       holes,
       polys,
-      undefined,
+      courseName,
       Number.isFinite(osmId) ? osmId : undefined,
     );
     // Only widen the box when this fetch clearly missed a sibling 18.
@@ -973,7 +1092,13 @@ async function holesFromOsmMap(
           quantizeCoord(n + pad, 4),
           quantizeCoord(e + pad, 4),
         ].join(',');
-        const wider = await holesFromOsmMap(union, osmType, osmId, true);
+        const wider = await holesFromOsmMap(
+          union,
+          osmType,
+          osmId,
+          true,
+          courseName,
+        );
         if (wider && wider.length > labeled.length) return wider;
       }
     }
@@ -1012,6 +1137,7 @@ export default async function handler(req: Request): Promise<Response> {
   const bbox = parseBbox(searchParams.get('bbox'));
   const osmType = searchParams.get('osmType');
   const osmId = Number(searchParams.get('osmId'));
+  const courseName = searchParams.get('courseName')?.trim() ?? '';
   const radiusM = Math.min(
     Math.max(Number(searchParams.get('radius') ?? 1800), 500),
     4000,
@@ -1023,7 +1149,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const lat = quantizeCoord(rawLat, 4);
   const lon = quantizeCoord(rawLon, 4);
-  const cacheKey = `h4:${lat}:${lon}:${bbox ?? ''}:${osmType ?? ''}${Number.isFinite(osmId) ? osmId : ''}:${radiusM}`;
+  const cacheKey = `h6:${lat}:${lon}:${bbox ?? ''}:${radiusM}`;
   const cached = HOLE_MEM.get(cacheKey);
   if (cached && Date.now() - cached.at < HOLE_MEM_TTL_MS && cached.holes.length) {
     return jsonResponse(
@@ -1067,7 +1193,13 @@ export default async function handler(req: Request): Promise<Response> {
   // Local munis and small country clubs often fail on public Overpass despite
   // having complete OSM geometry. The main map API is fast for a course bbox.
   if (bbox) {
-    const mapHoles = await holesFromOsmMap(bbox, osmType, osmId);
+    const mapHoles = await holesFromOsmMap(
+      bbox,
+      osmType,
+      osmId,
+      false,
+      courseName || undefined,
+    );
     if (mapHoles !== null) {
       // A successful map response is authoritative for this bbox. If it has
       // no golf geometry, Overpass cannot invent it; return quickly and label
@@ -1100,7 +1232,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   for (const scope of scopes) {
-    if (best.holes.length >= 18) break;
+    if (fetchLooksComplete(best.holes)) break;
     try {
       let holes: GolfHole[];
       if (scope.queryScope.startsWith('area:')) {
@@ -1126,14 +1258,15 @@ out geom;
         })) as { elements?: OsmElement[] };
         const els = bundle.elements ?? [];
         holes = finalizeHoles(
-          holesFromTeeGreen(els, holesFromWays(els)),
+          holesFromTeeGreen(els, holesFromWays(els, extractCoursePolygons(els))),
           extractCoursePolygons(els),
-          undefined,
+          courseName || undefined,
           Number.isFinite(osmId) ? osmId : undefined,
         );
       } else {
         holes = await holesInScope(
           scope.queryScope,
+          courseName || undefined,
           Number.isFinite(osmId) ? osmId : undefined,
         );
       }
@@ -1141,8 +1274,7 @@ out geom;
       if (holes.length > best.holes.length) {
         best = { holes, scope: scope.name };
       }
-      // Good enough — stop burning Overpass quota.
-      if (holes.length >= 18) break;
+      if (fetchLooksComplete(holes)) break;
     } catch (err) {
       lastError = err instanceof Error ? err.message : 'overpass failed';
     }

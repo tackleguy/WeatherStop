@@ -19,9 +19,12 @@ export function loopNames(holes: GolfHole[]): string[] {
 }
 
 export function holesOnLoop(holes: GolfHole[], loop: string | null): GolfHole[] {
-  if (!loop) return holes;
-  const matched = holes.filter((h) => loopsMatch(h.loop ?? '', loop));
-  return matched.length ? matched : holes;
+  const loops = loopNames(holes);
+  if (!loop) {
+    if (loops.length <= 1) return holes;
+    return holes.filter((h) => !h.loop);
+  }
+  return holes.filter((h) => loopsMatch(h.loop ?? '', loop));
 }
 
 function fallbackTee(hole: GolfHole): GolfTeeBox {
@@ -99,13 +102,30 @@ export function availableTeeKinds(holes: GolfHole[]): TeeKind[] {
 export function pickLoopForCourse(courseName: string, loops: string[]): string | null {
   if (!loops.length) return null;
   const n = courseName.toLowerCase();
-  const named = loops.find((loop) => n.includes(loop.toLowerCase()));
+  const byLen = [...loops].sort((a, b) => b.length - a.length);
+  const named = byLen.find((loop) => n.includes(loop.toLowerCase()));
   if (named) return named;
-  const dirs = ['north', 'south', 'east', 'west', 'black', 'red', 'blue', 'gold'];
+  const dirs = [
+    'north',
+    'south',
+    'east',
+    'west',
+    'ocean',
+    'valley',
+    'black',
+    'red',
+    'blue',
+    'gold',
+    'white',
+    'green',
+    'yellow',
+    'championship',
+  ];
   for (const dir of dirs) {
-    if (!n.includes(dir)) continue;
+    if (!new RegExp(`\\b${dir}\\b`, 'i').test(n)) continue;
     const hit = loops.find((loop) => loop.toLowerCase().includes(dir));
     if (hit) return hit;
   }
-  return loops[0] ?? null;
+  if (loops.length === 1) return loops[0]!;
+  return null;
 }

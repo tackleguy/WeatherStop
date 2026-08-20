@@ -248,6 +248,7 @@ export async function fetchGolfHoles(
     bbox?: [number, number, number, number];
     osmType?: string;
     osmId?: number;
+    courseName?: string;
     signal?: AbortSignal;
   },
 ): Promise<GolfHole[]> {
@@ -262,7 +263,7 @@ export async function fetchGolfHoles(
       lon + 0.012 / Math.max(0.2, Math.cos((lat * Math.PI) / 180)),
     ] as [number, number, number, number]);
   const bboxKey = bbox.map((n) => q4(n)).join(',');
-  const key = `golf:v7:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:${opts?.osmType ?? ''}${opts?.osmId ?? ''}:${opts?.radius ?? ''}`;
+  const key = `golf:v9:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
     sessionGet<GolfHole[]>(key, HOLES_TTL_MS);
@@ -275,7 +276,7 @@ export async function fetchGolfHoles(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
-    v: '7',
+    v: '9',
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
   params.set('bbox', bboxKey);
@@ -283,6 +284,7 @@ export async function fetchGolfHoles(
     params.set('osmType', opts.osmType);
     params.set('osmId', String(opts.osmId));
   }
+  if (opts?.courseName) params.set('courseName', opts.courseName);
 
   // Escalating radii so a rate-limited first attempt still lands geometry.
   const radii = opts?.bbox

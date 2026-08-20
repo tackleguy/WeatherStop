@@ -4,11 +4,16 @@
 // every mirror at once. Instead we hedge: start one mirror, and only add the
 // next if it has not answered within `hedgeMs`. That keeps median latency low
 // while using ~1 query per request in the common case.
+//
+// Local backend (when public mirrors fail):
+//   OVERPASS_URL=http://127.0.0.1:12345/api/interpreter
+//   OVERPASS_URLS=http://127.0.0.1:12345/api/interpreter,http://127.0.0.1:8080/api/interpreter
+//   OVERPASS_PREFER_LOCAL=1  → try local endpoints before public mirrors
 
 // Planet-wide instances only. Regional extracts (overpass.osm.ch,
 // overpass.osm.jp) answer 200 with zero elements outside their country, which
 // looks exactly like "no golf here" — never add them.
-const OVERPASS_URLS = [
+const PUBLIC_OVERPASS_URLS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
@@ -16,11 +21,50 @@ const OVERPASS_URLS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
+function localOverpassUrls(): string[] {
+  const raw = [
+    process.env.OVERPASS_URL,
+    ...(process.env.OVERPASS_URLS ?? '').split(','),
+  ]
+    .map((s) => s?.trim())
+    .filter((s): s is string => Boolean(s));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const url of raw) {
+    try {
+      // Validate absolute URL (localhost / private host allowed).
+      new URL(url);
+    } catch {
+      continue;
+    }
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
+function buildMirrorOrder(): string[] {
+  const local = localOverpassUrls();
+  const preferLocal =
+    process.env.OVERPASS_PREFER_LOCAL === '1' ||
+    process.env.OVERPASS_PREFER_LOCAL === 'true';
+  const publicCount = PUBLIC_OVERPASS_URLS.length;
+  const rotatedPublic = PUBLIC_OVERPASS_URLS.map(
+    (_, i) => PUBLIC_OVERPASS_URLS[(cursor + i) % publicCount]!,
+  );
+  cursor = (cursor + 1) % publicCount;
+  if (!local.length) return rotatedPublic;
+  return preferLocal
+    ? [...local, ...rotatedPublic]
+    : [...rotatedPublic, ...local];
+}
+
 export const UA =
   process.env.NWS_USER_AGENT ??
   'weather-stop/1.0 (golf; contact@example.com)';
 
-/** Rotate the starting mirror so load spreads across instances. */
+/** Rotate the starting public mirror so load spreads across instances. */
 let cursor = 0;
 
 interface OverpassOpts {
@@ -73,10 +117,7 @@ export async function overpass(
   const start = Date.now();
   const attempts: Array<Promise<unknown>> = [];
   const errors: string[] = [];
-  const order = OVERPASS_URLS.map(
-    (_, i) => OVERPASS_URLS[(cursor + i) % OVERPASS_URLS.length]!,
-  );
-  cursor = (cursor + 1) % OVERPASS_URLS.length;
+  const order = buildMirrorOrder();
 
   try {
     for (let i = 0; i < order.length; i += 1) {

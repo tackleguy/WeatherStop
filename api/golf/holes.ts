@@ -15,12 +15,20 @@ import {
 import { bearingDeg, haversineYards, pathLengthYards } from './_lib/geo';
 import { findScorecard, type CourseScorecard } from './_data/scorecards';
 import {
+  bboxArea,
+  bboxFromLatLon,
+  fetchOsmMapElements,
+  holesBboxKey,
+  padBbox,
+  parseMapBbox,
+  type OsmMapBbox,
+} from './_lib/osmMap';
+import {
   centerOf,
   errResponse,
   jsonResponse,
   overpass,
   quantizeCoord,
-  UA,
   type OsmElement,
 } from './_lib/overpass';
 
@@ -1025,198 +1033,93 @@ function fetchLooksComplete(holes: GolfHole[]): boolean {
 
 /**
  * Read a small course bbox from OSM's main map API. This avoids overloaded
- * Overpass entirely for local courses while still using authoritative OSM
- * geometry. The endpoint returns nodes + ways, so reconstruct way geometry.
+ * Overpass for local courses while still using authoritative OSM geometry.
  */
 async function holesFromOsmMap(
-  bbox: string,
+  bboxInput: string | OsmMapBbox,
   osmType?: string | null,
   osmId?: number,
   expanded = false,
   courseName?: string,
 ): Promise<GolfHole[] | null> {
-  const [south, west, north, east] = bbox.split(',').map(Number);
-  if (
-    ![south, west, north, east].every(Number.isFinite) ||
-    north! <= south! ||
-    east! <= west!
-  ) {
-    return null;
-  }
-  // OSM map API accepts west,south,east,north and rejects very large boxes.
-  if ((north! - south!) * (east! - west!) > 0.12) return null;
+  const bbox =
+    typeof bboxInput === 'string' ? parseMapBbox(bboxInput) : bboxInput;
+  if (!bbox) return null;
 
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 8_000);
-  try {
-    const res = await fetch(
-      `https://api.openstreetmap.org/api/0.6/map.json?bbox=${west},${south},${east},${north}`,
-      {
-        headers: { 'User-Agent': UA, Accept: 'application/json' },
-        signal: ac.signal,
-      },
-    );
-    if (!res.ok) return null;
-    const body = (await res.json()) as {
-      elements?: Array<{
-        type: 'node' | 'way' | 'relation';
-        id: number;
-        lat?: number;
-        lon?: number;
-        nodes?: number[];
-        tags?: Record<string, string>;
-        members?: Array<{
-          type: 'node' | 'way' | 'relation';
-          ref: number;
-          role?: string;
-        }>;
-      }>;
+  const elements = await fetchOsmMapElements(bbox, {
+    timeoutMs: 8_000,
+    attempts: 2,
+  });
+  if (!elements) return null;
+
+  const polys = extractCoursePolygons(elements);
+  let holes = holesFromWays(elements, polys);
+  holes = holesFromTeeGreen(elements, holes);
+  const labeled = finalizeHoles(
+    holes,
+    polys,
+    courseName,
+    Number.isFinite(osmId) ? osmId : undefined,
+  );
+
+  // Widen when bbox clipped a sibling 18 or duplicate centerlines sit outside.
+  const holeWays = elements.filter((e) => e.tags?.golf === 'hole');
+  const rawRefs = holeWays
+    .map((e) => parseRef(e.tags))
+    .filter((n): n is number => n != null);
+  const dupRefs = rawRefs.length - new Set(rawRefs).size;
+  const needsWiden =
+    (!expanded && dupRefs > 0 && labeled.length <= 18) ||
+    (!expanded &&
+      polys.length >= 2 &&
+      labeled.length > 0 &&
+      labeled.length < polys.length * 14);
+  if (!needsWiden) return labeled;
+
+  let next = padBbox(bbox, dupRefs > 0 ? 0.4 : 0.2);
+  if (polys.length) {
+    let s = Infinity;
+    let w = Infinity;
+    let n = -Infinity;
+    let e = -Infinity;
+    for (const poly of polys) {
+      for (const pt of poly.ring) {
+        s = Math.min(s, pt.lat);
+        n = Math.max(n, pt.lat);
+        w = Math.min(w, pt.lon);
+        e = Math.max(e, pt.lon);
+      }
+    }
+    next = {
+      south: s - 0.002,
+      west: w - 0.002,
+      north: n + 0.002,
+      east: e + 0.002,
     };
-    const raw = body.elements ?? [];
-    const keepNodeIds = new Set<number>();
-    const keepWayIds = new Set<number>();
-    for (const el of raw) {
-      if (el.type !== 'way') continue;
-      const tags = el.tags ?? {};
-      if (!tags.golf && tags.leisure !== 'golf_course') continue;
-      keepWayIds.add(el.id);
-      for (const id of el.nodes ?? []) keepNodeIds.add(id);
-    }
-    const nodeById = new Map<number, { lat: number; lon: number }>();
-    for (const el of raw) {
-      if (
-        el.type === 'node' &&
-        typeof el.lat === 'number' &&
-        typeof el.lon === 'number' &&
-        (keepNodeIds.has(el.id) || Boolean(el.tags?.golf))
-      ) {
-        nodeById.set(el.id, { lat: el.lat, lon: el.lon });
-      }
-    }
-
-    const elements: OsmElement[] = [];
-    for (const el of raw) {
-      if (el.type === 'node') {
-        if (!el.tags?.golf) continue;
-        if (typeof el.lat !== 'number' || typeof el.lon !== 'number') continue;
-        elements.push({
-          type: 'node' as const,
-          id: el.id,
-          lat: el.lat,
-          lon: el.lon,
-          tags: el.tags,
-        });
-        continue;
-      }
-      if (el.type !== 'way' || !keepWayIds.has(el.id)) continue;
-      const geometry = (el.nodes ?? [])
-        .map((id) => nodeById.get(id))
-        .filter((point): point is { lat: number; lon: number } => Boolean(point));
-      elements.push({
-        type: 'way' as const,
-        id: el.id,
-        nodes: el.nodes,
-        tags: el.tags,
-        geometry,
-      });
-    }
-
-    const polys = extractCoursePolygons(elements);
-    let holes = holesFromWays(elements, polys);
-    holes = holesFromTeeGreen(elements, holes);
-    const labeled = finalizeHoles(
-      holes,
-      polys,
-      courseName,
-      Number.isFinite(osmId) ? osmId : undefined,
-    );
-    // Widen when bbox clipped a sibling 18 or duplicate centerlines sit outside.
-    const holeWays = elements.filter((e) => e.tags?.golf === 'hole');
-    const rawRefs = holeWays
-      .map((e) => parseRef(e.tags))
-      .filter((n): n is number => n != null);
-    const dupRefs = rawRefs.length - new Set(rawRefs).size;
-    const needsWiden =
-      (!expanded &&
-        dupRefs > 0 &&
-        labeled.length <= 18) ||
-      (!expanded &&
-        polys.length >= 2 &&
-        labeled.length > 0 &&
-        labeled.length < polys.length * 14);
-    if (needsWiden) {
-      let s = south!;
-      let w = west!;
-      let n = north!;
-      let e = east!;
-      if (polys.length) {
-        s = Infinity;
-        w = Infinity;
-        n = -Infinity;
-        e = -Infinity;
-        for (const poly of polys) {
-          for (const pt of poly.ring) {
-            s = Math.min(s, pt.lat);
-            n = Math.max(n, pt.lat);
-            w = Math.min(w, pt.lon);
-            e = Math.max(e, pt.lon);
-          }
-        }
-      } else if (dupRefs > 0) {
-        const padLat = (north! - south!) * 0.4;
-        const padLon = (east! - west!) * 0.4;
-        s -= padLat;
-        n += padLat;
-        w -= padLon;
-        e += padLon;
-      }
-      const pad = polys.length ? 0.002 : 0.001;
-      const area = (n - s + 2 * pad) * (e - w + 2 * pad);
-      const grew =
-        dupRefs > 0 ||
-        s - pad < south! - 0.0008 ||
-        w - pad < west! - 0.0008 ||
-        n + pad > north! + 0.0008 ||
-        e + pad > east! + 0.0008;
-      if (grew && area <= 0.08 && area > 0) {
-        const union = [
-          quantizeCoord(s - pad, 4),
-          quantizeCoord(w - pad, 4),
-          quantizeCoord(n + pad, 4),
-          quantizeCoord(e + pad, 4),
-        ].join(',');
-        const wider = await holesFromOsmMap(
-          union,
-          osmType,
-          osmId,
-          true,
-          courseName,
-        );
-        if (wider && wider.length > labeled.length) return wider;
-      }
-    }
-    return labeled;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
   }
+  if (bboxArea(next) > 0.08) return labeled;
+  const wider = await holesFromOsmMap(
+    next,
+    osmType,
+    osmId,
+    true,
+    courseName,
+  );
+  if (wider && wider.length > labeled.length) return wider;
+  return labeled;
 }
 
 /** Parse `bbox=south,west,north,east`, padded to catch edge tees. */
 function parseBbox(raw: string | null): string | null {
-  if (!raw) return null;
-  const parts = raw.split(',').map(Number);
-  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
-  const [s, w, n, e] = parts as [number, number, number, number];
-  if (n <= s || e <= w) return null;
+  const parsed = parseMapBbox(raw);
+  if (!parsed) return null;
   const pad = 0.004; // ~440 m — tees on the edge without swallowing the city
-  return [
-    quantizeCoord(s - pad, 4),
-    quantizeCoord(w - pad, 4),
-    quantizeCoord(n + pad, 4),
-    quantizeCoord(e + pad, 4),
-  ].join(',');
+  return holesBboxKey({
+    south: quantizeCoord(parsed.south - pad, 4),
+    west: quantizeCoord(parsed.west - pad, 4),
+    north: quantizeCoord(parsed.north + pad, 4),
+    east: quantizeCoord(parsed.east + pad, 4),
+  });
 }
 
 function aroundScope(lat: number, lon: number, radiusM: number): string {
@@ -1288,45 +1191,45 @@ export default async function handler(req: Request): Promise<Response> {
   let lastError: string | null = null;
   let best: { holes: GolfHole[]; scope: string } = { holes: [], scope: 'none' };
 
-  // Local munis and small country clubs often fail on public Overpass despite
-  // having complete OSM geometry. The main map API is fast for a course bbox.
-  if (bbox) {
+  // Prefer OSM's main map API for a course bbox. Public Overpass mirrors are
+  // often busy; map.json is local-to-the-bbox and keeps Golf working offline
+  // from Overpass health. When the client didn't send a bbox, synthesize one.
+  const mapBbox =
+    (bbox ? parseMapBbox(bbox) : null) ??
+    bboxFromLatLon(lat, lon, Math.min(radiusM, 2200));
+
+  const tryMap = async (
+    box: OsmMapBbox,
+    scopeName: string,
+  ): Promise<boolean> => {
     const mapHoles = await holesFromOsmMap(
-      bbox,
+      box,
       osmType,
       osmId,
       false,
       courseName || undefined,
     );
-    if (mapHoles !== null) {
-      // A successful map response is authoritative for this bbox. If it has
-      // no golf geometry, Overpass cannot invent it; return quickly and label
-      // the course as unmapped instead of retrying for a minute.
-      if (!mapHoles.length) {
-        return jsonResponse(
-          {
-            holes: [],
-            count: 0,
-            scope: 'osm-map-unmapped',
-            attribution: '© OpenStreetMap contributors (ODbL)',
-          },
-          600,
-          3600,
-        );
-      }
-      const holesWithElevation = await addElevations(mapHoles);
-      HOLE_MEM.set(cacheKey, { at: Date.now(), holes: holesWithElevation });
-      return jsonResponse(
-        {
-          holes: holesWithElevation,
-          count: holesWithElevation.length,
-          scope: 'osm-map',
-          attribution: '© OpenStreetMap contributors (ODbL)',
-        },
-        3600,
-        604_800,
-      );
+    // null = transport failure → fall through. [] = mapped but no golf tags.
+    if (mapHoles === null) return false;
+    if (mapHoles.length > best.holes.length) {
+      best = { holes: mapHoles, scope: scopeName };
     }
+    return fetchLooksComplete(mapHoles);
+  };
+
+  if (await tryMap(mapBbox, bbox ? 'osm-map' : 'osm-map-synth')) {
+    const holesWithElevation = await addElevations(best.holes);
+    HOLE_MEM.set(cacheKey, { at: Date.now(), holes: holesWithElevation });
+    return jsonResponse(
+      {
+        holes: holesWithElevation,
+        count: holesWithElevation.length,
+        scope: best.scope,
+        attribution: '© OpenStreetMap contributors (ODbL)',
+      },
+      3600,
+      604_800,
+    );
   }
 
   for (const scope of scopes) {
@@ -1378,8 +1281,16 @@ out geom;
     }
   }
 
+  // Overpass busy / empty → one more direct OSM map attempt with a wider box.
+  if (!fetchLooksComplete(best.holes)) {
+    const wider = padBbox(mapBbox, 0.5);
+    if (bboxArea(wider) <= 0.1) {
+      await tryMap(wider, 'osm-map-retry');
+    }
+  }
+
   if (!best.holes.length) {
-    // Only error when every attempt failed — an empty OSM map stays 200.
+    // Only error when every Overpass attempt failed and map also found nothing.
     if (lastError) return errResponse(lastError);
     return jsonResponse(
       {

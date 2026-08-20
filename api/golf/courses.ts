@@ -15,6 +15,7 @@ import {
   UA,
   type OsmElement,
 } from './_lib/overpass';
+import { bboxFromLatLon, fetchOsmMapElements, padBbox } from './_lib/osmMap';
 import { isClubSibling } from './_lib/courseRelate';
 
 export const config = { runtime: 'edge' };
@@ -438,6 +439,63 @@ out center tags bb;
   return courses;
 }
 
+/** Direct OSM map.json course discovery when Photon + Overpass are down. */
+async function mapCourses(
+  lat: number,
+  lon: number,
+  originLat: number,
+  originLon: number,
+  radiusM: number,
+): Promise<GolfCourseSummary[]> {
+  const box = padBbox(bboxFromLatLon(lat, lon, Math.min(radiusM, 3500)), 0.15);
+  const elements = await fetchOsmMapElements(box, {
+    timeoutMs: 7_000,
+    attempts: 2,
+  });
+  if (!elements) return [];
+
+  const courses: GolfCourseSummary[] = [];
+  for (const el of elements) {
+    if (el.type !== 'way' && el.type !== 'relation') continue;
+    if (el.tags?.leisure !== 'golf_course') continue;
+    const c = centerOf(el);
+    if (!c) continue;
+    const tags = el.tags ?? {};
+    const holes = tags.holes ? Number(tags.holes) : undefined;
+    const par = tags.par ? Number(tags.par) : undefined;
+    const name = tags.name?.trim() || 'Unnamed golf course';
+    let bbox: [number, number, number, number] | undefined;
+    if (el.geometry?.length) {
+      let s = Infinity;
+      let w = Infinity;
+      let n = -Infinity;
+      let e = -Infinity;
+      for (const pt of el.geometry) {
+        s = Math.min(s, pt.lat);
+        n = Math.max(n, pt.lat);
+        w = Math.min(w, pt.lon);
+        e = Math.max(e, pt.lon);
+      }
+      if (Number.isFinite(s)) bbox = [s, w, n, e];
+    }
+    courses.push({
+      id: `${el.type}/${el.id}`,
+      osmType: el.type as 'way' | 'relation',
+      osmId: el.id,
+      name,
+      lat: c.lat,
+      lon: c.lon,
+      bbox,
+      holes: Number.isFinite(holes) ? holes : undefined,
+      par: Number.isFinite(par) ? par : undefined,
+      website: tags.website || tags['contact:website'],
+      access: classifyAccess(name, tags),
+      distanceMi: haversineMi(originLat, originLon, c.lat, c.lon),
+    });
+  }
+  return courses;
+}
+
 function mergeCourses(
   primary: GolfCourseSummary[],
   extra: GolfCourseSummary[],
@@ -500,7 +558,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   const finish = (
     courses: GolfCourseSummary[],
-    source: 'photon' | 'overpass',
+    source: 'photon' | 'overpass' | 'osm-map',
     opts?: { preserveOrder?: boolean },
   ) =>
     jsonResponse(
@@ -579,6 +637,22 @@ export default async function handler(req: Request): Promise<Response> {
     }
     const osm = await osmP;
     if (osm.length) return finish(osm, 'overpass');
+
+    // Photon + Overpass failed or empty — last resort is OSM's map API for a
+    // tight local bbox so nearby Golf still works when mirrors are busy.
+    try {
+      const local = await mapCourses(
+        lat,
+        lon,
+        rawLat,
+        rawLon,
+        Math.min(radiusM, 4_000),
+      );
+      if (local.length) return finish(local, 'osm-map');
+    } catch (err) {
+      failures.push(err instanceof Error ? err.message : 'osm-map failed');
+    }
+
     if (!failures.length) failures.push('no golf courses in range');
   } finally {
     clearTimeout(hardStop);

@@ -1059,28 +1059,50 @@ async function holesFromOsmMap(
       courseName,
       Number.isFinite(osmId) ? osmId : undefined,
     );
-    // Only widen the box when this fetch clearly missed a sibling 18.
-    if (
-      !expanded &&
-      polys.length >= 2 &&
-      labeled.length > 0 &&
-      labeled.length < 15
-    ) {
-      let s = Infinity;
-      let w = Infinity;
-      let n = -Infinity;
-      let e = -Infinity;
-      for (const poly of polys) {
-        for (const pt of poly.ring) {
-          s = Math.min(s, pt.lat);
-          n = Math.max(n, pt.lat);
-          w = Math.min(w, pt.lon);
-          e = Math.max(e, pt.lon);
+    // Widen when bbox clipped a sibling 18 or duplicate centerlines sit outside.
+    const holeWays = elements.filter((e) => e.tags?.golf === 'hole');
+    const rawRefs = holeWays
+      .map((e) => parseRef(e.tags))
+      .filter((n): n is number => n != null);
+    const dupRefs = rawRefs.length - new Set(rawRefs).size;
+    const needsWiden =
+      (!expanded &&
+        dupRefs > 0 &&
+        labeled.length <= 18) ||
+      (!expanded &&
+        polys.length >= 2 &&
+        labeled.length > 0 &&
+        labeled.length < polys.length * 14);
+    if (needsWiden) {
+      let s = south!;
+      let w = west!;
+      let n = north!;
+      let e = east!;
+      if (polys.length) {
+        s = Infinity;
+        w = Infinity;
+        n = -Infinity;
+        e = -Infinity;
+        for (const poly of polys) {
+          for (const pt of poly.ring) {
+            s = Math.min(s, pt.lat);
+            n = Math.max(n, pt.lat);
+            w = Math.min(w, pt.lon);
+            e = Math.max(e, pt.lon);
+          }
         }
+      } else if (dupRefs > 0) {
+        const padLat = (north! - south!) * 0.4;
+        const padLon = (east! - west!) * 0.4;
+        s -= padLat;
+        n += padLat;
+        w -= padLon;
+        e += padLon;
       }
-      const pad = 0.002;
+      const pad = polys.length ? 0.002 : 0.001;
       const area = (n - s + 2 * pad) * (e - w + 2 * pad);
       const grew =
+        dupRefs > 0 ||
         s - pad < south! - 0.0008 ||
         w - pad < west! - 0.0008 ||
         n + pad > north! + 0.0008 ||

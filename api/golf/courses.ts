@@ -15,6 +15,7 @@ import {
   UA,
   type OsmElement,
 } from './_lib/overpass';
+import { isClubSibling } from './_lib/courseRelate';
 
 export const config = { runtime: 'edge' };
 
@@ -241,14 +242,23 @@ function catalogQueries(q: string): string[] {
     variants.add('Torrey Pines North');
     variants.add('Torrey Pines South');
   }
+  if (/pelican/.test(lower) && /bay/.test(lower)) {
+    variants.add('Club at Pelican Bay North');
+    variants.add('Club at Pelican Bay South');
+  }
+  if (/pelican/.test(lower) && !/bay/.test(lower)) {
+    variants.add('Pelican Hill North');
+    variants.add('Pelican Hill South');
+  }
 
   const hasDirection = /\b(north|south|east|west|nines?)\b/.test(lower);
   if (!hasDirection) {
-    variants.add(`${base} North`);
-    variants.add(`${base} South`);
+    for (const dir of ['North', 'South', 'East', 'West']) {
+      variants.add(`${base} ${dir}`);
+    }
   }
 
-  return [...variants].slice(0, 5);
+  return [...variants].slice(0, 8);
 }
 
 async function photonSearchOnce(
@@ -442,6 +452,28 @@ function mergeCourses(
   return out;
 }
 
+/** OSM often lists North/South as separate polygons Photon omits from reverse search. */
+function expandWithOsmSiblings(
+  primary: GolfCourseSummary[],
+  osm: GolfCourseSummary[],
+  maxMi = 2.5,
+): GolfCourseSummary[] {
+  if (!primary.length || !osm.length) return primary;
+  const out = [...primary];
+  const seen = new Set(primary.map((c) => c.id));
+  for (const seed of primary) {
+    for (const sibling of osm) {
+      if (seen.has(sibling.id)) continue;
+      const d = haversineMi(seed.lat, seed.lon, sibling.lat, sibling.lon);
+      if (d > maxMi) continue;
+      if (!isClubSibling(seed.name, sibling.name)) continue;
+      seen.add(sibling.id);
+      out.push(sibling);
+    }
+  }
+  return out;
+}
+
 export default async function handler(req: Request): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const rawLat = Number(searchParams.get('lat'));
@@ -488,7 +520,22 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (q.length >= 2) {
     try {
-      const courses = await photonCatalog(q, rawLat, rawLon, limit, ac.signal);
+      let courses = await photonCatalog(q, rawLat, rawLon, limit, ac.signal);
+      const seed = courses[0];
+      if (seed) {
+        try {
+          const osm = await overpassCourses(
+            seed.lat,
+            seed.lon,
+            rawLat,
+            rawLon,
+            8_000,
+          );
+          courses = expandWithOsmSiblings(courses, osm, 3);
+        } catch {
+          // Name search still works without sibling polygons.
+        }
+      }
       return finish(courses, 'photon', { preserveOrder: true });
     } catch (err) {
       return errResponse(
@@ -525,10 +572,10 @@ export default async function handler(req: Request): Promise<Response> {
       const osm = await Promise.race([
         osmP,
         new Promise<GolfCourseSummary[]>((resolve) => {
-          setTimeout(() => resolve([]), 900);
+          setTimeout(() => resolve([]), 2500);
         }),
       ]);
-      return finish(mergeCourses(photon, osm), 'photon');
+      return finish(expandWithOsmSiblings(photon, osm), 'photon');
     }
     const osm = await osmP;
     if (osm.length) return finish(osm, 'overpass');

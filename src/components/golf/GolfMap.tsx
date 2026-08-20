@@ -11,6 +11,11 @@ import {
   targetPointGeoJSON,
 } from '../../lib/golfMeasure';
 import type { BagClub } from '../../lib/golfProfile';
+import type { TrackedShot } from '../../lib/golfTracker';
+import {
+  shotTracesGeoJSON,
+  shotPointsGeoJSON,
+} from '../../lib/golfTracker';
 import {
   emptyCollection,
   shotPathGeoJSON,
@@ -42,6 +47,10 @@ interface Props {
   showWindLegend?: boolean;
   fitPadding?: number | { top: number; right: number; bottom: number; left: number };
   legendClassName?: string;
+  /** GPS shot trace data for live tracking. */
+  trackedShots?: TrackedShot[];
+  /** Live GPS position dot. */
+  gpsPosition?: { lat: number; lon: number } | null;
 }
 
 const SRC = 'golf-holes';
@@ -53,6 +62,9 @@ const SRC_ARCS = 'golf-arcs';
 const SRC_TARGET_LINE = 'golf-target-line';
 const SRC_TARGET = 'golf-target-pt';
 const SRC_PLAY = 'golf-play-lines';
+const SRC_SHOT_TRACES = 'golf-shot-traces';
+const SRC_SHOT_PTS = 'golf-shot-pts';
+const SRC_GPS = 'golf-gps-pos';
 
 const LINE = 'golf-hole-lines';
 const LINE_ACTIVE = 'golf-hole-lines-active';
@@ -75,6 +87,11 @@ const LYR_PLAY_APP = 'golf-play-app-lyr';
 const LYR_PLAY_CHIP = 'golf-play-chip-lyr';
 const LYR_PLAY_PUTT = 'golf-play-putt-lyr';
 const LYR_PLAY_TICK = 'golf-play-tick-lyr';
+const LYR_SHOT_TRACE = 'golf-shot-trace-lyr';
+const LYR_SHOT_PT = 'golf-shot-pt-lyr';
+const LYR_SHOT_LABEL = 'golf-shot-label-lyr';
+const LYR_GPS = 'golf-gps-lyr';
+const LYR_GPS_RING = 'golf-gps-ring-lyr';
 
 const CLICK_LAYERS = [LINE_HIT, LINE, LINE_ACTIVE, LYR_TEE_HIT, LYR_GREEN_HIT, LYR_TEE, LYR_GREEN];
 
@@ -155,6 +172,8 @@ export function GolfMap({
   showWindLegend = true,
   fitPadding = 60,
   legendClassName = 'left-3 top-3',
+  trackedShots = [],
+  gpsPosition = null,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -247,6 +266,9 @@ export function GolfMap({
       });
       map.addSource(SRC_TARGET, { type: 'geojson', data: emptyCollection() });
       map.addSource(SRC_PLAY, { type: 'geojson', data: emptyCollection() });
+      map.addSource(SRC_SHOT_TRACES, { type: 'geojson', data: emptyCollection() });
+      map.addSource(SRC_SHOT_PTS, { type: 'geojson', data: emptyCollection() });
+      map.addSource(SRC_GPS, { type: 'geojson', data: emptyCollection() });
 
       // Fat invisible stroke first so tees/fairways are tappable on phones.
       map.addLayer({
@@ -489,6 +511,64 @@ export function GolfMap({
         },
       });
 
+      // Shot tracker layers
+      map.addLayer({
+        id: LYR_SHOT_TRACE,
+        type: 'line',
+        source: SRC_SHOT_TRACES,
+        paint: {
+          'line-color': '#f472b6',
+          'line-width': 2.8,
+          'line-opacity': 0.9,
+        },
+      });
+      map.addLayer({
+        id: LYR_SHOT_PT,
+        type: 'circle',
+        source: SRC_SHOT_PTS,
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#f472b6',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+      map.addLayer({
+        id: LYR_SHOT_LABEL,
+        type: 'symbol',
+        source: SRC_SHOT_PTS,
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 10,
+          'text-font': ['Open Sans Bold'],
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
+        },
+      });
+      map.addLayer({
+        id: LYR_GPS_RING,
+        type: 'circle',
+        source: SRC_GPS,
+        paint: {
+          'circle-radius': 18,
+          'circle-color': '#3b82f6',
+          'circle-opacity': 0.15,
+        },
+      });
+      map.addLayer({
+        id: LYR_GPS,
+        type: 'circle',
+        source: SRC_GPS,
+        paint: {
+          'circle-radius': 7,
+          'circle-color': '#3b82f6',
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': '#ffffff',
+        },
+      });
+
       const clickMap = (e: maplibregl.MapMouseEvent) => {
         const hits = map.queryRenderedFeatures(e.point, { layers: CLICK_LAYERS });
         if (hits.length > 0) {
@@ -673,6 +753,46 @@ export function GolfMap({
         hole && onSetTargetRef.current ? 'crosshair' : '';
     });
   }, [holes, activeHole, target, arcClubs, playLines, whenReady]);
+
+  // Shot tracker traces + landing points
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenReady(() => {
+      (
+        map.getSource(SRC_SHOT_TRACES) as maplibregl.GeoJSONSource | undefined
+      )?.setData(shotTracesGeoJSON(trackedShots));
+      (
+        map.getSource(SRC_SHOT_PTS) as maplibregl.GeoJSONSource | undefined
+      )?.setData(shotPointsGeoJSON(trackedShots));
+    });
+  }, [trackedShots, whenReady]);
+
+  // Live GPS position blue dot
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    whenReady(() => {
+      const data: GeoJSON.FeatureCollection = gpsPosition
+        ? {
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Point',
+                  coordinates: [gpsPosition.lon, gpsPosition.lat],
+                },
+              },
+            ],
+          }
+        : emptyCollection();
+      (
+        map.getSource(SRC_GPS) as maplibregl.GeoJSONSource | undefined
+      )?.setData(data);
+    });
+  }, [gpsPosition, whenReady]);
 
   const windLabel =
     windFromDeg != null

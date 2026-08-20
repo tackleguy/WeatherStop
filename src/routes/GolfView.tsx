@@ -61,6 +61,20 @@ import {
   teeKindLabel,
   teesOnHole,
 } from '../lib/golfTees';
+import {
+  type TrackedRound,
+  addShot,
+  clearRound,
+  loadRound,
+  newRound,
+  saveRound,
+  shotsForHole,
+  roundScoreLabel,
+  undoLastShot,
+  bestClubForDistance,
+} from '../lib/golfTracker';
+import { useGpsWatch } from '../hooks/useGpsWatch';
+import { haversineYards } from '../lib/golfMeasure';
 
 interface Loc {
   name: string;
@@ -179,6 +193,11 @@ export function GolfView() {
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [target, setTarget] = useState<LonLat | null>(null);
   const [bookOpen, setBookOpen] = useState(false);
+
+  // ── Shot tracker ──
+  const [round, setRound] = useState<TrackedRound | null>(() => loadRound());
+  const tracking = round != null;
+  const { position: gpsPos } = useGpsWatch(tracking);
 
   const searchLat = course?.lat ?? loc.lat;
   const searchLon = course?.lon ?? loc.lon;
@@ -336,6 +355,80 @@ export function GolfView() {
       if (isMobile) setPickerOpen(false);
     },
     [isMobile],
+  );
+
+  const startRound = useCallback(() => {
+    if (!course) return;
+    const r = newRound(course.id, course.name, resolvedLoop ?? undefined);
+    setRound(r);
+    saveRound(r);
+  }, [course, resolvedLoop]);
+
+  const endRound = useCallback(() => {
+    clearRound();
+    setRound(null);
+  }, []);
+
+  const dropShot = useCallback(() => {
+    if (!round || !activeHoleObj || !gpsPos) return;
+    const holeShots = shotsForHole(round, activeHoleObj.number);
+    const from =
+      holeShots.length > 0
+        ? holeShots[holeShots.length - 1]!.to
+        : { lat: activeHoleObj.tee.lat, lon: activeHoleObj.tee.lon };
+    const to = { lat: gpsPos.lat, lon: gpsPos.lon };
+    const distShot = haversineYards(from.lat, from.lon, to.lat, to.lon);
+    const club = bestClubForDistance(distShot, bag);
+    const updated = addShot(
+      round,
+      activeHoleObj.number,
+      from,
+      to,
+      activeHoleObj.green,
+      club,
+    );
+    setRound(updated);
+    saveRound(updated);
+  }, [round, activeHoleObj, gpsPos, bag]);
+
+  const dropShotAtTap = useCallback(
+    (pt: LonLat) => {
+      if (!round || !activeHoleObj) {
+        setTarget(pt);
+        return;
+      }
+      const holeShots = shotsForHole(round, activeHoleObj.number);
+      const from =
+        holeShots.length > 0
+          ? holeShots[holeShots.length - 1]!.to
+          : { lat: activeHoleObj.tee.lat, lon: activeHoleObj.tee.lon };
+      const to = { lat: pt.lat, lon: pt.lon };
+      const distShot = haversineYards(from.lat, from.lon, to.lat, to.lon);
+      const club = bestClubForDistance(distShot, bag);
+      const updated = addShot(
+        round,
+        activeHoleObj.number,
+        from,
+        to,
+        activeHoleObj.green,
+        club,
+      );
+      setRound(updated);
+      saveRound(updated);
+    },
+    [round, activeHoleObj, bag],
+  );
+
+  const undoShot = useCallback(() => {
+    if (!round) return;
+    const updated = undoLastShot(round);
+    setRound(updated);
+    saveRound(updated);
+  }, [round]);
+
+  const activeHoleShots = useMemo(
+    () => (round && activeHole != null ? shotsForHole(round, activeHole) : []),
+    [round, activeHole],
   );
 
   const stepHole = useCallback(
@@ -645,7 +738,7 @@ export function GolfView() {
                 onSelectHole={setActiveHole}
                 target={target}
                 arcClubs={arcClubs}
-                onSetTarget={setTarget}
+                onSetTarget={tracking ? dropShotAtTap : setTarget}
                 playLines={playLines}
                 windFromDeg={ensemble?.ensemble.windFromDeg ?? null}
                 windMph={ensemble?.ensemble.windMph ?? null}
@@ -656,6 +749,8 @@ export function GolfView() {
                 showWindLegend={!isMobile}
                 fitPadding={isMobile ? MOBILE_FIT_PADDING : 60}
                 legendClassName="left-3 top-16"
+                trackedShots={activeHoleShots}
+                gpsPosition={gpsPos ? { lat: gpsPos.lat, lon: gpsPos.lon } : null}
               />
             </GolfMapBoundary>
 
@@ -754,8 +849,73 @@ export function GolfView() {
                       >
                         <Compass className="h-5 w-5 md:h-4 md:w-4" />
                       </button>
+                      <span className="mx-0.5 h-6 w-px bg-[var(--line-subtle)]" />
+                      {tracking ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={dropShot}
+                            disabled={!gpsPos || !activeHoleObj}
+                            title="Drop shot at GPS position"
+                            className="rounded-lg bg-pink-500/20 px-2.5 py-1.5 text-[11px] font-semibold text-pink-300 transition-colors hover:bg-pink-500/30 disabled:opacity-40"
+                          >
+                            Drop Shot
+                          </button>
+                          <button
+                            type="button"
+                            onClick={undoShot}
+                            disabled={!round?.shots.length}
+                            title="Undo last shot"
+                            className="rounded-lg px-1.5 py-1.5 text-[11px] text-[var(--ink-3)] hover:bg-white/10 disabled:opacity-30"
+                          >
+                            Undo
+                          </button>
+                          <span className="text-[11px] font-medium tabular-nums text-pink-200">
+                            {roundScoreLabel(round)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={endRound}
+                            title="End round"
+                            className="rounded-lg px-2 py-1.5 text-[11px] text-red-300 hover:bg-red-500/20"
+                          >
+                            End
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={startRound}
+                          disabled={!course}
+                          title="Start tracking a round"
+                          className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-pink-300 hover:bg-pink-500/20 disabled:opacity-40"
+                        >
+                          Track
+                        </button>
+                      )}
                     </>
                   ) : null}
+                </GlassPanel>
+              </div>
+            )}
+
+            {/* Shot tracker info bar */}
+            {tracking && activeHoleObj && activeHoleShots.length > 0 && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-[calc(10rem+12px)] z-10 flex justify-center px-3 md:right-[352px] md:left-3 md:inset-x-auto md:bottom-3 md:justify-start">
+                <GlassPanel
+                  variant="high"
+                  className="pointer-events-auto px-3 py-2 shadow-xl"
+                >
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className="font-semibold text-pink-200">
+                      Hole {activeHoleObj.number}
+                    </span>
+                    {activeHoleShots.map((s) => (
+                      <span key={s.id} className="tabular-nums text-[var(--ink-2)]">
+                        {s.shotNumber}. {s.club ?? '?'} {s.yards}yd → {s.remainYards}yd
+                      </span>
+                    ))}
+                  </div>
                 </GlassPanel>
               </div>
             )}

@@ -579,8 +579,11 @@ export function GolfMap({
         const hits = map.queryRenderedFeatures(e.point, { layers: CLICK_LAYERS });
         if (hits.length > 0) {
           const n = holeNumberFromFeature(hits[0]?.properties?.number);
-          if (n != null) onSelectRef.current?.(n);
-          return;
+          const active = activeHoleRef.current;
+          if (n != null && (active == null || n !== active || !onSetTargetRef.current)) {
+            onSelectRef.current?.(n);
+            return;
+          }
         }
         if (activeHoleRef.current == null) return;
         onSetTargetRef.current?.({ lat: e.lngLat.lat, lon: e.lngLat.lng });

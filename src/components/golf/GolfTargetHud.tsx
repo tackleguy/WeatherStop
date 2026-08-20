@@ -18,6 +18,7 @@ interface Props {
   turf?: TurfReport;
   forecast?: HoleForecast | null;
   onReset: () => void;
+  mode?: 'tee' | 'approach';
 }
 
 export function GolfTargetHud({
@@ -29,6 +30,7 @@ export function GolfTargetHud({
   turf,
   forecast,
   onReset,
+  mode = 'tee',
 }: Props) {
   const split: MeasureSplit = measureFromTee(hole, target);
   const windAdj = brief?.windAdjustmentYards ?? 0;
@@ -58,7 +60,9 @@ export function GolfTargetHud({
       >
         <div className="mb-1.5 flex items-center justify-between gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--ink-3)]">
-            Tee planner · tap the map
+            {mode === 'approach'
+              ? 'Approach mode · tap your ball spot'
+              : 'Tee planner · tap the map'}
           </span>
           <button
             type="button"
@@ -71,36 +75,37 @@ export function GolfTargetHud({
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg bg-black/30 px-2.5 py-2">
             <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
-              Tee → target
+              {mode === 'approach' ? 'Start → green' : 'Tee → target'}
             </div>
             <div className="text-[22px] font-semibold tabular-nums leading-tight text-[var(--ink-1)]">
-              {split.carryYards}
+              {mode === 'approach' ? split.remainYards : split.carryYards}
               <span className="ml-0.5 text-[11px] font-medium text-[var(--ink-3)]">
                 yd
               </span>
             </div>
             <div className="mt-0.5 text-[11px] text-[var(--accent)]">
-              {carryClub
-                ? `${carryClub.label} · ${carryClub.yards} tot avg`
+              {(mode === 'approach' ? remainClub : carryClub)
+                ? `${(mode === 'approach' ? remainClub : carryClub)!.label} · ${
+                    (mode === 'approach' ? remainClub : carryClub)!.yards
+                  } tot avg`
                 : '—'}
-              {' · '}plays {carryPlays}
+              {' · '}plays {mode === 'approach' ? remainPlays : carryPlays}
             </div>
           </div>
           <div className="rounded-lg bg-black/30 px-2.5 py-2">
             <div className="text-[9px] uppercase tracking-wide text-[var(--ink-4)]">
-              Target → green
+              {mode === 'approach' ? 'Tee → start' : 'Target → green'}
             </div>
             <div className="text-[22px] font-semibold tabular-nums leading-tight text-[var(--ink-1)]">
-              {split.remainYards}
+              {mode === 'approach' ? split.carryYards : split.remainYards}
               <span className="ml-0.5 text-[11px] font-medium text-[var(--ink-3)]">
                 yd
               </span>
             </div>
             <div className="mt-0.5 text-[11px] text-[var(--accent)]">
-              {remainClub
-                ? `${remainClub.label} · ${remainClub.yards} tot avg`
-                : '—'}
-              {' · '}plays {remainPlays}
+              {mode === 'approach'
+                ? 'Set the tee-shot finish or your current lie'
+                : `${remainClub ? `${remainClub.label} · ${remainClub.yards} tot avg` : '—'} · plays ${remainPlays}`}
             </div>
           </div>
         </div>

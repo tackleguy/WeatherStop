@@ -147,10 +147,30 @@ export function targetLineGeoJSON(
   tee: LonLat | null,
   target: LonLat | null,
   green: LonLat | null,
+  mode: 'tee' | 'approach' = 'tee',
 ): GeoJSON.FeatureCollection {
-  if (!tee || !target || !green) {
+  if (!target || !green) {
     return { type: 'FeatureCollection', features: [] };
   }
+  if (mode === 'approach') {
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { kind: 'remain' },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [target.lon, target.lat],
+              [green.lon, green.lat],
+            ],
+          },
+        },
+      ],
+    };
+  }
+  if (!tee) return { type: 'FeatureCollection', features: [] };
   return {
     type: 'FeatureCollection',
     features: [

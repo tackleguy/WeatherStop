@@ -244,12 +244,11 @@ function catalogQueries(q: string): string[] {
 
   const hasDirection = /\b(north|south|east|west|nines?)\b/.test(lower);
   if (!hasDirection) {
-    for (const dir of ['North', 'South', 'East', 'West']) {
-      variants.add(`${base} ${dir}`);
-    }
+    variants.add(`${base} North`);
+    variants.add(`${base} South`);
   }
 
-  return [...variants].slice(0, 8);
+  return [...variants].slice(0, 5);
 }
 
 async function photonSearchOnce(
@@ -489,29 +488,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (q.length >= 2) {
     try {
-      let courses = await photonCatalog(q, rawLat, rawLon, limit, ac.signal);
-      const seed = courses[0];
-      if (seed) {
-        try {
-          const osm = await overpassCourses(
-            seed.lat,
-            seed.lon,
-            rawLat,
-            rawLon,
-            8_000,
-          );
-          courses = mergeCourses(
-            courses,
-            osm.filter((c) =>
-              courses.some(
-                (s) => haversineMi(s.lat, s.lon, c.lat, c.lon) < 2.5,
-              ),
-            ),
-          );
-        } catch {
-          // Name search still works without sibling polygons.
-        }
-      }
+      const courses = await photonCatalog(q, rawLat, rawLon, limit, ac.signal);
       return finish(courses, 'photon', { preserveOrder: true });
     } catch (err) {
       return errResponse(
@@ -523,28 +500,38 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const [photon, osm] = await Promise.all([
-      photonCourses(rawLat, rawLon, radiusM, limit, ac.signal).catch((err) => {
-        failures.push(err instanceof Error ? err.message : 'photon failed');
-        return [] as GolfCourseSummary[];
-      }),
-      overpassCourses(
-        lat,
-        lon,
-        rawLat,
-        rawLon,
-        Math.min(radiusM, 25_000),
-      ).catch((err) => {
-        failures.push(err instanceof Error ? err.message : 'overpass failed');
-        return [] as GolfCourseSummary[];
-      }),
-    ]);
-    if (photon.length || osm.length) {
-      return finish(
-        mergeCourses(photon, osm),
-        photon.length ? 'photon' : 'overpass',
-      );
+    const photonP = photonCourses(
+      rawLat,
+      rawLon,
+      radiusM,
+      limit,
+      ac.signal,
+    ).catch((err) => {
+      failures.push(err instanceof Error ? err.message : 'photon failed');
+      return [] as GolfCourseSummary[];
+    });
+    const osmP = overpassCourses(
+      lat,
+      lon,
+      rawLat,
+      rawLon,
+      Math.min(radiusM, 20_000),
+    ).catch((err) => {
+      failures.push(err instanceof Error ? err.message : 'overpass failed');
+      return [] as GolfCourseSummary[];
+    });
+    const photon = await photonP;
+    if (photon.length) {
+      const osm = await Promise.race([
+        osmP,
+        new Promise<GolfCourseSummary[]>((resolve) => {
+          setTimeout(() => resolve([]), 900);
+        }),
+      ]);
+      return finish(mergeCourses(photon, osm), 'photon');
     }
+    const osm = await osmP;
+    if (osm.length) return finish(osm, 'overpass');
     if (!failures.length) failures.push('no golf courses in range');
   } finally {
     clearTimeout(hardStop);

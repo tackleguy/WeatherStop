@@ -225,6 +225,7 @@ export async function fetchGolfCourses(
   const res = await fetchWithRetry(
     `/api/golf/courses?${params}`,
     opts?.signal,
+    2,
   );
   if (!res.ok) {
     const detail = (await res.json().catch(() => null)) as {
@@ -284,7 +285,9 @@ export async function fetchGolfHoles(
   }
 
   // Escalating radii so a rate-limited first attempt still lands geometry.
-  const radii = [opts?.radius ?? 1800, 2800, 3800];
+  const radii = opts?.bbox
+    ? [opts.radius ?? 1800]
+    : [opts?.radius ?? 1800, 2800];
   let lastErr: unknown = null;
   for (const radius of radii) {
     if (opts?.signal?.aborted) throw new DOMException('aborted', 'AbortError');
@@ -293,7 +296,7 @@ export async function fetchGolfHoles(
       const res = await fetchWithRetry(
         `/api/golf/holes?${params}`,
         opts?.signal,
-        4,
+        2,
       );
       if (!res.ok) {
         const detail = (await res.json().catch(() => null)) as {

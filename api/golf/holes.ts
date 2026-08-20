@@ -60,67 +60,46 @@ export interface GolfHole {
 const HOLE_MEM = new Map<string, { at: number; holes: GolfHole[] }>();
 const HOLE_MEM_TTL_MS = 6 * 60 * 60_000;
 
-/** Add tee/green elevations in one request so plays-like can include slope. */
+/** Mid tee + green only — extra boxes inherit the hole tee height. */
 async function addElevations(holes: GolfHole[]): Promise<GolfHole[]> {
   if (!holes.length) return holes;
   const points: Array<{ lat: number; lon: number }> = [];
-  const jobs: Array<{ hole: number; teeIdx: number | 'green' }> = [];
-  holes.forEach((hole, holeIdx) => {
-    const tees = hole.tees?.length
-      ? hole.tees
-      : [{ tee: hole.tee } as GolfTeeBox];
-    tees.forEach((t, teeIdx) => {
-      points.push(t.tee);
-      jobs.push({ hole: holeIdx, teeIdx });
-    });
+  holes.forEach((hole) => {
+    points.push(hole.tee);
     points.push(hole.green);
-    jobs.push({ hole: holeIdx, teeIdx: 'green' });
   });
   const params = new URLSearchParams({
     latitude: points.map((p) => p.lat.toFixed(6)).join(','),
     longitude: points.map((p) => p.lon.toFixed(6)).join(','),
   });
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 2500);
   try {
     const res = await fetch(
       `https://api.open-meteo.com/v1/elevation?${params}`,
+      { signal: ac.signal },
     );
     if (!res.ok) return holes;
     const body = (await res.json()) as { elevation?: Array<number | null> };
     const elevations = body.elevation ?? [];
-    const next = holes.map((h) => ({
-      ...h,
-      tees: h.tees ? h.tees.map((t) => ({ ...t })) : undefined,
-    }));
-    jobs.forEach((job, i) => {
-      const elev = elevations[i];
-      if (typeof elev !== 'number' || !Number.isFinite(elev)) return;
-      const hole = next[job.hole]!;
-      if (job.teeIdx === 'green') {
-        hole.greenElevationM = elev;
-        return;
-      }
-      if (hole.tees?.[job.teeIdx]) {
-        hole.tees[job.teeIdx]!.teeElevationM = elev;
-      }
-      if (job.teeIdx === 0) hole.teeElevationM = elev;
-    });
-    return next.map((hole) => {
-      const mid =
-        hole.tees?.find((t) => t.kind === 'mid') ??
-        hole.tees?.[Math.floor((hole.tees.length - 1) / 2)] ??
-        null;
-      if (!mid) return hole;
+    return holes.map((hole, index) => {
+      const tee = elevations[index * 2];
+      const green = elevations[index * 2 + 1];
+      const teeElevationM =
+        typeof tee === 'number' && Number.isFinite(tee) ? tee : undefined;
+      const greenElevationM =
+        typeof green === 'number' && Number.isFinite(green) ? green : undefined;
       return {
         ...hole,
-        yards: mid.yards,
-        bearingDeg: mid.bearingDeg,
-        tee: mid.tee,
-        path: mid.path,
-        teeElevationM: mid.teeElevationM,
+        teeElevationM,
+        greenElevationM,
+        tees: hole.tees?.map((t) => ({ ...t, teeElevationM })),
       };
     });
   } catch {
     return holes;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -825,66 +804,34 @@ function holesFromTeeGreen(
   return holes;
 }
 
-async function queryWays(scope: string): Promise<OsmElement[]> {
+async function queryGolfBundle(scope: string): Promise<OsmElement[]> {
   const query = `
 [out:json][timeout:18];
 way["golf"="hole"](${scope});
 out geom;
-`.trim();
-  const raw = (await overpass(query, {
-    timeoutMs: 12_000,
-    hedgeMs: 1_800,
-  })) as { elements?: OsmElement[] };
-  return raw.elements ?? [];
-}
-
-async function queryTeeGreen(scope: string): Promise<OsmElement[]> {
-  // Centers only — much cheaper than full geom for polygon greens.
-  const query = `
-[out:json][timeout:18];
 (
   nwr["golf"="tee"](${scope});
   nwr["golf"="green"](${scope});
   nwr["golf"="pin"](${scope});
 );
 out center tags;
-`.trim();
-  const raw = (await overpass(query, {
-    timeoutMs: 12_000,
-    hedgeMs: 1_800,
-  })) as { elements?: OsmElement[] };
-  return raw.elements ?? [];
-}
-
-async function queryCoursePolygons(scope: string): Promise<CoursePoly[]> {
-  const query = `
-[out:json][timeout:18];
 way["leisure"="golf_course"](${scope});
 out geom;
 `.trim();
-  try {
-    const raw = (await overpass(query, {
-      timeoutMs: 12_000,
-      hedgeMs: 1_800,
-    })) as { elements?: OsmElement[] };
-    return extractCoursePolygons(raw.elements ?? []);
-  } catch {
-    return [];
-  }
+  const raw = (await overpass(query, {
+    timeoutMs: 10_000,
+    hedgeMs: 1_400,
+  })) as { elements?: OsmElement[] };
+  return raw.elements ?? [];
 }
 
 async function holesInScope(
   scope: string,
   selectedId?: number,
 ): Promise<GolfHole[]> {
-  let holes = holesFromWays(await queryWays(scope));
-  try {
-    holes = holesFromTeeGreen(await queryTeeGreen(scope), holes);
-  } catch {
-    // Keep whatever centerlines we already have.
-  }
-  const polys = await queryCoursePolygons(scope);
-  return finalizeHoles(holes, polys, undefined, selectedId);
+  const els = await queryGolfBundle(scope);
+  const holes = holesFromTeeGreen(els, holesFromWays(els));
+  return finalizeHoles(holes, extractCoursePolygons(els), undefined, selectedId);
 }
 
 /**
@@ -910,7 +857,7 @@ async function holesFromOsmMap(
   if ((north! - south!) * (east! - west!) > 0.12) return null;
 
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 12_000);
+  const timer = setTimeout(() => ac.abort(), 8_000);
   try {
     const res = await fetch(
       `https://api.openstreetmap.org/api/0.6/map.json?bbox=${west},${south},${east},${north}`,
@@ -936,12 +883,22 @@ async function holesFromOsmMap(
       }>;
     };
     const raw = body.elements ?? [];
+    const keepNodeIds = new Set<number>();
+    const keepWayIds = new Set<number>();
+    for (const el of raw) {
+      if (el.type !== 'way') continue;
+      const tags = el.tags ?? {};
+      if (!tags.golf && tags.leisure !== 'golf_course') continue;
+      keepWayIds.add(el.id);
+      for (const id of el.nodes ?? []) keepNodeIds.add(id);
+    }
     const nodeById = new Map<number, { lat: number; lon: number }>();
     for (const el of raw) {
       if (
         el.type === 'node' &&
         typeof el.lat === 'number' &&
-        typeof el.lon === 'number'
+        typeof el.lon === 'number' &&
+        (keepNodeIds.has(el.id) || Boolean(el.tags?.golf))
       ) {
         nodeById.set(el.id, { lat: el.lat, lon: el.lon });
       }
@@ -950,6 +907,7 @@ async function holesFromOsmMap(
     const elements: OsmElement[] = [];
     for (const el of raw) {
       if (el.type === 'node') {
+        if (!el.tags?.golf) continue;
         if (typeof el.lat !== 'number' || typeof el.lon !== 'number') continue;
         elements.push({
           type: 'node' as const,
@@ -960,7 +918,7 @@ async function holesFromOsmMap(
         });
         continue;
       }
-      if (el.type !== 'way') continue;
+      if (el.type !== 'way' || !keepWayIds.has(el.id)) continue;
       const geometry = (el.nodes ?? [])
         .map((id) => nodeById.get(id))
         .filter((point): point is { lat: number; lon: number } => Boolean(point));
@@ -974,7 +932,21 @@ async function holesFromOsmMap(
     }
 
     const polys = extractCoursePolygons(elements);
-    if (!expanded && polys.length >= 2) {
+    let holes = holesFromWays(elements);
+    holes = holesFromTeeGreen(elements, holes);
+    const labeled = finalizeHoles(
+      holes,
+      polys,
+      undefined,
+      Number.isFinite(osmId) ? osmId : undefined,
+    );
+    // Only widen the box when this fetch clearly missed a sibling 18.
+    if (
+      !expanded &&
+      polys.length >= 2 &&
+      labeled.length > 0 &&
+      labeled.length < 15
+    ) {
       let s = Infinity;
       let w = Infinity;
       let n = -Infinity;
@@ -994,7 +966,7 @@ async function holesFromOsmMap(
         w - pad < west! - 0.0008 ||
         n + pad > north! + 0.0008 ||
         e + pad > east! + 0.0008;
-      if (grew && area <= 0.12 && area > 0) {
+      if (grew && area <= 0.08 && area > 0) {
         const union = [
           quantizeCoord(s - pad, 4),
           quantizeCoord(w - pad, 4),
@@ -1002,20 +974,10 @@ async function holesFromOsmMap(
           quantizeCoord(e + pad, 4),
         ].join(',');
         const wider = await holesFromOsmMap(union, osmType, osmId, true);
-        if (wider && wider.length) return wider;
+        if (wider && wider.length > labeled.length) return wider;
       }
     }
-
-    // Keep sibling North/South layouts in the bbox; label them from
-    // leisure=golf_course polygons instead of clipping to one outline.
-    let holes = holesFromWays(elements);
-    holes = holesFromTeeGreen(elements, holes);
-    return finalizeHoles(
-      holes,
-      polys,
-      undefined,
-      Number.isFinite(osmId) ? osmId : undefined,
-    );
+    return labeled;
   } catch {
     return null;
   } finally {
@@ -1030,7 +992,7 @@ function parseBbox(raw: string | null): string | null {
   if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
   const [s, w, n, e] = parts as [number, number, number, number];
   if (n <= s || e <= w) return null;
-  const pad = 0.01; // ~1.1 km so a North/South sibling still fits in the box
+  const pad = 0.004; // ~440 m — tees on the edge without swallowing the city
   return [
     quantizeCoord(s - pad, 4),
     quantizeCoord(w - pad, 4),
@@ -1079,20 +1041,19 @@ export default async function handler(req: Request): Promise<Response> {
   type Scope = { name: string; queryScope: string };
   const scopes: Scope[] = [];
 
-  if (
+  if (bbox) scopes.push({ name: 'course-bbox', queryScope: bbox });
+  else if (
     (osmType === 'way' || osmType === 'relation') &&
     Number.isFinite(osmId)
   ) {
-    // Resolved later via map_to_area — stored as a special marker.
     scopes.push({
       name: 'course-area',
       queryScope: `area:${osmType}:${osmId}`,
     });
   }
-  if (bbox) scopes.push({ name: 'course-bbox', queryScope: bbox });
   // Escalating radii cover municipal parks and country clubs that span a mile+.
   for (const r of Array.from(
-    new Set([radiusM, Math.max(radiusM, 2200), Math.max(radiusM, 3200)]),
+    new Set([radiusM, Math.max(radiusM, 2200)]),
   ).sort((a, b) => a - b)) {
     scopes.push({
       name: `radius-${r}`,
@@ -1139,46 +1100,34 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   for (const scope of scopes) {
-    if (best.holes.length >= 36) break;
+    if (best.holes.length >= 18) break;
     try {
       let holes: GolfHole[];
       if (scope.queryScope.startsWith('area:')) {
         const [, type, id] = scope.queryScope.split(':');
         const areaQuery = `
-[out:json][timeout:20];
+[out:json][timeout:18];
 ${type === 'way' ? 'way' : 'rel'}(id:${id});
 map_to_area->.course;
 way["golf"="hole"](area.course);
 out geom;
-`.trim();
-        const ways = (await overpass(areaQuery, {
-          timeoutMs: 14_000,
-          hedgeMs: 2_000,
-        })) as { elements?: OsmElement[] };
-        holes = holesFromWays(ways.elements ?? []);
-        const tgQuery = `
-[out:json][timeout:20];
-${type === 'way' ? 'way' : 'rel'}(id:${id});
-map_to_area->.course;
 (
   nwr["golf"="tee"](area.course);
   nwr["golf"="green"](area.course);
   nwr["golf"="pin"](area.course);
 );
 out center tags;
+way["leisure"="golf_course"](area.course);
+out geom;
 `.trim();
-        try {
-          const tg = (await overpass(tgQuery, {
-            timeoutMs: 12_000,
-            hedgeMs: 1_800,
-          })) as { elements?: OsmElement[] };
-          holes = holesFromTeeGreen(tg.elements ?? [], holes);
-        } catch {
-          // keep centerlines
-        }
+        const bundle = (await overpass(areaQuery, {
+          timeoutMs: 10_000,
+          hedgeMs: 1_400,
+        })) as { elements?: OsmElement[] };
+        const els = bundle.elements ?? [];
         holes = finalizeHoles(
-          holes,
-          [],
+          holesFromTeeGreen(els, holesFromWays(els)),
+          extractCoursePolygons(els),
           undefined,
           Number.isFinite(osmId) ? osmId : undefined,
         );
@@ -1193,7 +1142,7 @@ out center tags;
         best = { holes, scope: scope.name };
       }
       // Good enough — stop burning Overpass quota.
-      if (holes.length >= 36) break;
+      if (holes.length >= 18) break;
     } catch (err) {
       lastError = err instanceof Error ? err.message : 'overpass failed';
     }

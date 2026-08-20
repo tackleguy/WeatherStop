@@ -149,6 +149,66 @@ export function appleMapsDirUrl(
   return `https://maps.apple.com/?daddr=${daddr}&dirflg=d`;
 }
 
+/**
+ * Organic Maps deep links (https://github.com/organicmaps/organicmaps).
+ * Coordinates are lat,lon (opposite of our [lon,lat] centers).
+ * Prefer https://omaps.app universal links so desktop gets a fallback page.
+ */
+export function organicMapsDirUrl(
+  to: [number, number],
+  opts?: {
+    from?: [number, number] | null;
+    destinationName?: string;
+    originName?: string;
+    /** If true, auto-start nav from current GPS (ignores from). */
+    navigate?: boolean;
+  },
+): string {
+  const destLat = to[1];
+  const destLon = to[0];
+  const destName = encodeURIComponent(
+    opts?.destinationName?.trim() || 'Chase viewing spot',
+  );
+  const mode = 'drive';
+
+  if (opts?.navigate || !opts?.from) {
+    // v2 nav / dir from current location
+    const path = opts?.navigate ? 'v2/nav' : 'v2/dir';
+    return (
+      `https://omaps.app/${path}?origin=currentLocation` +
+      `&destination=${destLat},${destLon}` +
+      `&destination_name=${destName}&mode=${mode}`
+    );
+  }
+
+  const originLat = opts.from[1];
+  const originLon = opts.from[0];
+  const originName = encodeURIComponent(
+    opts.originName?.trim() || 'Chase start',
+  );
+  return (
+    `https://omaps.app/v2/dir?origin=${originLat},${originLon}` +
+    `&origin_name=${originName}` +
+    `&destination=${destLat},${destLon}` +
+    `&destination_name=${destName}&mode=${mode}`
+  );
+}
+
+/** Legacy om:// scheme for devices with the app already installed. */
+export function organicMapsAppUrl(
+  to: [number, number],
+  from?: [number, number] | null,
+  destinationName = 'Chase viewing spot',
+): string {
+  const dll = `${to[1]},${to[0]}`;
+  const daddr = encodeURIComponent(destinationName);
+  if (from) {
+    const sll = `${from[1]},${from[0]}`;
+    return `om://route?sll=${sll}&saddr=Chase%20start&dll=${dll}&daddr=${daddr}&type=vehicle`;
+  }
+  return `om://v2/nav?destination=${dll}&destination_name=${daddr}&mode=drive`;
+}
+
 /** OSRM public router — draw a drive path on the map (no API key). */
 export async function fetchDriveRoute(
   from: [number, number],

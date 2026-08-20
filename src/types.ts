@@ -18,6 +18,8 @@ export interface Settings {
   localAiModel?: string;
   /** Optional public Dom 3 / chase-vehicle JSON or GeoJSON feed URL. */
   dom3FeedUrl?: string;
+  /** JSON map of famous-chaser id → feed URL overrides. */
+  chaserFeedsJson?: string;
 }
 
 export interface City {

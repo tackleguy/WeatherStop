@@ -17,6 +17,7 @@ import {
 import { viewingSpotsGeoJSON } from '../../lib/chaseViewing';
 import { useChaseViewing } from '../../hooks/useChaseViewing';
 import { useDom3Track } from '../../hooks/useDom3Track';
+import { useFamousChasers } from '../../hooks/useFamousChasers';
 import {
   categorizeAlertEvent,
   type AlertCategory,
@@ -47,6 +48,9 @@ const DOM3_SOURCE = 'dom3-track';
 const DOM3_TRAIL_SOURCE = 'dom3-trail';
 const DOM3_POINT_LAYER = 'dom3-point-layer';
 const DOM3_TRAIL_LAYER = 'dom3-trail-layer';
+const CHASERS_SOURCE = 'famous-chasers';
+const CHASERS_LAYER = 'famous-chasers-layer';
+const CHASERS_LABEL = 'famous-chasers-label';
 const RULER_SOURCE = 'ruler-line';
 const RULER_LINE_LAYER = 'ruler-line-layer';
 const RULER_POINTS_LAYER = 'ruler-points-layer';
@@ -104,11 +108,17 @@ export function RadarMap({ onMapReady }: Props) {
   const pushRulerPoint = useRadarStore((s) => s.pushRulerPoint);
   const chaseMode = useRadarStore((s) => s.chaseMode);
   const dom3TrackEnabled = useRadarStore((s) => s.dom3TrackEnabled);
+  const famousChasersEnabled = useRadarStore((s) => s.famousChasersEnabled);
   const setSelectedViewSpotId = useRadarStore((s) => s.setSelectedViewSpotId);
 
   const { spots, selected, route } = useChaseViewing(chaseMode);
   const { fix: dom3 } = useDom3Track(
     chaseMode && dom3TrackEnabled,
+    settings.dom3FeedUrl,
+  );
+  const { chasers: famousChasers } = useFamousChasers(
+    chaseMode && famousChasersEnabled,
+    settings.chaserFeedsJson,
     settings.dom3FeedUrl,
   );
 
@@ -605,6 +615,36 @@ export function RadarMap({ onMapReady }: Props) {
     upsert(DOM3_SOURCE, dom3Points);
     upsert(DOM3_TRAIL_SOURCE, dom3Trail);
 
+    const chaserFc: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features:
+        chaseMode && famousChasersEnabled
+          ? famousChasers
+              .filter(
+                (c) =>
+                  c.available &&
+                  c.lat != null &&
+                  c.lon != null &&
+                  // Dom 3 also comes through reed-timmer — skip duplicate if Dom3 layer on
+                  !(dom3TrackEnabled && c.id === 'reed-timmer' && dom3?.available),
+              )
+              .map((c) => ({
+                type: 'Feature' as const,
+                properties: {
+                  id: c.id,
+                  label: c.label,
+                  team: c.team ?? '',
+                  color: c.color ?? '#fbbf24',
+                },
+                geometry: {
+                  type: 'Point' as const,
+                  coordinates: [c.lon!, c.lat!],
+                },
+              }))
+          : [],
+    };
+    upsert(CHASERS_SOURCE, chaserFc);
+
     if (!map.getLayer(VIEW_ROUTE_LAYER)) {
       map.addLayer({
         id: VIEW_ROUTE_LAYER,
@@ -690,6 +730,38 @@ export function RadarMap({ onMapReady }: Props) {
         },
       });
     }
+    if (!map.getLayer(CHASERS_LAYER)) {
+      map.addLayer({
+        id: CHASERS_LAYER,
+        type: 'circle',
+        source: CHASERS_SOURCE,
+        paint: {
+          'circle-radius': 7,
+          'circle-color': ['get', 'color'],
+          'circle-stroke-color': '#0b1220',
+          'circle-stroke-width': 1.5,
+        },
+      });
+    }
+    if (!map.getLayer(CHASERS_LABEL)) {
+      map.addLayer({
+        id: CHASERS_LABEL,
+        type: 'symbol',
+        source: CHASERS_SOURCE,
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 10,
+          'text-offset': [0, 1.15],
+          'text-anchor': 'top',
+          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+        },
+        paint: {
+          'text-color': '#fef3c7',
+          'text-halo-color': '#0b1220',
+          'text-halo-width': 1.2,
+        },
+      });
+    }
 
     const onClick = (e: maplibregl.MapLayerMouseEvent) => {
       const id = e.features?.[0]?.properties?.id;
@@ -714,6 +786,8 @@ export function RadarMap({ onMapReady }: Props) {
     route,
     dom3,
     dom3TrackEnabled,
+    famousChasers,
+    famousChasersEnabled,
     setSelectedViewSpotId,
   ]);
 

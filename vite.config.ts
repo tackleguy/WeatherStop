@@ -117,6 +117,168 @@ function devApiStub(): Plugin {
           }
         }
 
+        if (url.pathname === '/api/storm/chasers') {
+          const DISCLAIMER =
+            'Chaser positions only appear from public/licensed feeds you configure. Not affiliated with any chase team.';
+          const CATALOG = [
+            {
+              id: 'reed-timmer',
+              name: 'Reed Timmer',
+              team: 'Team Dominator',
+              vehicle: 'Dominator 3',
+              color: '#f59e0b',
+              notes: 'Dom 3 intercept science / livestreams',
+            },
+            {
+              id: 'skip-talbot',
+              name: 'Skip Talbot',
+              team: 'Skip Talbot',
+              color: '#38bdf8',
+              notes: 'Classic structure photography chases',
+            },
+            {
+              id: 'pecos-hank',
+              name: 'Pecos Hank',
+              team: 'Pecos Hank',
+              color: '#a78bfa',
+              notes: 'IMAX / viral tornado footage',
+            },
+            {
+              id: 'brandon-clement',
+              name: 'Brandon Clement',
+              team: 'Brandon Clement',
+              color: '#34d399',
+              notes: 'Storm video / drone work',
+            },
+            {
+              id: 'mike-olbinado',
+              name: 'Mike Olbinado',
+              team: 'Basehunters',
+              color: '#fb7185',
+              notes: 'Basehunters chase team',
+            },
+            {
+              id: 'jordan-fish',
+              name: 'Jordan Fish',
+              team: 'Convective Addiction',
+              color: '#f472b6',
+              notes: 'Convective Addiction media',
+            },
+            {
+              id: 'ryan-shepard',
+              name: 'Ryan Shepard',
+              team: 'Ryan Shepard',
+              color: '#2dd4bf',
+              notes: 'Plains chasing / photography',
+            },
+            {
+              id: 'james-spinardi',
+              name: 'James Spinardi',
+              team: 'James Spinardi',
+              color: '#e879f9',
+              notes: 'Storm media / intercepts',
+            },
+          ] as const;
+
+          let overrides: Record<string, string> = {};
+          try {
+            const raw = url.searchParams.get('feeds');
+            if (raw?.trim()) {
+              overrides = JSON.parse(raw) as Record<string, string>;
+            }
+          } catch {
+            overrides = {};
+          }
+          const dom3Feed = url.searchParams.get('dom3Feed')?.trim();
+          if (dom3Feed) overrides = { ...overrides, 'reed-timmer': dom3Feed };
+
+          async function resolveFeed(feed: string, label: string) {
+            try {
+              const upstream = await fetch(feed, {
+                headers: { Accept: 'application/json, application/geo+json' },
+              });
+              if (!upstream.ok) return null;
+              const data = (await upstream.json()) as Record<string, unknown>;
+              const lat = Number(data.lat ?? data.latitude);
+              const lon = Number(data.lon ?? data.lng ?? data.longitude);
+              if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+              return {
+                available: true as const,
+                lat,
+                lon,
+                label: String(data.name ?? data.label ?? label),
+                heading: Number(data.heading ?? data.course) || undefined,
+                speedMph: Number(data.speedMph ?? data.speed) || undefined,
+                updatedAt: String(
+                  data.updatedAt ?? data.time ?? new Date().toISOString(),
+                ),
+                source: 'feed',
+              };
+            } catch {
+              return null;
+            }
+          }
+
+          const chasers = await Promise.all(
+            CATALOG.map(async (c) => {
+              const feed = overrides[c.id];
+              if (feed) {
+                const fix = await resolveFeed(feed, c.name);
+                if (fix) {
+                  return {
+                    id: c.id,
+                    available: true,
+                    label: fix.label,
+                    team: c.team,
+                    vehicle: 'vehicle' in c ? c.vehicle : undefined,
+                    lat: fix.lat,
+                    lon: fix.lon,
+                    heading: fix.heading,
+                    speedMph: fix.speedMph,
+                    updatedAt: fix.updatedAt,
+                    source: fix.source,
+                    color: c.color,
+                    notes: c.notes,
+                  };
+                }
+                return {
+                  id: c.id,
+                  available: false,
+                  label: c.name,
+                  team: c.team,
+                  vehicle: 'vehicle' in c ? c.vehicle : undefined,
+                  color: c.color,
+                  notes: c.notes,
+                  error: 'Feed returned no lat/lon',
+                };
+              }
+              return {
+                id: c.id,
+                available: false,
+                label: c.name,
+                team: c.team,
+                vehicle: 'vehicle' in c ? c.vehicle : undefined,
+                color: c.color,
+                notes: c.notes,
+                error:
+                  'No feed in vite dev — paste Feeds JSON / Dom 3 URL in Settings',
+              };
+            }),
+          );
+          const liveCount = chasers.filter((c) => c.available).length;
+          res.statusCode = 200;
+          res.setHeader('content-type', 'application/json');
+          res.end(
+            JSON.stringify({
+              generatedAt: new Date().toISOString(),
+              liveCount,
+              chasers,
+              disclaimer: DISCLAIMER,
+            }),
+          );
+          return;
+        }
+
         if (url.pathname === '/api/storm/local-chat') {
           try {
             if (url.searchParams.get('probe') === '1') {

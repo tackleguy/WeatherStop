@@ -173,9 +173,11 @@ interface RadarState {
   /** Chase start point [lon, lat] — GPS or map center. */
   chaseOrigin: [number, number] | null;
   setChaseOrigin: (c: [number, number] | null) => void;
-  /** Show Dom 3 tracker layer in chase mode. */
+  /** Show Dom 3 / famous chaser tracker layer in chase mode. */
   dom3TrackEnabled: boolean;
   setDom3TrackEnabled: (on: boolean) => void;
+  famousChasersEnabled: boolean;
+  setFamousChasersEnabled: (on: boolean) => void;
 
   // Active radar source (mirrored from useRadarLayers' resolver) + the
   // user's manual site override (when set, the resolver locks the per-
@@ -334,6 +336,8 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   setChaseOrigin: (c) => set({ chaseOrigin: c }),
   dom3TrackEnabled: true,
   setDom3TrackEnabled: (on) => set({ dom3TrackEnabled: on }),
+  famousChasersEnabled: true,
+  setFamousChasersEnabled: (on) => set({ famousChasersEnabled: on }),
 
   sourcePlan: null,
   setSourcePlan: (plan) =>

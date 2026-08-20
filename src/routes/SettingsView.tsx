@@ -327,6 +327,49 @@ export function SettingsView() {
                   />
                 </label>
               </div>
+
+              <div className="panel panel-padded space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-[var(--ink-1)]">
+                    Famous chaser feeds
+                  </span>
+                </div>
+                <p className="text-[12px] leading-relaxed text-[var(--ink-3)]">
+                  Optional JSON map of chaser id → public feed URL (e.g.{' '}
+                  <code className="text-[var(--ink-3)]">
+                    {`{"skip-talbot":"https://…"}`}
+                  </code>
+                  ). Roster IDs: reed-timmer, skip-talbot, pecos-hank,
+                  brandon-clement, mike-olbinado, jordan-fish, ryan-shepard,
+                  james-spinardi. Live map dots only when feeds return lat/lon —
+                  we never invent positions.
+                </p>
+                <label className="block space-y-1">
+                  <span className="text-[11px] uppercase tracking-wider text-[var(--ink-4)]">
+                    Feeds JSON
+                  </span>
+                  <textarea
+                    value={settings.chaserFeedsJson ?? ''}
+                    onChange={(e) => update('chaserFeedsJson', e.target.value)}
+                    rows={4}
+                    placeholder={`{"skip-talbot":"https://example.com/skip.json"}`}
+                    className="w-full rounded-xl border border-[var(--line-default)] bg-black/20 px-3 py-2 font-mono text-[12px] text-[var(--ink-1)] outline-none focus:border-[var(--accent)]"
+                  />
+                </label>
+                <p className="text-[11px] leading-relaxed text-[var(--ink-4)]">
+                  Chase directions open in{' '}
+                  <a
+                    href="https://github.com/organicmaps/organicmaps"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    Organic Maps
+                  </a>{' '}
+                  (offline OSM). Install the app, then use Organic Maps from
+                  View spots / Chasers.
+                </p>
+              </div>
             </div>
           ) : null}
 
@@ -340,6 +383,18 @@ export function SettingsView() {
               <p>Iowa State Mesonet — CONUS composite</p>
               <p>RainViewer — global radar / satellite</p>
               <p>OpenFreeMap — basemap</p>
+              <p>
+                Organic Maps — offline OSM directions (
+                <a
+                  href="https://github.com/organicmaps/organicmaps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-[var(--ink-2)]"
+                >
+                  GitHub
+                </a>
+                )
+              </p>
               <p className="pt-1 text-[10px] leading-snug text-[var(--ink-3)]">
                 Companion desktop radar:{' '}
                 <a

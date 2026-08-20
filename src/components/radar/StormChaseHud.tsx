@@ -5,7 +5,6 @@ import {
   Crosshair,
   ExternalLink,
   Loader2,
-  MapPin,
   Navigation,
   Radio,
   Send,
@@ -23,7 +22,10 @@ import { alertsPageHref } from '../../lib/alertsNav';
 import {
   appleMapsDirUrl,
   googleMapsDirUrl,
+  organicMapsAppUrl,
+  organicMapsDirUrl,
 } from '../../lib/chaseViewing';
+import { useFamousChasers } from '../../hooks/useFamousChasers';
 import {
   askLocalChaseAi,
   DEFAULT_LOCAL_AI,
@@ -48,6 +50,10 @@ export function StormChaseHud() {
   const focusAlert = useRadarStore((s) => s.focusAlert);
   const dom3TrackEnabled = useRadarStore((s) => s.dom3TrackEnabled);
   const setDom3TrackEnabled = useRadarStore((s) => s.setDom3TrackEnabled);
+  const famousChasersEnabled = useRadarStore((s) => s.famousChasersEnabled);
+  const setFamousChasersEnabled = useRadarStore(
+    (s) => s.setFamousChasersEnabled,
+  );
   const navigate = useNavigate();
   const { alerts } = useAlerts();
   const { settings } = useSettings();
@@ -62,6 +68,17 @@ export function StormChaseHud() {
   } = useChaseViewing(chaseMode);
   const { fix: dom3, loading: dom3Loading, refresh: refreshDom3 } = useDom3Track(
     chaseMode && dom3TrackEnabled,
+    settings.dom3FeedUrl,
+  );
+  const {
+    chasers,
+    liveCount,
+    disclaimer: chaserDisclaimer,
+    loading: chasersLoading,
+    refresh: refreshChasers,
+  } = useFamousChasers(
+    chaseMode && famousChasersEnabled,
+    settings.chaserFeedsJson,
     settings.dom3FeedUrl,
   );
 
@@ -89,7 +106,7 @@ export function StormChaseHud() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'view' | 'dom3' | 'ai'>('view');
+  const [tab, setTab] = useState<'view' | 'chasers' | 'dom3' | 'ai'>('view');
 
   useEffect(() => {
     setBrief(baseBrief);
@@ -174,6 +191,7 @@ export function StormChaseHud() {
           {(
             [
               { id: 'view', label: 'View spots' },
+              { id: 'chasers', label: 'Chasers' },
               { id: 'dom3', label: 'Dom 3' },
               { id: 'ai', label: 'AI' },
             ] as const
@@ -268,14 +286,49 @@ export function StormChaseHud() {
               {selected ? (
                 <div className="flex flex-wrap gap-1.5">
                   <a
+                    href={organicMapsDirUrl(selected.center, {
+                      from: origin,
+                      destinationName: selected.label,
+                      originName: 'Chase start',
+                    })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-400/25 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-100"
+                    title="Open in Organic Maps (offline OSM navigation)"
+                  >
+                    <Navigation className="h-3.5 w-3.5" />
+                    Organic Maps
+                    <ExternalLink className="h-3 w-3 opacity-70" />
+                  </a>
+                  <a
+                    href={organicMapsDirUrl(selected.center, {
+                      navigate: true,
+                      destinationName: selected.label,
+                    })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-400/15 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-100/90"
+                  >
+                    Nav from GPS
+                  </a>
+                  <a
+                    href={organicMapsAppUrl(
+                      selected.center,
+                      origin,
+                      selected.label,
+                    )}
+                    className="inline-flex items-center gap-1 rounded-xl bg-white/5 px-2.5 py-1.5 text-[10px] font-medium text-[var(--ink-3)]"
+                    title="om:// deep link if the app is installed"
+                  >
+                    om:// app
+                  </a>
+                  <a
                     href={googleMapsDirUrl(selected.center, origin)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 rounded-xl bg-cyan-400/20 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-100"
                   >
-                    <Navigation className="h-3.5 w-3.5" />
-                    Google Maps
-                    <ExternalLink className="h-3 w-3 opacity-70" />
+                    Google
                   </a>
                   <a
                     href={appleMapsDirUrl(selected.center, origin)}
@@ -283,15 +336,145 @@ export function StormChaseHud() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 rounded-xl bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--ink-1)]"
                   >
-                    <MapPin className="h-3.5 w-3.5" />
-                    Apple Maps
+                    Apple
                   </a>
                 </div>
               ) : null}
 
               <p className="text-[9px] leading-relaxed text-[var(--ink-4)]">
-                Spots are advisory geometry for structure/footage — never enter a
-                tornado warning. Roads may not reach the pin; stop at a safe pull-off.
+                Directions prefer{' '}
+                <a
+                  href="https://github.com/organicmaps/organicmaps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  Organic Maps
+                </a>{' '}
+                (privacy-first OSM). Cyan line is an on-map OSRM preview — never
+                enter a tornado warning to reach a perch.
+              </p>
+            </>
+          ) : null}
+
+          {tab === 'chasers' ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-[13px] font-semibold text-[var(--ink-1)]">
+                    Famous chasers
+                  </div>
+                  <div className="text-[10px] text-[var(--ink-4)]">
+                    {liveCount} live · map dots when feeds are configured
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={famousChasersEnabled}
+                  onClick={() =>
+                    setFamousChasersEnabled(!famousChasersEnabled)
+                  }
+                  className={`relative h-6 w-10 rounded-full ${
+                    famousChasersEnabled ? 'bg-amber-400/80' : 'bg-white/15'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                      famousChasersEnabled
+                        ? 'translate-x-4'
+                        : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {chasersLoading ? (
+                <p className="flex items-center gap-2 text-[12px] text-[var(--ink-3)]">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Loading chaser roster…
+                </p>
+              ) : null}
+
+              <div className="space-y-1.5">
+                {chasers.map((c) => (
+                  <div
+                    key={c.id}
+                    className="rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ background: c.color ?? '#fbbf24' }}
+                          />
+                          <span className="truncate text-[12px] font-semibold text-[var(--ink-1)]">
+                            {c.label}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-[10px] text-[var(--ink-4)]">
+                          {c.team}
+                          {c.vehicle ? ` · ${c.vehicle}` : ''}
+                          {c.notes ? ` · ${c.notes}` : ''}
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+                          c.available
+                            ? 'bg-emerald-400/20 text-emerald-200'
+                            : 'bg-white/10 text-[var(--ink-4)]'
+                        }`}
+                      >
+                        {c.available ? 'Live' : 'No feed'}
+                      </span>
+                    </div>
+                    {c.available && c.lat != null && c.lon != null ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <a
+                          href={organicMapsDirUrl([c.lon, c.lat], {
+                            from: origin,
+                            destinationName: c.label,
+                            navigate: !origin,
+                          })}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg bg-emerald-400/20 px-2 py-1 text-[10px] font-semibold text-emerald-100"
+                        >
+                          Organic Maps
+                        </a>
+                        <a
+                          href={googleMapsDirUrl([c.lon, c.lat], origin)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg bg-white/10 px-2 py-1 text-[10px] text-[var(--ink-2)]"
+                        >
+                          Google
+                        </a>
+                        <span className="text-[10px] text-[var(--ink-4)]">
+                          {c.lat.toFixed(3)}, {c.lon.toFixed(3)}
+                          {c.speedMph != null ? ` · ${c.speedMph} mph` : ''}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-[10px] text-[var(--ink-4)]">
+                        {c.error ?? 'Configure feed in Settings'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => refreshChasers()}
+                className="rounded-lg bg-white/10 px-2 py-1 text-[10px] text-[var(--ink-2)]"
+              >
+                Refresh chasers
+              </button>
+              <p className="text-[9px] leading-relaxed text-[var(--ink-4)]">
+                {chaserDisclaimer ??
+                  'Live dots require public feed URLs — we never invent chaser GPS.'}
               </p>
             </>
           ) : null}

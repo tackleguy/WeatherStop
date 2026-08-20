@@ -13,6 +13,7 @@ import {
   titleCaseName,
 } from './_lib/courseRelate';
 import { bearingDeg, haversineYards, pathLengthYards } from './_lib/geo';
+import { findScorecard, type CourseScorecard } from './_data/scorecards';
 import {
   centerOf,
   errResponse,
@@ -745,6 +746,65 @@ function autoLoops(holes: GolfHole[]): GolfHole[] {
   });
 }
 
+/** Apply official scorecard pars and yardages when we have them. */
+function applyScorecards(
+  holes: GolfHole[],
+  polys: CoursePoly[],
+  selectedName?: string,
+): GolfHole[] {
+  const loops = [
+    ...new Set(holes.map((h) => h.loop).filter((l): l is string => Boolean(l))),
+  ];
+  const polyNames = polys.map((p) => p.name);
+  const names = selectedName
+    ? [selectedName, ...polyNames]
+    : polyNames;
+
+  const cards = new Map<string, CourseScorecard>();
+  for (const loop of loops) {
+    for (const name of names) {
+      const card = findScorecard(name, loop);
+      if (card) {
+        cards.set(loop, card);
+        break;
+      }
+    }
+  }
+  if (!cards.size && names.length) {
+    const card = findScorecard(names[0]!);
+    if (card) cards.set('', card);
+  }
+  if (!cards.size) return holes;
+
+  return holes.map((hole) => {
+    const card = cards.get(hole.loop ?? '') ?? cards.get('');
+    if (!card) return hole;
+    const sc = card.holes.find((h) => h.hole === hole.number);
+    if (!sc) return hole;
+    const updated = { ...hole, par: sc.par };
+    if (sc.name && !hole.name) updated.name = sc.name;
+    if (hole.tees?.length) {
+      updated.tees = hole.tees.map((t) => {
+        const yds =
+          t.kind === 'back'
+            ? sc.back
+            : t.kind === 'front'
+              ? sc.front
+              : sc.mid;
+        return yds ? { ...t, yards: yds } : t;
+      });
+      const mid =
+        updated.tees.find((t) => t.kind === 'mid') ?? updated.tees[0];
+      if (mid) updated.yards = mid.yards;
+    } else if (sc.mid) {
+      updated.yards = sc.mid;
+    } else if (sc.back) {
+      updated.yards = sc.back;
+    }
+    return updated;
+  });
+}
+
 function finalizeHoles(
   holes: GolfHole[],
   polys: CoursePoly[] = [],
@@ -755,6 +815,7 @@ function finalizeHoles(
   next = autoLoops(next);
   next = normalizeOnePerNumber(next);
   pruneOutlierTees(next);
+  next = applyScorecards(next, polys, selectedName);
   next.sort((a, b) => {
     const loop = (a.loop ?? '').localeCompare(b.loop ?? '');
     if (loop) return loop;

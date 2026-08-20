@@ -143,27 +143,24 @@ export function MapSearchChrome({ map }: Props) {
   };
 
   const actions = (
-    <div className="pointer-events-auto flex items-center gap-1.5">
+    <div className="pointer-events-auto flex items-center gap-2 rounded-2xl px-2 py-2 floating-panel">
       <BasemapControl />
       <IconButton
         icon={RotateCcw}
         title="Reset map layers"
         onClick={reset}
-        className="h-9 w-9 border border-[var(--line-default)] backdrop-blur-md transition-colors"
-        style={{ background: 'var(--glass-hi)' }}
+        className="h-10 w-10"
       />
       <IconButton
         icon={Activity}
         title="Diagnostics"
         onClick={() => togglePanel('diagnostics')}
-        className="h-9 w-9 border border-[var(--line-default)] backdrop-blur-md transition-colors"
-        style={{ background: 'var(--glass-hi)' }}
+        className="h-10 w-10"
       />
       <button
         type="button"
         onClick={() => togglePanel('alerts')}
-        className="relative grid h-9 w-9 place-items-center rounded-lg border border-[var(--line-default)] text-[var(--ink-2)] backdrop-blur-md transition-colors hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]"
-        style={{ background: 'var(--glass-hi)' }}
+        className="control-button relative h-10 w-10"
         title={`${alertCount} active alerts`}
         aria-label={`${alertCount} active alerts`}
       >
@@ -182,8 +179,7 @@ export function MapSearchChrome({ map }: Props) {
         icon={Menu}
         title="Stations"
         onClick={() => togglePanel('stations')}
-        className="h-9 w-9 border border-[var(--line-default)] backdrop-blur-md transition-colors"
-        style={{ background: 'var(--glass-hi)' }}
+        className="h-10 w-10"
       />
     </div>
   );
@@ -191,20 +187,18 @@ export function MapSearchChrome({ map }: Props) {
   if (isMobile) {
     return (
       <>
-        <div className="pointer-events-auto absolute right-3 top-3 z-20 flex gap-2">
+        <div className="pointer-events-auto absolute right-3 top-3 z-20 flex gap-2 rounded-2xl px-2 py-2 floating-panel">
           <IconButton
             icon={mobileOpen ? X : Search}
             title={mobileOpen ? 'Close search' : 'Search location'}
             onClick={() => setMobileOpen((v) => !v)}
-            className="h-9 w-9 border border-[var(--line-default)] backdrop-blur-md"
-            style={{ background: 'var(--glass-hi)' }}
+            className="h-10 w-10"
           />
           <BasemapControl />
           <button
             type="button"
             onClick={() => togglePanel('alerts')}
-            className="relative grid h-9 w-9 place-items-center rounded-lg border border-[var(--line-default)] text-[var(--ink-2)] backdrop-blur-md transition-colors hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]"
-            style={{ background: 'var(--glass-hi)' }}
+            className="control-button relative h-10 w-10"
             title={`${alertCount} active alerts`}
             aria-label={`${alertCount} active alerts`}
           >
@@ -221,7 +215,7 @@ export function MapSearchChrome({ map }: Props) {
           </button>
         </div>
         {mobileOpen ? (
-          <div className="pointer-events-auto absolute left-3 right-3 top-14 z-30 animate-[fadeSlide_var(--t-base)_var(--ease)]">
+          <div className="pointer-events-auto absolute left-3 right-3 top-[4.6rem] z-30 animate-[fadeSlide_var(--t-base)_var(--ease)]">
             <SearchBar
               onPick={(p) => {
                 flyToPick(map, p);
@@ -245,7 +239,7 @@ export function MapSearchChrome({ map }: Props) {
         className="pointer-events-none absolute z-20 flex items-start gap-2 transition-[box-shadow] duration-[var(--t-fast)]"
         style={style}
       >
-        <div className="pointer-events-auto flex w-full max-w-sm items-stretch gap-0.5">
+        <div className="pointer-events-auto flex w-full max-w-[30rem] items-stretch gap-2 rounded-2xl p-2 floating-panel">
           <button
             type="button"
             aria-label="Drag search bar"
@@ -254,8 +248,7 @@ export function MapSearchChrome({ map }: Props) {
             onPointerMove={onDragMove}
             onPointerUp={onDragEnd}
             onPointerCancel={onDragEnd}
-            className="grid w-8 shrink-0 cursor-grab place-items-center rounded-lg border border-[var(--line-default)] text-[var(--ink-4)] shadow-lg backdrop-blur-md transition-colors hover:bg-[var(--hover-fill)] hover:text-[var(--ink-2)] active:cursor-grabbing"
-            style={{ background: 'var(--glass-hi)' }}
+            className="control-button w-10 shrink-0 cursor-grab text-[var(--ink-4)] active:cursor-grabbing"
           >
             <GripVertical className="h-4 w-4" strokeWidth={1.8} />
           </button>

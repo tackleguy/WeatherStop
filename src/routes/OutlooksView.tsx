@@ -56,8 +56,7 @@ export function OutlooksView() {
 
         {error ? (
           <div
-            className="pointer-events-none absolute bottom-4 left-1/2 z-20 max-w-sm -translate-x-1/2 rounded-xl border border-[var(--line-default)] px-4 py-2 text-center text-[12px] text-[var(--ink-2)] backdrop-blur-[28px]"
-            style={{ background: 'var(--glass-hi)' }}
+            className="pointer-events-none absolute bottom-4 left-1/2 z-20 max-w-sm -translate-x-1/2 floating-subpanel px-4 py-2 text-center text-[12px] text-[var(--ink-2)]"
           >
             Couldn’t load SPC outlooks. Check your connection and try again.
           </div>
@@ -65,8 +64,7 @@ export function OutlooksView() {
 
         {!loading && !error && geojson.features.length === 0 ? (
           <div
-            className="pointer-events-none absolute left-1/2 top-1/2 z-10 max-w-xs -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--line-default)] px-4 py-3 text-center text-[13px] text-[var(--ink-3)] backdrop-blur-[28px]"
-            style={{ background: 'var(--glass-hi)' }}
+            className="pointer-events-none absolute left-1/2 top-1/2 z-10 max-w-xs -translate-x-1/2 -translate-y-1/2 floating-panel px-4 py-3 text-center text-[13px] text-[var(--ink-3)]"
           >
             No outlook polygons for this day / product right now.
           </div>

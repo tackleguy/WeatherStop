@@ -45,7 +45,7 @@ export function RadarView() {
 
       <div className="relative flex flex-1 overflow-hidden">
         {!isMobile ? (
-          <div className="ml-2 mt-2">
+          <div className="ml-3 mt-3">
             <ProductRail />
           </div>
         ) : null}
@@ -65,7 +65,7 @@ export function RadarView() {
               chip, the legend and the ruler all sat at bottom-[88px] with
               the same z-index, so whichever rendered last hid the status
               and "unavailable" messages underneath it. */}
-          <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col items-start gap-2">
+          <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
             <DiagnosticsPanel />
             {!nullschoolOn ? <BookmarkBar map={map} /> : null}
             <LayerLoadingChip />
@@ -85,8 +85,8 @@ export function RadarView() {
           </div>
 
           <div
-            className={`pointer-events-none absolute bottom-7 z-10 flex flex-col items-end gap-2 ${
-              alertsOverlap ? 'right-[376px]' : 'right-4'
+            className={`pointer-events-none absolute bottom-8 z-10 flex flex-col items-end gap-2 ${
+              alertsOverlap ? 'right-[396px]' : 'right-4'
             }`}
           >
             {!nullschoolOn ? <DistanceRuler /> : null}

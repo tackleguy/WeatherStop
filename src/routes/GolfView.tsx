@@ -147,7 +147,7 @@ function ChipRow({
   if (options.length < 2) return null;
   return (
     <div className="px-3 pb-2">
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-[var(--ink-4)]">
+      <div className="mb-1 section-eyebrow">
         {label}
       </div>
       <div className="flex flex-wrap gap-1">
@@ -158,12 +158,8 @@ function ChipRow({
               key={opt.id}
               type="button"
               onClick={() => onChange(opt.id)}
-              className={[
-                'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
-                on
-                  ? 'bg-[var(--accent)]/30 text-[var(--ink-1)]'
-                  : 'bg-black/25 text-[var(--ink-3)] hover:bg-white/10 hover:text-[var(--ink-1)]',
-              ].join(' ')}
+              className="chip-button"
+              data-active={on}
             >
               {opt.label}
             </button>
@@ -192,7 +188,9 @@ export function GolfView() {
   const [pickerOpen, setPickerOpen] = useState(true);
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [target, setTarget] = useState<LonLat | null>(null);
+  const [planningMode, setPlanningMode] = useState<'tee' | 'approach'>('tee');
   const [bookOpen, setBookOpen] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   // ── Shot tracker ──
   const [round, setRound] = useState<TrackedRound | null>(() => loadRound());
@@ -247,6 +245,7 @@ export function GolfView() {
     setLoop(next);
     setTeeKind('mid');
     setActiveHole(null);
+    setPlanningMode('tee');
   }, [holes, course?.id, course?.name]);
 
   // One character filters the nearby list; two or more searches the
@@ -311,7 +310,7 @@ export function GolfView() {
       return;
     }
     setTarget(defaultTarget(activeHoleObj, bag[0]?.yards ?? profile.driverYards));
-  }, [activeHoleObj, profile, bag]);
+  }, [activeHoleObj, profile, bag, planningMode]);
 
   const briefByHole = useMemo(() => {
     const m = new Map<number, HoleBrief>();
@@ -324,15 +323,34 @@ export function GolfView() {
   const turf = ensemble?.turf ?? DEFAULT_TURF;
   const forecast = useMemo(() => {
     if (!activeHoleObj || !target || !profile) return null;
+    const hole =
+      planningMode === 'tee'
+        ? activeHoleObj
+        : {
+            ...activeHoleObj,
+            tee: { lat: target.lat, lon: target.lon },
+            yards: Math.round(
+              haversineYards(
+                target.lat,
+                target.lon,
+                activeHoleObj.green.lat,
+                activeHoleObj.green.lon,
+              ),
+            ),
+            par: 3,
+          };
     return predictHole({
-      hole: activeHoleObj,
-      target,
+      hole,
+      target:
+        planningMode === 'tee'
+          ? target
+          : { lat: activeHoleObj.green.lat, lon: activeHoleObj.green.lon },
       bag,
       profile,
       brief: activeBrief,
       turf,
     });
-  }, [activeHoleObj, target, bag, profile, activeBrief, turf]);
+  }, [activeHoleObj, target, bag, profile, activeBrief, turf, planningMode]);
   const playLines = useMemo(() => playLinesGeoJSON(forecast), [forecast]);
   const activeIdx = playHoles.findIndex((h) => h.number === activeHole);
   const layoutLabel = [
@@ -345,6 +363,7 @@ export function GolfView() {
 
   const pickCourse = useCallback(
     (next: GolfCourseSummary) => {
+      setMapReady(false);
       setCourse(next);
       setActiveHole(null);
       setLoop(null);
@@ -430,6 +449,10 @@ export function GolfView() {
     () => (round && activeHole != null ? shotsForHole(round, activeHole) : []),
     [round, activeHole],
   );
+
+  useEffect(() => {
+    if (!course) setMapReady(false);
+  }, [course]);
 
   const stepHole = useCallback(
     (delta: number) => {
@@ -527,12 +550,14 @@ export function GolfView() {
                     : 'relative h-full'
                   : 'hidden',
               ].join(' ')
-            : 'z-10 flex h-full w-[360px] shrink-0 flex-col border-r border-[var(--line-subtle)]'
+            : 'z-10 flex h-full w-[380px] shrink-0 flex-col border-r border-[var(--line-subtle)] bg-[color:rgba(6,10,18,0.72)]'
         }
       >
-        <div className="flex items-center gap-2 px-3 py-3">
+        <div className="border-b border-[var(--line-subtle)] px-3 py-3">
+          <div className="flex items-center gap-2">
           <Flag className="h-4 w-4 text-[var(--accent)]" strokeWidth={1.8} />
           <div className="min-w-0 flex-1">
+            <p className="section-eyebrow">Golf intelligence</p>
             <h1 className="truncate text-sm font-semibold text-[var(--ink-1)]">
               WeatherStop Golf
             </h1>
@@ -575,16 +600,17 @@ export function GolfView() {
             <Search className="h-4 w-4" />
           </button>
         </div>
-
-        <div className="flex items-center gap-2 px-3 pb-2">
-          <MapPin className="h-3.5 w-3.5 shrink-0 text-[var(--ink-4)]" />
-          <span className="truncate text-xs text-[var(--ink-2)]">{loc.name}</span>
+          <div className="mt-3 floating-subpanel flex items-center gap-2 px-3 py-2">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-[var(--ink-4)]" />
+            <span className="truncate text-xs text-[var(--ink-2)]">{loc.name}</span>
+          </div>
         </div>
 
         {searchOpen ? (
           <div className="px-3 pb-2">
             <SearchBar
               onPick={(p) => {
+                setMapReady(false);
                 setLoc({ name: p.label, lat: p.lat, lon: p.lon });
                 setCourse(null);
                 setActiveHole(null);
@@ -607,7 +633,7 @@ export function GolfView() {
             value={courseFilter}
             onChange={(e) => setCourseFilter(e.target.value)}
             placeholder="City courses & private clubs…"
-            className="w-full rounded-lg border border-[var(--line-default)] bg-black/20 px-3 py-2.5 text-base text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)] md:py-1.5 md:text-xs"
+            className="w-full rounded-2xl border border-[var(--line-default)] bg-black/20 px-3 py-2.5 text-base text-[var(--ink-1)] placeholder:text-[var(--ink-4)] outline-none focus:border-[var(--accent)] md:py-2 md:text-[13px]"
           />
         </div>
 
@@ -618,7 +644,7 @@ export function GolfView() {
                 key={name}
                 type="button"
                 onClick={() => setCourseFilter(name)}
-                className="shrink-0 rounded-full border border-[var(--line-subtle)] bg-black/15 px-3 py-1.5 text-[12px] text-[var(--ink-3)] hover:border-[var(--accent)]/50 hover:text-[var(--ink-1)] md:px-2 md:py-1 md:text-[10px]"
+                className="chip-button shrink-0"
               >
                 {name}
               </button>
@@ -626,9 +652,9 @@ export function GolfView() {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
           {coursesLoading && (
-            <div className="flex items-center gap-2 px-2 py-3 text-xs text-[var(--ink-3)]">
+            <div className="floating-subpanel flex items-center gap-2 px-3 py-3 text-xs text-[var(--ink-3)]">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />{' '}
               {courseFilter.trim().length >= 2
                 ? 'Searching 1,000+ U.S. courses…'
@@ -636,7 +662,7 @@ export function GolfView() {
             </div>
           )}
           {coursesError && (
-            <div className="px-2 py-2">
+            <div className="floating-subpanel px-3 py-3">
               <p className="text-xs text-red-300">
                 OpenStreetMap is busy right now.
               </p>
@@ -653,16 +679,16 @@ export function GolfView() {
             </div>
           )}
           {!coursesLoading && !courses.length && (
-            <p className="px-2 py-3 text-xs text-[var(--ink-3)]">
+            <p className="floating-subpanel px-3 py-3 text-xs text-[var(--ink-3)]">
               No golf courses found nearby. Try another city.
             </p>
           )}
           {!coursesLoading && courses.length > 0 && !filteredCourses.length && (
-            <p className="px-2 py-3 text-xs text-[var(--ink-3)]">
+            <p className="floating-subpanel px-3 py-3 text-xs text-[var(--ink-3)]">
               No courses match “{courseFilter}”.
             </p>
           )}
-          <ul className="space-y-1">
+          <ul className="space-y-2">
             {filteredCourses.map((c) => {
               const active = course?.id === c.id;
               return (
@@ -671,16 +697,18 @@ export function GolfView() {
                     type="button"
                     onClick={() => pickCourse(c)}
                     className={[
-                      'w-full rounded-xl px-3 py-3 text-left transition-colors md:py-2.5',
+                      'floating-subpanel w-full px-3 py-3 text-left transition-colors',
                       active
-                        ? 'bg-[var(--accent)]/20 ring-1 ring-[var(--accent)]/50'
+                        ? 'border-[color:color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[var(--accent-soft)]'
                         : 'hover:bg-white/5',
                     ].join(' ')}
                   >
-                    <div className="truncate text-[13px] font-medium text-[var(--ink-1)]">
-                      {c.name}
-                    </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--ink-3)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] font-semibold text-[var(--ink-1)]">
+                          {c.name}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[var(--ink-3)]">
                       {c.access === 'public' && (
                         <span className="rounded bg-emerald-500/20 px-1 py-px font-medium text-emerald-200">
                           Public
@@ -702,6 +730,13 @@ export function GolfView() {
                       {c.region && <span className="truncate">{c.region}</span>}
                       {c.holes != null && <span>{c.holes} holes</span>}
                       {c.par != null && <span>par {c.par}</span>}
+                        </div>
+                      </div>
+                      {active ? (
+                        <span className="chip-button shrink-0" data-active="true">
+                          Selected
+                        </span>
+                      ) : null}
                     </div>
                   </button>
                 </li>
@@ -740,6 +775,7 @@ export function GolfView() {
                 arcClubs={arcClubs}
                 onSetTarget={tracking ? dropShotAtTap : setTarget}
                 playLines={playLines}
+                planningMode={planningMode}
                 windFromDeg={ensemble?.ensemble.windFromDeg ?? null}
                 windMph={ensemble?.ensemble.windMph ?? null}
                 headwindMph={activeBrief?.headwindMph ?? null}
@@ -749,10 +785,35 @@ export function GolfView() {
                 showWindLegend={!isMobile}
                 fitPadding={isMobile ? MOBILE_FIT_PADDING : 60}
                 legendClassName="left-3 top-16"
+                onReady={() => setMapReady(true)}
                 trackedShots={activeHoleShots}
                 gpsPosition={gpsPos ? { lat: gpsPos.lat, lon: gpsPos.lon } : null}
               />
             </GolfMapBoundary>
+
+            {!mapReady || holesLoading ? (
+              <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center bg-[linear-gradient(180deg,rgba(4,7,12,0.72),rgba(4,7,12,0.5))] p-6">
+                <div className="floating-panel w-full max-w-md px-5 py-5 text-center">
+                  <p className="section-eyebrow">Course map</p>
+                  <h2 className="mt-1 text-lg font-semibold text-[var(--ink-1)]">
+                    {course.name}
+                  </h2>
+                  <p className="mt-2 text-[13px] text-[var(--ink-3)]">
+                    {holesLoading
+                      ? 'Loading course map, hole geometry, and weather overlays…'
+                      : 'Starting the satellite course map…'}
+                  </p>
+                  <div className="mt-4 space-y-2">
+                    <div className="h-40 rounded-2xl shimmer" />
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="h-10 rounded-xl shimmer" />
+                      <div className="h-10 rounded-xl shimmer" />
+                      <div className="h-10 rounded-xl shimmer" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {activeHoleObj && target && profile ? (
               <GolfTargetHud
@@ -763,6 +824,7 @@ export function GolfView() {
                 elevFt={courseElevFt}
                 turf={turf}
                 forecast={forecast}
+                mode={planningMode}
                 onReset={() =>
                   setTarget(
                     defaultTarget(
@@ -924,7 +986,7 @@ export function GolfView() {
               className={
                 isMobile
                   ? 'pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3'
-                  : 'pointer-events-none absolute inset-x-0 bottom-0 p-3 md:inset-x-auto md:right-3 md:top-3 md:bottom-3 md:w-[320px]'
+                  : 'pointer-events-none absolute inset-x-0 bottom-0 p-3 md:inset-x-auto md:right-3 md:top-3 md:bottom-3 md:w-[332px]'
               }
             >
               <GlassPanel
@@ -967,11 +1029,12 @@ export function GolfView() {
                     )}
                   </button>
                 ) : (
-                  <div className="border-b border-[var(--line-subtle)] px-3 py-2.5">
-                    <div className="truncate text-sm font-semibold text-[var(--ink-1)]">
+                  <div className="border-b border-[var(--line-subtle)] px-4 py-3">
+                    <p className="section-eyebrow">Selected course</p>
+                    <div className="mt-1 truncate text-base font-semibold text-[var(--ink-1)]">
                       {course.name}
                     </div>
-                    <div className="text-[11px] text-[var(--ink-3)]">
+                    <div className="mt-1 text-[11px] text-[var(--ink-3)]">
                       {holesLoading
                         ? 'Loading hole geometry…'
                         : holesError
@@ -980,6 +1043,13 @@ export function GolfView() {
                             ? `${layoutLabel} · yardage, bearing & elevation`
                             : 'No hole geometry in OSM for this course yet'}
                     </div>
+                    {ensemble?.ensemble.windMph != null ? (
+                      <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-wider text-[var(--ink-3)]">
+                        <span className="chip-button" data-active="true">
+                          {Math.round(ensemble.ensemble.windMph)} mph {bearingCompass(ensemble.ensemble.windFromDeg)}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 )}
                 {holesError && (
@@ -1022,6 +1092,15 @@ export function GolfView() {
                       }))}
                       value={teeKind}
                       onChange={(id) => setTeeKind(id as TeeKind)}
+                    />
+                    <ChipRow
+                      label="Planner"
+                      options={[
+                        { id: 'tee', label: 'Tee' },
+                        { id: 'approach', label: 'Approach' },
+                      ]}
+                      value={planningMode}
+                      onChange={(id) => setPlanningMode(id as 'tee' | 'approach')}
                     />
                   </>
                 )}

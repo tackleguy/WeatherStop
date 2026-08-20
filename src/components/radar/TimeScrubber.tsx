@@ -65,47 +65,49 @@ export function TimeScrubber() {
 
   return (
     <div
-      className="relative z-10 flex h-[72px] shrink-0 items-center gap-3 border-t border-[var(--line-subtle)] px-4 backdrop-blur-[28px] transition-colors duration-[var(--t-base)]"
-      style={{ background: 'var(--glass)' }}
+      className="relative z-10 flex h-[116px] shrink-0 items-center gap-4 border-t border-[var(--line-subtle)] px-4 backdrop-blur-[28px] transition-colors duration-[var(--t-base)]"
+      style={{ background: 'linear-gradient(180deg, rgba(8,12,20,0.92), rgba(8,12,20,0.84))' }}
     >
-      <button
-        type="button"
-        aria-label={forecast ? 'Jump to now' : 'Skip to oldest'}
-        onClick={() => setCurrentFrameIdx(forecast ? 0 : 0)}
-        className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]"
-      >
-        <SkipBack className="h-4 w-4" strokeWidth={1.6} />
-      </button>
+      <div className="floating-subpanel flex shrink-0 items-center gap-1 p-1.5">
+        <button
+          type="button"
+          aria-label={forecast ? 'Jump to now' : 'Skip to oldest'}
+          onClick={() => setCurrentFrameIdx(0)}
+          className="control-button h-10 w-10 border-transparent bg-transparent shadow-none"
+        >
+          <SkipBack className="h-4 w-4" strokeWidth={1.6} />
+        </button>
 
-      <button
-        type="button"
-        onClick={togglePlay}
-        aria-label={isPlaying ? 'Pause' : 'Play'}
-        className="grid h-9 w-9 place-items-center rounded-full text-white transition-transform duration-[var(--t-fast)] hover:scale-105"
-        style={{
-          background: 'var(--accent)',
-          boxShadow: '0 0 12px var(--accent-glow)',
-        }}
-      >
-        {isPlaying ? (
-          <Pause className="h-4 w-4" strokeWidth={2.4} />
-        ) : (
-          <Play className="ml-0.5 h-4 w-4" strokeWidth={2.4} />
-        )}
-      </button>
+        <button
+          type="button"
+          onClick={togglePlay}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+          className="grid h-11 w-11 place-items-center rounded-2xl text-white transition-transform duration-[var(--t-fast)] hover:scale-[1.03]"
+          style={{
+            background: 'var(--accent)',
+            boxShadow: '0 0 16px var(--accent-glow)',
+          }}
+        >
+          {isPlaying ? (
+            <Pause className="h-4 w-4" strokeWidth={2.4} />
+          ) : (
+            <Play className="ml-0.5 h-4 w-4" strokeWidth={2.4} />
+          )}
+        </button>
 
-      <button
-        type="button"
-        aria-label={forecast ? 'Jump to +47h' : 'Skip to live'}
-        onClick={() => setCurrentFrameIdx(lastIdx)}
-        className="rounded-lg p-2 text-[var(--ink-2)] transition-colors hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]"
-      >
-        <SkipForward className="h-4 w-4" strokeWidth={1.6} />
-      </button>
+        <button
+          type="button"
+          aria-label={forecast ? 'Jump to +47h' : 'Skip to live'}
+          onClick={() => setCurrentFrameIdx(lastIdx)}
+          className="control-button h-10 w-10 border-transparent bg-transparent shadow-none"
+        >
+          <SkipForward className="h-4 w-4" strokeWidth={1.6} />
+        </button>
+      </div>
 
       <div
         ref={trackRef}
-        className="relative flex-1 cursor-pointer select-none"
+        className="relative flex-1 cursor-pointer select-none rounded-[1.35rem] border border-[var(--line-subtle)] px-4 py-4 floating-subpanel"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           handlePointer(e);
@@ -114,22 +116,60 @@ export function TimeScrubber() {
           if (e.buttons) handlePointer(e);
         }}
       >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="section-eyebrow">
+              {forecast ? 'Forecast timeline' : 'Radar playback'}
+            </p>
+            <p className="text-[12px] text-[var(--ink-3)]">
+              {forecast
+                ? 'Scrub model forecast hours without changing the layer logic.'
+                : 'Play the latest radar loop or scrub frame by frame.'}
+            </p>
+          </div>
+          <div
+            data-num
+            className="flex shrink-0 items-center justify-end gap-2 text-[12px] font-semibold"
+            style={{ minWidth: 132 }}
+          >
+            <span className="text-[var(--ink-3)]">{formatTime(currentTs)}</span>
+            <span className="text-[var(--ink-4)]">·</span>
+            {isNow ? (
+              <>
+                <PulseDot color="var(--sev-severe)" size={7} />
+                <span className="text-[var(--ink-1)]">
+                  {forecast ? 'NOW' : 'LIVE'}
+                </span>
+              </>
+            ) : forecast ? (
+              <span className="text-[var(--ink-2)]">+{hoursAhead}h</span>
+            ) : (
+              <span className="text-[var(--ink-2)]">−{minutesAgo}m</span>
+            )}
+          </div>
+        </div>
         <div
-          className="h-1 rounded-full"
+          className="h-1.5 rounded-full"
           style={{ background: 'var(--track)' }}
         />
         <div
-          className="absolute left-0 top-0 h-1 rounded-full transition-[width] duration-[var(--t-fast)]"
-          style={{ width: `${trackPct}%`, background: 'var(--accent)' }}
-        />
+          className="absolute left-4 right-4 top-[4.3125rem] h-1.5 overflow-hidden rounded-full"
+          style={{ background: 'transparent' }}
+          aria-hidden
+        >
+          <div
+            className="h-full rounded-full transition-[width] duration-[var(--t-fast)]"
+            style={{ width: `${trackPct}%`, background: 'var(--accent)' }}
+          />
+        </div>
 
         {Array.from({ length: count }).map((_, i) =>
           i % tickStep === 0 || i === lastIdx ? (
             <span
               key={i}
-              className="absolute top-1/2 h-2.5 w-px -translate-y-1/2"
+              className="absolute top-[4.06rem] h-3 w-px"
               style={{
-                left: `${(i / lastIdx) * 100}%`,
+                left: `calc(1rem + ((100% - 2rem) * ${i / Math.max(1, lastIdx)}))`,
                 background: 'var(--track)',
               }}
             />
@@ -137,34 +177,13 @@ export function TimeScrubber() {
         )}
 
         <span
-          className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-white transition-[left] duration-[var(--t-fast)]"
+          className="absolute top-[4.0625rem] h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-white transition-[left] duration-[var(--t-fast)]"
           style={{
-            left: `${trackPct}%`,
+            left: `calc(1rem + ((100% - 2rem) * ${trackPct / 100}))`,
             borderColor: 'var(--accent)',
             boxShadow: '0 0 12px var(--accent-glow)',
           }}
         />
-      </div>
-
-      <div
-        data-num
-        className="flex shrink-0 items-center justify-end gap-2 text-[12px] font-semibold"
-        style={{ minWidth: 120 }}
-      >
-        <span className="text-[var(--ink-3)]">{formatTime(currentTs)}</span>
-        <span className="text-[var(--ink-4)]">·</span>
-        {isNow ? (
-          <>
-            <PulseDot color="var(--sev-severe)" size={7} />
-            <span className="text-[var(--ink-1)]">
-              {forecast ? 'NOW' : 'LIVE'}
-            </span>
-          </>
-        ) : forecast ? (
-          <span className="text-[var(--ink-2)]">+{hoursAhead}h</span>
-        ) : (
-          <span className="text-[var(--ink-2)]">−{minutesAgo}m</span>
-        )}
       </div>
     </div>
   );

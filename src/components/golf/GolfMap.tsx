@@ -47,10 +47,12 @@ interface Props {
   showWindLegend?: boolean;
   fitPadding?: number | { top: number; right: number; bottom: number; left: number };
   legendClassName?: string;
+  onReady?: () => void;
   /** GPS shot trace data for live tracking. */
   trackedShots?: TrackedShot[];
   /** Live GPS position dot. */
   gpsPosition?: { lat: number; lon: number } | null;
+  planningMode?: 'tee' | 'approach';
 }
 
 const SRC = 'golf-holes';
@@ -172,8 +174,10 @@ export function GolfMap({
   showWindLegend = true,
   fitPadding = 60,
   legendClassName = 'left-3 top-3',
+  onReady,
   trackedShots = [],
   gpsPosition = null,
+  planningMode = 'tee',
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -185,6 +189,8 @@ export function GolfMap({
   fitPaddingRef.current = fitPadding;
   const onSetTargetRef = useRef(onSetTarget);
   onSetTargetRef.current = onSetTarget;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const activeHoleRef = useRef(activeHole);
   activeHoleRef.current = activeHole;
 
@@ -591,6 +597,7 @@ export function GolfMap({
 
       resize();
       readyRef.current = true;
+      onReadyRef.current?.();
       const queued = queueRef.current;
       queueRef.current = [];
       for (const fn of queued) fn();
@@ -741,7 +748,7 @@ export function GolfMap({
       )?.setData(
         playLines && playLines.features.length
           ? emptyCollection()
-          : targetLineGeoJSON(tee, hole ? target : null, green),
+          : targetLineGeoJSON(tee, hole ? target : null, green, planningMode),
       );
       (
         map.getSource(SRC_PLAY) as maplibregl.GeoJSONSource | undefined
@@ -752,7 +759,7 @@ export function GolfMap({
       map.getCanvas().style.cursor =
         hole && onSetTargetRef.current ? 'crosshair' : '';
     });
-  }, [holes, activeHole, target, arcClubs, playLines, whenReady]);
+  }, [holes, activeHole, target, arcClubs, playLines, planningMode, whenReady]);
 
   // Shot tracker traces + landing points
   useEffect(() => {
@@ -804,7 +811,7 @@ export function GolfMap({
       <div ref={containerRef} className="absolute inset-0" />
       {showWindLegend && windLabel && (
         <div
-          className={`pointer-events-none absolute flex flex-col gap-1 rounded-lg bg-black/55 px-2.5 py-1.5 text-[11px] font-medium backdrop-blur-md ring-1 ring-white/10 ${legendClassName}`}
+          className={`pointer-events-none absolute flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/55 px-3 py-2 text-[11px] font-medium backdrop-blur-md ${legendClassName}`}
         >
           <span className="text-cyan-200">{windLabel}</span>
           {activeHole != null && (

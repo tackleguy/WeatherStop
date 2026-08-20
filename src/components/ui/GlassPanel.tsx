@@ -11,11 +11,11 @@ export function GlassPanel({
   children,
   ...rest
 }: Props) {
-  const bg = variant === 'high' ? 'var(--glass-hi)' : 'var(--glass)';
+  const panelClass =
+    variant === 'high' ? 'floating-panel' : 'floating-subpanel';
   return (
     <div
-      className={`rounded-xl border border-[var(--line-default)] backdrop-blur-[28px] ${className}`}
-      style={{ background: bg }}
+      className={`${panelClass} ${className}`}
       {...rest}
     >
       {children}

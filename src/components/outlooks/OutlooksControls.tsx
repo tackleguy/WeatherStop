@@ -35,12 +35,21 @@ export function OutlooksControls({
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-      className="pointer-events-auto absolute left-3 right-3 top-3 z-20 flex max-h-[42%] flex-col gap-2 overflow-y-auto sm:left-3 sm:right-auto sm:max-w-xl"
+      className="pointer-events-auto absolute left-3 right-3 top-3 z-20 flex max-h-[46%] flex-col gap-2 overflow-y-auto sm:left-3 sm:right-auto sm:max-w-[42rem]"
     >
-      <div
-        className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--line-default)] px-2 py-2 backdrop-blur-[28px]"
-        style={{ background: 'var(--glass-hi)' }}
-      >
+      <div className="floating-panel px-3 py-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <p className="section-eyebrow">SPC outlooks</p>
+            <p className="text-[12px] text-[var(--ink-3)]">
+              Keep the map dominant while switching domains, days, and products.
+            </p>
+          </div>
+          {loading ? (
+            <span className="px-2 text-[11px] text-[var(--ink-4)]">Loading…</span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
         {(
           [
             ['convective', 'Convective'],
@@ -56,105 +65,62 @@ export function OutlooksControls({
                 onDomainChange(id);
                 onProductChange(defaultProduct(id, day));
               }}
-              className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-[var(--t-fast)] ${
-                active
-                  ? 'text-black'
-                  : 'text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]'
-              }`}
-              style={
-                active
-                  ? {
-                      background: 'var(--accent)',
-                      boxShadow: '0 0 12px var(--accent-glow)',
-                    }
-                  : undefined
-              }
+              className="chip-button"
+              data-active={active}
             >
               {label}
             </button>
           );
         })}
-        {loading ? (
-          <span className="ml-auto px-2 text-[11px] text-[var(--ink-4)]">
-            Loading…
-          </span>
-        ) : null}
+        </div>
       </div>
 
-      <div
-        className="flex flex-wrap items-center gap-1 rounded-xl border border-[var(--line-default)] px-2 py-2 backdrop-blur-[28px]"
-        style={{ background: 'var(--glass-hi)' }}
-      >
-        <span className="px-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--ink-4)]">
-          Day
-        </span>
-        {DAYS.map((d) => {
-          const active = day === d;
-          return (
-            <button
-              key={d}
-              type="button"
-              onClick={() => {
-                onDayChange(d);
-                const next = productsFor(domain, d);
-                if (!next.some((p) => p.id === product)) {
-                  onProductChange(next[0].id);
-                }
-              }}
-              className={`rounded-md px-2.5 py-1 text-[12px] font-semibold transition-all duration-[var(--t-fast)] ${
-                active
-                  ? 'text-black'
-                  : 'text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]'
-              }`}
-              style={
-                active
-                  ? {
-                      background: 'var(--cool)',
-                      boxShadow: '0 0 10px var(--cool-glow)',
-                    }
-                  : undefined
-              }
-            >
-              {d}
-            </button>
-          );
-        })}
+      <div className="floating-subpanel px-3 py-3">
+        <p className="section-eyebrow mb-2">Day</p>
+        <div className="flex flex-wrap gap-2">
+          {DAYS.map((d) => {
+            const active = day === d;
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => {
+                  onDayChange(d);
+                  const next = productsFor(domain, d);
+                  if (!next.some((p) => p.id === product)) {
+                    onProductChange(next[0].id);
+                  }
+                }}
+                className="chip-button"
+                data-active={active}
+              >
+                Day {d}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div
-        className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--line-default)] px-2 py-2 backdrop-blur-[28px]"
-        style={{ background: 'var(--glass-hi)' }}
-      >
-        <span className="px-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--ink-4)]">
-          Product
-        </span>
-        {products.map((p) => {
-          const active = product === p.id;
-          return (
-            <button
-              key={p.id}
-              type="button"
-              title={p.label}
-              onClick={() => onProductChange(p.id)}
-              className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-[var(--t-fast)] sm:text-[12px] ${
-                active
-                  ? 'text-black'
-                  : 'text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]'
-              }`}
-              style={
-                active
-                  ? {
-                      background: '#a78bfa',
-                      boxShadow: '0 0 12px rgba(167,139,250,0.4)',
-                    }
-                  : undefined
-              }
-            >
-              <span className="sm:hidden">{p.short}</span>
-              <span className="hidden sm:inline">{p.label}</span>
-            </button>
-          );
-        })}
+      <div className="floating-subpanel px-3 py-3">
+        <p className="section-eyebrow mb-2">Product</p>
+        <div className="flex flex-wrap gap-2">
+          {products.map((p) => {
+            const active = product === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                title={p.label}
+                onClick={() => onProductChange(p.id)}
+                className="chip-button"
+                data-active={active}
+              >
+                <span className="sm:hidden">{p.short}</span>
+                <span className="hidden sm:inline">{p.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </motion.div>
   );

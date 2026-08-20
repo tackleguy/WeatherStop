@@ -73,13 +73,13 @@ function NavItem({ tab, labeled = false }: { tab: Tab; labeled?: boolean }) {
           (tab.to === '/' && isHome) ||
           (tab.match?.(loc.pathname) ?? false);
         return [
-          'group relative flex items-center justify-center rounded-xl transition-all duration-[var(--t-fast)]',
+          'group relative flex items-center justify-center rounded-2xl transition-all duration-[var(--t-fast)]',
           labeled
-            ? 'min-w-[3.15rem] flex-col gap-0.5 px-1 py-1'
-            : 'h-10 w-10',
+            ? 'min-w-[3.3rem] flex-col gap-1 px-1.5 py-1.5'
+            : 'h-11 w-11',
           active
-            ? 'text-white shadow-[0_0_18px_var(--accent-glow)]'
-            : 'text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]',
+            ? 'border border-[color:color-mix(in_srgb,var(--accent)_38%,transparent)] text-white shadow-[0_0_18px_var(--accent-glow)]'
+            : 'border border-transparent text-[var(--ink-3)] hover:bg-[var(--hover-fill)] hover:text-[var(--ink-1)]',
         ].join(' ');
       }}
       style={({ isActive }) => {
@@ -92,11 +92,11 @@ function NavItem({ tab, labeled = false }: { tab: Tab; labeled?: boolean }) {
     >
       <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
       {labeled ? (
-        <span className="max-w-[3.5rem] truncate text-[9px] font-medium leading-none">
+        <span className="max-w-[3.7rem] truncate text-[9px] font-medium leading-none">
           {tab.label}
         </span>
       ) : (
-        <span className="pointer-events-none absolute left-full ml-2 hidden whitespace-nowrap rounded-md bg-[var(--glass-hi)] px-2 py-1 text-[11px] font-medium text-[var(--ink-1)] opacity-0 shadow-lg ring-1 ring-white/10 transition-opacity group-hover:opacity-100 lg:block">
+        <span className="pointer-events-none absolute left-full ml-3 hidden whitespace-nowrap rounded-xl border border-[var(--line-subtle)] bg-[var(--glass-hi)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--ink-1)] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 lg:block">
           {tab.label}
         </span>
       )}
@@ -119,7 +119,7 @@ export function SideNav() {
     return (
       <nav
         aria-label="Primary"
-        className="pointer-events-auto fixed inset-x-0 bottom-0 z-40 flex h-[4.25rem] items-center justify-around border-t border-[var(--line-subtle)] px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur-[28px]"
+        className="pointer-events-auto fixed inset-x-0 bottom-0 z-40 flex h-[4.5rem] items-center justify-around border-t border-[var(--line-subtle)] px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-[28px]"
         style={{ background: 'var(--glass)' }}
       >
         {mobileTabs.map((t) => (
@@ -132,13 +132,13 @@ export function SideNav() {
   return (
     <nav
       aria-label="Primary"
-      className="pointer-events-auto fixed left-0 top-0 z-40 flex h-[100dvh] w-[var(--sidebar-w)] flex-col items-center border-r border-[var(--line-subtle)] py-3 backdrop-blur-[28px]"
+      className="pointer-events-auto fixed left-0 top-0 z-40 flex h-[100dvh] w-[var(--sidebar-w)] flex-col items-center border-r border-[var(--line-subtle)] py-4 backdrop-blur-[28px]"
       style={{ background: 'var(--glass)' }}
     >
       <NavLink
         to="/"
         aria-label="WeatherStop home"
-        className="mb-3 grid h-10 w-10 place-items-center rounded-xl"
+        className="mb-4 grid h-11 w-11 place-items-center rounded-2xl border border-white/5 bg-white/[0.03]"
       >
         <Zap
           className="h-5 w-5"
@@ -150,13 +150,13 @@ export function SideNav() {
         />
       </NavLink>
 
-      <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto no-scrollbar py-1">
+      <div className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto no-scrollbar py-1">
         {PRIMARY.map((t) => (
           <NavItem key={t.to} tab={t} />
         ))}
       </div>
 
-      <div className="mt-auto flex flex-col items-center gap-1 border-t border-[var(--line-subtle)] pt-2">
+      <div className="mt-auto flex flex-col items-center gap-1.5 border-t border-[var(--line-subtle)] pt-3">
         {SECONDARY.map((t) => (
           <NavItem key={t.to} tab={t} />
         ))}

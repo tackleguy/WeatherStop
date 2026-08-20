@@ -84,8 +84,10 @@ export function AlertsPanel() {
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 320, opacity: 0 }}
           transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-          className="absolute bottom-0 right-0 top-0 z-10 flex w-[360px] flex-col border-l border-[var(--line-default)] backdrop-blur-[28px]"
-          style={{ background: 'var(--glass-hi)' }}
+          className="absolute bottom-0 right-0 top-0 z-10 flex w-[380px] max-w-[calc(100vw-1rem)] flex-col border-l border-[var(--line-default)] backdrop-blur-[28px]"
+          style={{
+            background: 'linear-gradient(180deg, rgba(12,18,30,0.96), rgba(10,15,26,0.92))',
+          }}
         >
           {focused ? (
             <AlertDetail
@@ -99,37 +101,45 @@ export function AlertsPanel() {
             />
           ) : (
             <>
-              <header className="flex h-12 items-center justify-between border-b border-[var(--line-subtle)] px-4">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle
-                    className="h-4 w-4"
-                    strokeWidth={2}
-                    style={{ color: 'var(--sev-severe)' }}
-                  />
-                  <h2 className="text-[13px] font-semibold uppercase tracking-wider">
-                    Active Alerts
-                  </h2>
-                  <span data-num className="text-[11px] text-[var(--ink-3)]">
-                    {alerts.length}
-                  </span>
+              <header className="border-b border-[var(--line-subtle)] px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="section-eyebrow">Storm intelligence</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <AlertTriangle
+                        className="h-4 w-4"
+                        strokeWidth={2}
+                        style={{ color: 'var(--sev-severe)' }}
+                      />
+                      <h2 className="text-[15px] font-semibold text-[var(--ink-1)]">
+                        Active alerts
+                      </h2>
+                      <span data-num className="text-[12px] text-[var(--ink-3)]">
+                        {alerts.length}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[12px] text-[var(--ink-3)]">
+                      Official warnings, local storm signals, and quick drill-in.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => togglePanel('alerts')}
+                    className="control-button h-10 w-10 shrink-0"
+                  >
+                    <X className="h-4 w-4" strokeWidth={2} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  aria-label="Close"
-                  onClick={() => togglePanel('alerts')}
-                  className="rounded p-1 text-[var(--ink-3)] hover:bg-white/5 hover:text-[var(--ink-1)]"
-                >
-                  <X className="h-4 w-4" strokeWidth={2} />
-                </button>
               </header>
 
-              <div className="flex-1 overflow-y-auto">
-                <section className="border-b border-[var(--line-default)]">
+              <div className="flex-1 overflow-y-auto px-3 py-3">
+                <section className="floating-subpanel mb-3 overflow-hidden">
                   <div className="flex items-center justify-between px-4 pb-2 pt-3">
                     <div className="flex items-center gap-2">
                       <Tornado className="h-4 w-4 text-cyan-300" />
                       <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em]">
-                        Storm Intelligence
+                        Priority signals
                       </h3>
                     </div>
                     <span className="text-[9px] uppercase tracking-wider text-[var(--ink-4)]">
@@ -137,29 +147,29 @@ export function AlertsPanel() {
                     </span>
                   </div>
                   {identifiedStorms.length === 0 && tropicalSystems.length === 0 ? (
-                    <p className="px-4 pb-3 text-[11px] leading-relaxed text-[var(--ink-3)]">
+                    <p className="px-4 pb-4 text-[12px] leading-relaxed text-[var(--ink-3)]">
                       No severe storm signatures confirmed in this view.
                     </p>
                   ) : (
-                    <div className="space-y-1 px-3 pb-3">
+                    <div className="space-y-2 px-3 pb-3">
                       {identifiedStorms.slice(0, 6).map((storm) => (
                         <button
                           key={storm.id}
                           type="button"
                           onClick={() => openAlert(storm.id)}
-                          className="w-full rounded-md border border-white/5 bg-white/[0.035] px-3 py-2 text-left hover:bg-white/[0.07]"
+                          className="w-full rounded-2xl border border-white/5 bg-white/[0.035] px-3 py-3 text-left transition-colors hover:bg-white/[0.07]"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[12px] font-semibold">
+                            <span className="truncate text-[13px] font-semibold text-[var(--ink-1)]">
                               {storm.type}
                             </span>
                             <DangerBadge danger={storm.danger} />
                           </div>
-                          <div className="mt-1 flex items-center gap-1 text-[10px] text-[var(--ink-3)]">
+                          <div className="mt-1 flex items-center gap-1 text-[11px] text-[var(--ink-3)]">
                             <Route className="h-3 w-3" />
                             {storm.description}
                           </div>
-                          <div className="mt-1 text-[9px] uppercase tracking-wider text-[var(--ink-4)]">
+                          <div className="mt-2 text-[10px] uppercase tracking-wider text-[var(--ink-4)]">
                             NWS-confirmed · circle + 60 min path
                           </div>
                         </button>
@@ -167,10 +177,10 @@ export function AlertsPanel() {
                       {tropicalSystems.map((storm) => (
                         <div
                           key={storm.id}
-                          className="rounded-md border border-cyan-300/15 bg-cyan-300/[0.04] px-3 py-2"
+                          className="rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.04] px-3 py-3"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[12px] font-semibold">
+                            <span className="truncate text-[13px] font-semibold text-[var(--ink-1)]">
                               {storm.name}
                             </span>
                             <DangerBadge
@@ -181,13 +191,13 @@ export function AlertsPanel() {
                               }
                             />
                           </div>
-                          <div className="mt-1 text-[10px] text-[var(--ink-3)]">
+                          <div className="mt-1 text-[11px] text-[var(--ink-3)]">
                             {storm.classification}
                             {Number.isFinite(storm.wind)
                               ? ` · ${Math.round(storm.wind)} kt`
                               : ''}
                           </div>
-                          <div className="mt-1 text-[9px] uppercase tracking-wider text-cyan-200/60">
+                          <div className="mt-2 text-[10px] uppercase tracking-wider text-cyan-200/60">
                             Official NHC forecast track
                           </div>
                         </div>
@@ -196,46 +206,51 @@ export function AlertsPanel() {
                   )}
                 </section>
                 {loading && alerts.length === 0 ? (
-                  <div className="p-4 text-sm text-[var(--ink-3)]">
+                  <div className="floating-subpanel p-4 text-sm text-[var(--ink-3)]">
                     Loading alerts…
                   </div>
                 ) : null}
                 {!loading && alerts.length === 0 ? (
-                  <div className="p-8 text-center">
+                  <div className="floating-subpanel p-8 text-center">
                     <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-[var(--ink-4)]" />
                     <p className="text-sm text-[var(--ink-3)]">
                       No active alerts
                     </p>
                   </div>
                 ) : null}
-                {alerts.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => openAlert(a.id)}
-                    className="flex w-full items-start gap-3 border-b border-[var(--line-subtle)] px-4 py-3 text-left transition-colors hover:bg-white/5"
-                  >
-                    <div
-                      className="mt-0.5 w-1 self-stretch rounded-full"
-                      style={{ background: severityColor(a.severity) }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-semibold leading-snug">
-                        {a.event}
+                <div className="space-y-2">
+                  {alerts.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => openAlert(a.id)}
+                      className="floating-subpanel flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                    >
+                      <div
+                        className="mt-0.5 w-1.5 self-stretch rounded-full"
+                        style={{ background: severityColor(a.severity) }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-semibold leading-snug text-[var(--ink-1)]">
+                          {a.event}
+                        </div>
+                        <div className="mt-1 line-clamp-2 text-[11px] text-[var(--ink-3)]">
+                          {a.areaDesc}
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] uppercase tracking-wider">
+                          <span className="text-[var(--ink-4)]">
+                            Expires {a.expiresRelative}
+                          </span>
+                          <span className="text-[var(--ink-3)]">Open details</span>
+                        </div>
                       </div>
-                      <div className="mt-0.5 line-clamp-2 text-[11px] text-[var(--ink-3)]">
-                        {a.areaDesc}
-                      </div>
-                      <div className="mt-1 text-[10px] uppercase tracking-wider text-[var(--ink-4)]">
-                        Expires {a.expiresRelative}
-                      </div>
-                    </div>
-                    <ChevronRight
-                      className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--ink-4)]"
-                      strokeWidth={2}
-                    />
-                  </button>
-                ))}
+                      <ChevronRight
+                        className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--ink-4)]"
+                        strokeWidth={2}
+                      />
+                    </button>
+                  ))}
+                </div>
               </div>
             </>
           )}

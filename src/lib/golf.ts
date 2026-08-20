@@ -261,7 +261,7 @@ export async function fetchGolfHoles(
       lon + 0.012 / Math.max(0.2, Math.cos((lat * Math.PI) / 180)),
     ] as [number, number, number, number]);
   const bboxKey = bbox.map((n) => q4(n)).join(',');
-  const key = `golf:v5:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:${opts?.osmType ?? ''}${opts?.osmId ?? ''}:${opts?.radius ?? ''}`;
+  const key = `golf:v7:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:${opts?.osmType ?? ''}${opts?.osmId ?? ''}:${opts?.radius ?? ''}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
     sessionGet<GolfHole[]>(key, HOLES_TTL_MS);
@@ -274,7 +274,7 @@ export async function fetchGolfHoles(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
-    v: '5',
+    v: '7',
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
   params.set('bbox', bboxKey);

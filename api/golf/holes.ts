@@ -8,6 +8,7 @@
 // sit near each other, or North/South (etc.) layouts when they do not.
 
 import {
+  layoutKey,
   layoutLabelFromName,
   sameClub,
   titleCaseName,
@@ -206,7 +207,15 @@ function normalizeOnePerNumber(holes: GolfHole[]): GolfHole[] {
           other.green.lat,
           other.green.lon,
         );
-        if (dGreen >= 90) continue;
+        if (dGreen >= 90) {
+          // Same hole number on a different green = another layout. Keep it;
+          // autoLoops should have labeled it, but never drop the geometry.
+          out.push({
+            ...other,
+            tees: other.tees ? [...other.tees] : undefined,
+          });
+          continue;
+        }
         upsertTee(bucket, {
           number: bucket[0]!.number,
           loop: loopKey(bucket[0]!.loop),
@@ -281,9 +290,19 @@ function isHoleCountLoop(raw: string): boolean {
   return /^\d+_?holes?$/i.test(raw.trim()) || /^\d+\s*holes?$/i.test(raw.trim());
 }
 
+/**
+ * True only for an actual layout name (North / South / Black / …), not a
+ * club stem like "Los Angeles" stamped from a single leisure=golf_course
+ * polygon. Club stems used to block autoLoops, collapsing LACC's 36 holes
+ * into one 18.
+ */
 function isRealLoop(loop: string | undefined): boolean {
   if (!loop) return false;
-  return !isHoleCountLoop(loop);
+  if (isHoleCountLoop(loop)) return false;
+  if (layoutKey(loop)) return true;
+  if (/^(second|third|fourth)\b/i.test(loop)) return true;
+  if (/^course\s*\d+$/i.test(loop.trim())) return true;
+  return false;
 }
 
 /** Layout name from OSM tags. golf:course=18_hole means hole count, not North/South. */
@@ -319,12 +338,29 @@ function extractCoursePolygons(els: OsmElement[]): CoursePoly[] {
     raw.push({
       id: el.id,
       name,
-      loop: layoutLabelFromName(name),
+      // Prefer a layout token in the name (Torrey Pines South → South).
+      // Club-only names stay unlabeled so autoLoops can split North/South.
+      loop: layoutKey(name)
+        ? layoutLabelFromName(name)
+        : '',
       ring,
     });
   }
+  // Multiple sibling polygons without layout tokens (rare) → Course 1 / 2.
+  const unlabeled = raw.filter((p) => !p.loop);
+  if (unlabeled.length >= 2) {
+    const related = unlabeled.filter((p) =>
+      unlabeled.some((o) => o.id !== p.id && sameClub(o.name, p.name)),
+    );
+    if (related.length >= 2) {
+      related.forEach((p, i) => {
+        p.loop = `Course ${i + 1}`;
+      });
+    }
+  }
   const seen = new Map<string, number>();
   return raw.map((p) => {
+    if (!p.loop) return p;
     const base = p.loop;
     const n = seen.get(base) ?? 0;
     seen.set(base, n + 1);
@@ -716,6 +752,8 @@ const MAX_HOLES = 54;
 
 function autoLoops(holes: GolfHole[]): GolfHole[] {
   const withNums = holes.map((h) => {
+    // Strip club-stem "loops" so geographic splitting can run.
+    if (h.loop && !isRealLoop(h.loop)) return { ...h, loop: undefined };
     if (isRealLoop(h.loop)) return h;
     if (h.number > 18 && h.number <= 36) {
       return { ...h, loop: 'Second course', number: h.number - 18 };
@@ -732,9 +770,57 @@ function autoLoops(holes: GolfHole[]): GolfHole[] {
     byNum.set(h.number, list);
   }
   const splitNums = [...byNum.entries()].filter(([, g]) => g.length >= 2);
-  if (!splitNums.length) {
-    if (unlabeled.length < 20) return withNums;
+
+  // Prefer pairing duplicate hole numbers (LACC: two hole-1 greens) over a
+  // global mean split — that keeps each 18 intact instead of 17/19.
+  if (splitNums.length >= 6) {
+    const anchors = splitNums.flatMap(([, g]) => g);
+    const lats = anchors.map((h) => h.green.lat);
+    const lons = anchors.map((h) => h.green.lon);
+    const dLat = Math.max(...lats) - Math.min(...lats);
+    const dLon = Math.max(...lons) - Math.min(...lons);
+    const ns = dLat >= dLon;
+    const assigned = new Map<GolfHole, string>();
+    for (const [, group] of splitNums) {
+      const sorted = [...group].sort((a, b) =>
+        ns ? b.green.lat - a.green.lat : b.green.lon - a.green.lon,
+      );
+      const hi = ns ? 'North' : 'East';
+      const lo = ns ? 'South' : 'West';
+      if (sorted.length === 2) {
+        assigned.set(sorted[0]!, hi);
+        assigned.set(sorted[1]!, lo);
+      } else {
+        const mid = ns
+          ? (sorted[0]!.green.lat + sorted[sorted.length - 1]!.green.lat) / 2
+          : (sorted[0]!.green.lon + sorted[sorted.length - 1]!.green.lon) / 2;
+        for (const h of sorted) {
+          const v = ns ? h.green.lat : h.green.lon;
+          assigned.set(h, v >= mid ? hi : lo);
+        }
+      }
+    }
+    return withNums.map((h) => {
+      if (isRealLoop(h.loop)) return h;
+      const loop = assigned.get(h);
+      if (loop) return { ...h, loop };
+      // Singleton hole numbers: assign by side of the paired greens.
+      const paired = [...assigned.entries()];
+      if (!paired.length) return h;
+      const mean =
+        paired.reduce(
+          (s, [ph]) => s + (ns ? ph.green.lat : ph.green.lon),
+          0,
+        ) / paired.length;
+      const v = ns ? h.green.lat : h.green.lon;
+      return {
+        ...h,
+        loop: v >= mean ? (ns ? 'North' : 'East') : ns ? 'South' : 'West',
+      };
+    });
   }
+
+  if (!splitNums.length && unlabeled.length < 20) return withNums;
 
   const anchors = splitNums.length
     ? splitNums.flatMap(([, g]) => g)
@@ -1150,7 +1236,7 @@ export default async function handler(req: Request): Promise<Response> {
     Number.isFinite(osmId) ? String(osmId) : '',
     courseName.trim().toLowerCase(),
   ].join(':');
-  const cacheKey = `h7:${lat}:${lon}:${bbox ?? ''}:${radiusM}:${courseKey}`;
+  const cacheKey = `h8:${lat}:${lon}:${bbox ?? ''}:${radiusM}:${courseKey}`;
   const cached = HOLE_MEM.get(cacheKey);
   if (cached && Date.now() - cached.at < HOLE_MEM_TTL_MS && cached.holes.length) {
     return jsonResponse(

@@ -279,7 +279,7 @@ export async function fetchGolfHoles(
   // point or even a synthesized bbox, and reusing the wrong hole payload
   // makes tee selection feel random when hopping between courses.
   const key =
-    `golf:v10:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:` +
+    `golf:v11:holes:${q4(lat)}:${q4(lon)}:${bboxKey}:` +
     `${opts?.radius ?? ''}:${courseKey}`;
   const cached =
     memGet<GolfHole[]>(key, HOLES_TTL_MS) ??
@@ -293,7 +293,7 @@ export async function fetchGolfHoles(
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
-    v: '9',
+    v: '10',
   });
   if (opts?.radius) params.set('radius', String(opts.radius));
   params.set('bbox', bboxKey);

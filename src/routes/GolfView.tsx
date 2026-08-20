@@ -229,7 +229,7 @@ export function GolfView() {
   const resolvedLoop =
     loop ??
     pickLoopForCourse(course?.name ?? '', loops) ??
-    (loops.length === 1 ? loops[0]! : null);
+    (loops.length ? loops[0]! : null);
   const loopHoles = useMemo(
     () => holesOnLoop(holes, resolvedLoop),
     [holes, resolvedLoop],
@@ -241,7 +241,9 @@ export function GolfView() {
   const teeKinds = useMemo(() => availableTeeKinds(loopHoles), [loopHoles]);
 
   useEffect(() => {
-    const next = pickLoopForCourse(course?.name ?? '', loopNames(holes));
+    const names = loopNames(holes);
+    const next =
+      pickLoopForCourse(course?.name ?? '', names) ?? names[0] ?? null;
     setLoop(next);
     setTeeKind('mid');
     setActiveHole(null);
@@ -1077,15 +1079,20 @@ export function GolfView() {
                 </div>
                 {(!isMobile || sheetExpanded) && (
                   <>
-                    <ChipRow
-                      label="Course"
-                      options={loops.map((name) => ({ id: name, label: name }))}
-                      value={resolvedLoop ?? ''}
-                      onChange={(id) => {
-                        setLoop(id);
-                        setActiveHole(null);
-                      }}
-                    />
+                    {loops.length >= 2 ? (
+                      <ChipRow
+                        label="Course"
+                        options={loops.map((name) => ({
+                          id: name,
+                          label: name,
+                        }))}
+                        value={resolvedLoop ?? ''}
+                        onChange={(id) => {
+                          setLoop(id);
+                          setActiveHole(null);
+                        }}
+                      />
+                    ) : null}
                     <ChipRow
                       label="Tees"
                       options={teeKinds.map((kind) => ({
@@ -1102,7 +1109,9 @@ export function GolfView() {
                         { id: 'approach', label: 'Approach' },
                       ]}
                       value={planningMode}
-                      onChange={(id) => setPlanningMode(id as 'tee' | 'approach')}
+                      onChange={(id) =>
+                        setPlanningMode(id as 'tee' | 'approach')
+                      }
                     />
                   </>
                 )}
